@@ -1,0 +1,63 @@
+# This program is meant to test the implementation
+# of inteconnected ODEs with delay lines in the
+# sim3.py module
+
+# Sergio Verduzco     6/12/17
+
+par del1=1, del2=2, del3=3, del4=4, del5=5
+par tau=0.02, tau_pre=1, tau_post=1, lrate=0.5
+
+# The network will have 5 input units and 5 sigmoidal units. 
+# Each sigmoidal receives one input, and is fully connected 
+# with the other sigmoidals. All synaptic weights are static,
+# with the exception of some of those received by unit 5, which 
+# evolveaccording to a continuous version of the Oja rule.
+# Projections to unit X hav a delay delX.
+# Synaptic weights from unit X have a weight 2*0.X .
+
+f(u) = 1/(1+exp(-u))
+
+inp1(t)=0.5*sin(t-del1)
+inp2(t)=-0.5*sin(2*(t-del2))
+inp3(t)=0.5*sin(3*(t-del3))
+inp4(t)=-0.5*sin(t-del4)
+inp5(t)=2*sin(t-del5)
+
+x1' = ( f( inp1(t) + 0.4*delay(x2,del1) + 0.6*delay(x3,del1) + 0.8*delay(x4,del1) + delay(x5,del1) ) - x1 ) / tau
+x2' = ( f( inp2(t) + 0.2*delay(x1,del2) + 0.6*delay(x3,del2) + 0.8*delay(x4,del2) + delay(x5,del2) ) - x2 ) / tau
+x3' = ( f( inp3(t) + 0.2*delay(x1,del3) + 0.4*delay(x2,del3) + 0.8*delay(x4,del3) + delay(x5,del3) ) - x3 ) / tau
+x4' = ( f( inp4(t) + 0.2*delay(x1,del4) + 0.4*delay(x2,del4) + 0.6*delay(x3,del4) + delay(x5,del4) ) - x4 ) / tau
+x5' = ( f( inp5(t) + w1*delay(x1,del5) + w2*delay(x2,del5) + w3*delay(x3,del5) + w4*delay(x4,del5) ) - x5 ) / tau
+
+pre1' = (x1-pre1)/tau_pre
+pre2' = (x2-pre2)/tau_pre
+pre3' = (x3-pre3)/tau_pre
+pre4' = (x4-pre4)/tau_pre
+post' = (x5-post)/tau_post
+w1' = lrate*post*(pre1 - post*w1)
+w2' = lrate*post*(pre2 - post*w2)
+w3' = lrate*post*(pre3 - post*w3)
+w4' = lrate*post*(pre4 - post*w4)
+
+x1(0)=0.5
+x2(0)=0.5
+x3(0)=0.5
+x4(0)=0.5
+x5(0)=0.5
+pre1(0)=0.5
+pre2(0)=0.5
+pre3(0)=0.5
+pre4(0)=0.5
+post(0)=0.5
+w1(0)=0.2
+w2(0)=0.4
+w3(0)=0.6
+w4(0)=0.8
+init x1=0.5, x2=0.5, x3=0.5, x4=0.5, x5=0.5
+init w1=0.2, w2=0.4, w3=0.6, w4=0.8, post=0.5
+init pre1=0.5, pre2=0.5, pre3=0.5, pre4=0.5
+
+@ delay=6
+@ total=10
+
+done

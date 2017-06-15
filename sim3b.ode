@@ -1,0 +1,40 @@
+# This program is meant to test the implementation
+# of inteconnected ODEs with delay lines in the
+# sim3.py module
+
+# Sergio Verduzco     6/13/17
+
+par del1=1, del2=2, 
+par tau=0.02, tau_pre=1, tau_post=1, lrate=0.0
+
+# The network will have 5 input units and 5 sigmoidal units. 
+# Each sigmoidal receives one input, and is fully connected 
+# with the other sigmoidals. All synaptic weights are static
+# All input projections have the same delay and weight
+# All projections between sigmoidals have same delay and weight
+
+f(u) = 1/(1+exp(-u))
+
+inp1(t)=0.5*sin(t-del1)
+inp2(t)=0.5*sin(2*(t-del1))
+inp3(t)=0.5*sin(3*(t-del1))
+inp4(t)=0.5*sin(4*(t-del1))
+inp5(t)=0.5*sin(5*(t-del1))
+
+x1' = ( f( inp1(t) + 0.3*(delay(x2,del2) + delay(x3,del2) + delay(x4,del2) + delay(x5,del2)) ) - x1 ) / tau
+x2' = ( f( inp2(t) + 0.3*(delay(x1,del2) + delay(x3,del2) + delay(x4,del2) + delay(x5,del2)) ) - x2 ) / tau
+x3' = ( f( inp3(t) + 0.3*(delay(x1,del2) + delay(x2,del2) + delay(x4,del2) + delay(x5,del2)) ) - x3 ) / tau
+x4' = ( f( inp4(t) + 0.3*(delay(x1,del2) + delay(x2,del2) + delay(x3,del2) + delay(x5,del2)) ) - x4 ) / tau
+x5' = ( f( inp5(t) + 0.3*(delay(x1,del2) + delay(x2,del2) + delay(x3,del2) + delay(x4,del2)) ) - x5 ) / tau
+
+x1(0)=0.5
+x2(0)=0.5
+x3(0)=0.5
+x4(0)=0.5
+x5(0)=0.5
+init x1=0.5, x2=0.5, x3=0.5, x4=0.5, x5=0.5
+
+@ delay=3
+@ total=10
+
+done
