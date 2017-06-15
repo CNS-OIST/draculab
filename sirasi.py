@@ -3,6 +3,7 @@ sirasi.py  (SImple RAte SImulator)
 A simple simulator of rate units with delayed connections.
 
 Author: Sergio Verduzco Flores
+
 June 2017
 '''
 
@@ -18,6 +19,7 @@ import random # to create random connections
 class unit_types(Enum):
     source = 1
     sigmoidal = 2
+    linear = 3
     
 class synapse_types(Enum):
     static = 1
@@ -57,6 +59,9 @@ class network():
         elif params['type'] == unit_types.sigmoidal:
             for ID in unit_list:
                 self.units.append(sigmoidal(ID,params,self))
+        elif params['type'] == unit_types.linear:
+            for ID in unit_list:
+                self.units.append(linear(ID,params,self))
         else:
             printf('Attempting to create an unknown model type. Nothing done.')
             return []
@@ -143,7 +148,6 @@ class network():
         return times, storage        
 
 class unit():
-    # I'll probably move a bunch of the __init__ code to sigmoidal, since source doesn't need it
     def __init__(self, ID, params, network):
         self.ID = ID # unit's unique identifier
         
@@ -180,6 +184,24 @@ class unit():
         self.times = np.linspace(-self.delay, 0., self.buff_size) # the corresponding times for the buffer values
         self.times_grid = np.linspace(0, min_del, min_buff+1) # used to create values for 'times'
         
+    ''' get_inputs(self, time)
+        Returns a list with the inputs received by the unit from all other units at time 'time'.
+        The returned inputs already account for the transmission delays.
+        To do this: in the network's activation tower the entry corresponding to the unit's ID
+        (e.g. self.net.act[self.ID]) is a list; for each i-th entry (a function) retrieve
+        the value at time "time - delays[ID][i]".  
+    '''
+    def get_inputs(self, time):
+        # the one-liner
+        return [ fun(time - self.net.delays[self.ID][idx]) for idx, fun in enumerate(self.net.act[self.ID]) ]
+    
+    ''' get_weights will return a list with the synaptic weights corresponding to the input
+        list obtained with get_inputs
+    '''
+    def get_weights(self, time):
+        # once you include axo-axonic connections you have to modify the list below
+        return [ synapse.get_w(time) for synapse in self.net.syns[self.ID]]
+
     # The default update function does nothing
     def update(self, time):
         return
@@ -218,28 +240,10 @@ class sigmoidal(unit):
     def f(self, arg):
         return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
     
-    ''' get_inputs(self, time)
-        Returns a list with the inputs received by the unit from all other units at time 'time'.
-        The returned inputs already account for the transmission delays.
-        To do this: in the network's activation tower the entry corresponding to the unit's ID
-        (e.g. self.net.act[self.ID]) is a list; for each i-th entry (a function) retrieve
-        the value at time "time - delays[ID][i]".  
-    '''
-    def get_inputs(self, time):
-        # the one-liner
-        return [ fun(time - self.net.delays[self.ID][idx]) for idx, fun in enumerate(self.net.act[self.ID]) ]
-    
-    ''' get_weights will return a list with the synaptic weights corresponding to the input
-        list obtained with get_inputs
-    '''
-    def get_weights(self, time):
-        # once you include axo-axonic connections you have to modify the list below
-        return [ synapse.get_w(time) for synapse in self.net.syns[self.ID]]
-    
     ''' This function returns the derivatives of the state variables at a given point in time.
     '''
     def derivatives(self, y, t):
-        # at this point there is only one state variable (the activity)
+        # there is only one state variable (the activity)
         scaled_inputs = sum([inp*w for inp,w in zip(self.get_inputs(t), self.get_weights(t))])
         return ( self.f(scaled_inputs) - y[0] ) * self.rtau
     
@@ -262,6 +266,51 @@ class sigmoidal(unit):
         new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times)
         self.buffer = np.roll(self.buffer, -self.net.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:,0] 
+
+
+class linear(unit): 
+    def __init__(self, ID, params, network):
+        super(linear, self).__init__(ID, params, network)
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        assert self.type is unit_types.linear, ['Unit ' + str(self.ID) + 
+                                                            ' instantiated with the wrong type']
+        
+    ''' get_act(t)' gives you the activity at a previous time 't' (within buffer range)
+    '''
+    def get_act(self,time):
+        # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
+        return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
+                        fill_value="extrapolate", assume_sorted=True)(time)
+        
+    
+    ''' This function returns the derivatives of the state variables at a given point in time.
+    '''
+    def derivatives(self, y, t):
+        # there is only one state variable (the activity)
+        scaled_inputs = sum([inp*w for inp,w in zip(self.get_inputs(t), self.get_weights(t))])
+        return ( scaled_inputs - y[0] ) * self.rtau
+    
+    '''
+        Everytime you update, you'll replace the values in the activation buffer 
+        corresponding to the latest "min_delay" time units, introducing "min_buff_size" new values.
+        In the future this may be done with a faster ring buffer (memoryview?)
+    '''
+    def update(self,time):
+        # the 'time' argument is currently only used to ensure times buffer is in sync
+        # Maybe there should be a single 'times' array in the network. This seems more parallelizable, though.
+        assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
+
+        new_times = self.times[-1] + self.times_grid
+        self.times = np.roll(self.times, -self.net.min_buff_size)
+        self.times[self.offset:] = new_times[1:] 
+        
+        # odeint also returns the initial condition, so to produce min_buff_size new values
+        # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
+        new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times)
+        self.buffer = np.roll(self.buffer, -self.net.min_buff_size)
+        self.buffer[self.offset:] = new_buff[1:,0] 
+
 
 class synapse():
     def __init__(self, params, network):
