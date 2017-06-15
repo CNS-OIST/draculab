@@ -22,7 +22,7 @@ class unit_types(Enum):
 class synapse_types(Enum):
     static = 1
     oja = 2  
-    #axoaxo = auto()  # axo-axonic synapses provide presynaptic inhibition
+    #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
 
 ''' This class has the tools to build a network.
