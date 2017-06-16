@@ -1,4 +1,5 @@
-''' network.py
+''' 
+network.py
 The network class used in the sirasi simulator.
 '''
 
@@ -11,7 +12,7 @@ import random # to create random connections
 ''' This class has the tools to build a network.
     First, you create an instance of 'network'; 
     second, you use the create() method to add units;
-    third, you use set_function() for source units;
+    third, you use set_function() for source units, which provide inputs;
     fourth, you use the connect() method to connect the units, 
     finally you use the run() method to run a simulation.
 '''
@@ -100,6 +101,9 @@ class network():
                 if self.units[source].delay <= conn_spec['delay']: # this is the longest delay for this source
                     self.units[source].delay = conn_spec['delay']+self.min_delay
                     self.units[source].init_buffers()
+
+         # TODO: run init_pre_syn_update for all the units, but make sure that running it
+         # each time you add new synapses doesn't screw things up
     
     def run(self, total_time):
         # A basic runner.
@@ -121,10 +125,5 @@ class network():
             for unit in range(self.n_units):
                 self.units[unit].update(self.sim_time)
 
-            # update synapses
-            for pre_list in self.syns:
-                for pre in pre_list:
-                    pre.update(self.sim_time)
-            
         return times, storage        
 

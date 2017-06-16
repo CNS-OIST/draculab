@@ -7,18 +7,39 @@ Author: Sergio Verduzco Flores
 June 2017
 '''
 
-from enum import Enum  # enumerators for the synapse and unit types
 
+from enum import Enum  # enumerators for the synapse and unit types
 # These enumeration classes provide human-readable and globally consistent constants
+# These are for all the unit models
 class unit_types(Enum):
     source = 1
     sigmoidal = 2
     linear = 3
     
+
+# These are for all the synapse models
 class synapse_types(Enum):
     static = 1
     oja = 2  
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibitionz
+
+
+# These are for all the variables that a synapse model may ask a unit
+# to maintain in order to support its learning function
+class synapse_reqs(Enum):
+    lpf_fast = 1  # postsynaptic activity low-pass filtered with a fast time constant
+    lpf_mid = 2   # postsynaptic activity low-pass filtered with a medium time constant
+    lpf_slow = 3  # postsynaptic activity low-pass filtered with a slow time constant
+    pre_lpf_fast = 4  # presynaptic activity low-pass filtered with a fast time constant
+    pre_lpf_mid = 5   # presynaptic activity low-pass filtered with a medium time constant
+    pre_lpf_slow = 6  # presynaptic activity low-pass filtered with a slow time constant
+    w_list = 7    # A list with the weights of all synapses of the unit
+    sum_w = 8     # The sum of the weights of all the synapses of the unit
+    inputs = 9    # A list with all the inputs of the unit
+    inp_sum = 10  # The sum of all presynaptic inputs
+    sc_inp_sum = 11 # Scaled input sum. This is the sum of presynaptic inputs, 
+                    # each multiplied by its synaptic weight. Same as the 
+                    # steady-state output of a linear unit.
 
 
 # Importing the classes used by the simulator

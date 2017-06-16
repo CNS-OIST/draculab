@@ -17,6 +17,14 @@ class synapse():
         assert self.net.n_units >= self.postID, 'Synapse connected to non existing unit ' + str(self.postID)  
         assert self.net.sim_time == 0., 'Synapse being created when sim_time is not zero'
 
+        # Each synapse type is tasked with indicating what information it will ask
+        # from its corresponding unit when the synapse updates. That information is contained 
+        # in the 'upd_requirements' set. Each entry in upd_requirements corresponds to
+        # a different variable that the unit must maintain each time the unit's
+        # update() function is called. The possible values are in the synapse_reqs
+        # enumerator of the sirasi module.
+        self.upd_requirements = set() # start with an empty set
+
     def get_w(self, time): 
         # If I'm going to use time, I need to use buffers and interpolation.
         # Not necessary so far.
@@ -32,6 +40,11 @@ class static_synapse(synapse):
         super(static_synapse, self).__init__(params, network)
         assert self.type is synapse_types.static, ['Synapse from ' + str(self.preID) + ' to ' +
                                                             str(self.postID) + ' instantiated with the wrong type']
+
+    # static synapses don't do anything when updated
+    def update(self,time):
+        return
+
           
 class oja_synapse(synapse):
     ''' This class implements a continuous version of the Oja learning rule. 
@@ -47,6 +60,7 @@ class oja_synapse(synapse):
         self.lpf_x = self.net.units[self.preID].get_act(self.last_time) # low-pass filtered presynaptic activity
         self.lpf_y = self.net.units[self.postID].get_act(self.last_time) # low-pass filtered postsynaptic activity
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        self.upd_requirements
         assert self.type is synapse_types.oja, ['Synapse from ' + str(self.preID) + ' to ' +
                                                           str(self.postID) + ' instantiated with the wrong type']
 
@@ -66,3 +80,5 @@ class oja_synapse(synapse):
         
         # A forward Euler step with the Oja learning rule 
         self.w = self.w + self.alpha * self.lpf_y * ( self.lpf_x - self.lpf_y*self.w )
+
+

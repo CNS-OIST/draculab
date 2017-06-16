@@ -21,6 +21,8 @@ class unit():
         self.type = params['type'] # an enum identifying the type of unit being instantiated
         self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
         self.net = network # the network where the unit lives
+        self.syn_needs = set() # the set of all variables required by synaptic dynamics
+                               # It is initialized by the init_pre_syn_update function
         
         # The delay of a unit is the maximum delay among the projections it sends. It
         # must be a multiple of min_delay. Next line checks that.
@@ -46,8 +48,10 @@ class unit():
         self.buffer = np.array( [self.init_val]*self.buff_size ) # numpy array with previous activation values
         self.times = np.linspace(-self.delay, 0., self.buff_size) # the corresponding times for the buffer values
         self.times_grid = np.linspace(0, min_del, min_buff+1) # used to create values for 'times'
+
         
-    ''' get_inputs(self, time)
+    ''' 
+        get_inputs(self, time)
         Returns a list with the inputs received by the unit from all other units at time 'time'.
         The returned inputs already account for the transmission delays.
         To do this: in the network's activation tower the entry corresponding to the unit's ID
@@ -65,10 +69,72 @@ class unit():
         # once you include axo-axonic connections you have to modify the list below
         return [ synapse.get_w(time) for synapse in self.net.syns[self.ID]]
 
-    # The default update function does nothing
-    def update(self, time):
-        return
-                                
+    '''
+        This update function will replace the values in the activation buffer 
+        corresponding to the latest "min_delay" time units, introducing "min_buff_size" new values.
+        In addition, all the synapses of the unit are updated.
+        source units replace this with an empty update function.
+    '''
+    def update(self,time):
+        # the 'time' argument is currently only used to ensure times buffer is in sync
+        # Maybe there should be a single 'times' array in the network. This seems more parallelizable, though.
+        assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
+
+        new_times = self.times[-1] + self.times_grid
+        self.times = np.roll(self.times, -self.net.min_buff_size)
+        self.times[self.offset:] = new_times[1:] 
+        
+        # odeint also returns the initial condition, so to produce min_buff_size new values
+        # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
+        new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times)
+        self.buffer = np.roll(self.buffer, -self.net.min_buff_size)
+        self.buffer[self.offset:] = new_buff[1:,0] 
+
+        self.pre_syn_update() # update any variables needed for the synapse to update
+        # For each synapse on the unit, update its state
+        for pre in self.net.syns[self.ID]:
+            pre.update(time)
+
+
+    ''' get_act(t)' gives you the activity at a previous time 't' (within buffer range)
+        This version works for units that store their previous activity values in a buffer.
+        Units without buffers (e.g. source units) have their own get_act function.
+    '''
+    def get_act(self,time):
+        # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
+        return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
+                        fill_value="extrapolate", assume_sorted=True)(time)
+  
+    '''
+        Correlational learning rules require the pre- and post-synaptic activity, in this
+        case low-pass filtered in order to implement a running average. Moreover, for
+        heterosynaptic plasticity individual synapses need information about all the
+        other synapses on the unit. It is inefficient for each synapse to maintain
+        low-pass filtered versions of pre- and post-synaptic activity, as well as to
+        obtain by itself all the values required for its update.
+        The function pre_syn_update(), initialized in the network connect() function
+        by a call to unit.init_pre_syn_update(), is tasked with updating all the unit 
+        variables used by the synapses to update.
+    '''
+    #def pre_syn_update(self):
+    #    self.lpf
+    #    return
+
+    '''
+        init_pre_syn_update creates the function pre_syn_update, and initializes all the
+        variables it requires. To do this, it compiles the requirements of all the
+        relevant synapses in self.synapse_needs
+    '''
+    def init_pre_syn_update(self):
+    # TODO: check simulation time is zero
+        # for each synapse you receive, check what it needs
+        for syn in self.net.syns[self.ID]:
+            for req = syn.upd_requirements:
+                self.syn_needs.add(req)
+
+        # TODO:for each projection you send, check whether it needs the lpf presynaptic activity
+
+                               
 class source(unit):
     # these guys are 'functional', as they may also have inputs, but no dynamics.
     # At some point I'll have units whose output depends on the plant's dynamics. 
@@ -81,7 +147,17 @@ class source(unit):
     def set_function(self, function):
         self.get_act = function
 
+    def update(self, time):
+    # The update function for source units does nothing
+        return
+
+    
 class sigmoidal(unit): 
+    # An implementation of a typical sigmoidal unit. Its output is produced by linearly
+    # summing the inputs (times the synaptic weights), and feeding the sum to a sigmoidal
+    # function, which constraints the output to values beween zero and one.
+    # Because this unit operates in real time, it updates its value gradually, with
+    # a 'tau' time constant.
     def __init__(self, ID, params, network):
         super(sigmoidal, self).__init__(ID, params, network)
         self.slope = params['slope']    # slope of the sigmoidal function
@@ -90,13 +166,6 @@ class sigmoidal(unit):
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         assert self.type is unit_types.sigmoidal, ['Unit ' + str(self.ID) + 
                                                             ' instantiated with the wrong type']
-        
-    ''' get_act(t)' gives you the activity at a previous time 't' (within buffer range)
-    '''
-    def get_act(self,time):
-        # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
-        return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
-                        fill_value="extrapolate", assume_sorted=True)(time)
         
     ''' This is the sigmoidal function. Could roughly think of it as an f-I curve
     '''
@@ -110,28 +179,11 @@ class sigmoidal(unit):
         scaled_inputs = sum([inp*w for inp,w in zip(self.get_inputs(t), self.get_weights(t))])
         return ( self.f(scaled_inputs) - y[0] ) * self.rtau
     
-    '''
-        Everytime you update, you'll replace the values in the activation buffer 
-        corresponding to the latest "min_delay" time units, introducing "min_buff_size" new values.
-        In the future this may be done with a faster ring buffer (memoryview?)
-    '''
-    def update(self,time):
-        # the 'time' argument is currently only used to ensure times buffer is in sync
-        # Maybe there should be a single 'times' array in the network. This seems more parallelizable, though.
-        assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
-
-        new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.net.min_buff_size)
-        self.times[self.offset:] = new_times[1:] 
-        
-        # odeint also returns the initial condition, so to produce min_buff_size new values
-        # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
-        new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times)
-        self.buffer = np.roll(self.buffer, -self.net.min_buff_size)
-        self.buffer[self.offset:] = new_buff[1:,0] 
-
 
 class linear(unit): 
+    # An implementation of a linear unit.
+    # The output is the sum of the inputs multiplied by their synaptic weights.
+    # The output upates with time constant 'tau'.
     def __init__(self, ID, params, network):
         super(linear, self).__init__(ID, params, network)
         self.tau = params['tau']  # the time constant of the dynamics
@@ -139,40 +191,11 @@ class linear(unit):
         assert self.type is unit_types.linear, ['Unit ' + str(self.ID) + 
                                                             ' instantiated with the wrong type']
         
-    ''' get_act(t)' gives you the activity at a previous time 't' (within buffer range)
-    '''
-    def get_act(self,time):
-        # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
-        return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
-                        fill_value="extrapolate", assume_sorted=True)(time)
-        
-    
     ''' This function returns the derivatives of the state variables at a given point in time.
     '''
     def derivatives(self, y, t):
         # there is only one state variable (the activity)
         scaled_inputs = sum([inp*w for inp,w in zip(self.get_inputs(t), self.get_weights(t))])
         return ( scaled_inputs - y[0] ) * self.rtau
-    
-    '''
-        Everytime you update, you'll replace the values in the activation buffer 
-        corresponding to the latest "min_delay" time units, introducing "min_buff_size" new values.
-        In the future this may be done with a faster ring buffer (memoryview?)
-    '''
-    def update(self,time):
-        # the 'time' argument is currently only used to ensure times buffer is in sync
-        # Maybe there should be a single 'times' array in the network. This seems more parallelizable, though.
-        assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
-
-        new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.net.min_buff_size)
-        self.times[self.offset:] = new_times[1:] 
-        
-        # odeint also returns the initial condition, so to produce min_buff_size new values
-        # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
-        new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times)
-        self.buffer = np.roll(self.buffer, -self.net.min_buff_size)
-        self.buffer[self.offset:] = new_buff[1:,0] 
-
-
+   
 
