@@ -3,7 +3,7 @@ units.py
 This file contains all the unit models used in the sirasi simulator.
 '''
 
-from sirasi import unit_types, synapse_types  # the names of the models for units and synapses
+from sirasi import unit_types, synapse_types, syn_reqs  # names of models and requirements
 from synapses import *
 import numpy as np
 from scipy.interpolate import interp1d # to interpolate values
@@ -13,22 +13,30 @@ from scipy.integrate import odeint # to integrate ODEs
 class unit():
     def __init__(self, ID, params, network):
         self.ID = ID # unit's unique identifier
-        
         # Copying parameters from dictionary
-        # A dictionary is not used inside the class to avoid dictionary retrieval operations
+        # Inside the class there are no dictionaries to avoid their retrieval operations
         self.coordinates = params['coordinates'] # spatial coordinates of the unit [cm]
         self.delay = params['delay']             # maximum delay on sending projections [ms]
         self.type = params['type'] # an enum identifying the type of unit being instantiated
         self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
+        # These are the time constants for the low-pass filters (used for plasticity).
+        # They are optional. No default value is given.
+        if 'tau_fast' in params: self.tau_fast = params['tau_fast']
+        if 'tau_mid' in params: self.tau_mid= params['tau_mid']
+        if 'tau_slow' in params: self.tau_slow= params['tau_slow']
         self.net = network # the network where the unit lives
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
+        self.last_time = 0  # time of last call to the update function
         
         # The delay of a unit is the maximum delay among the projections it sends. It
         # must be a multiple of min_delay. Next line checks that.
         assert (self.delay+1e-6)%self.net.min_delay < 2e-6, ['unit' + str(self.ID) + 
                                                              ': delay is not a multiple of min_delay']       
         self.init_buffers() # This will create the buffers that store states and times
+        
+        self.pre_syn_update = lambda time : None # See init_pre_syn_update below
+
      
     def init_buffers(self):
         # This method (re)initializes the buffer variables according to the current parameters.
@@ -90,10 +98,12 @@ class unit():
         self.buffer = np.roll(self.buffer, -self.net.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:,0] 
 
-        self.pre_syn_update() # update any variables needed for the synapse to update
+        self.pre_syn_update(time) # update any variables needed for the synapse to update
         # For each synapse on the unit, update its state
         for pre in self.net.syns[self.ID]:
             pre.update(time)
+
+        self.last_time = time # last_time is used to update some pre_syn_update values
 
 
     ''' get_act(t)' gives you the activity at a previous time 't' (within buffer range)
@@ -112,29 +122,66 @@ class unit():
         other synapses on the unit. It is inefficient for each synapse to maintain
         low-pass filtered versions of pre- and post-synaptic activity, as well as to
         obtain by itself all the values required for its update.
-        The function pre_syn_update(), initialized in the network connect() function
-        by a call to unit.init_pre_syn_update(), is tasked with updating all the unit 
-        variables used by the synapses to update.
-    '''
-    #def pre_syn_update(self):
-    #    self.lpf
-    #    return
+        The function pre_syn_update(), initialized by init_pre_syn_update(), 
+        is tasked with updating all the unit variables used by the synapses to update.
 
-    '''
         init_pre_syn_update creates the function pre_syn_update, and initializes all the
         variables it requires. To do this, it compiles the requirements of all the
-        relevant synapses in self.synapse_needs
+        relevant synapses in the set self.syn_needs. 
+        For each requirement, the unit class already has the function to calculate it,
+        so all init_pre_syn_update needs to do is to ensure that a call to pre_syn_update
+        executes all the right functions.
+
+        init_pre_syn_update is called for a unit everytime network.connect() connects it, 
+        which may be more than once.
     '''
     def init_pre_syn_update(self):
-    # TODO: check simulation time is zero
-        # for each synapse you receive, check what it needs
+    
+        assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
+                                         str(self.ID) + ' when simulation time is not zero']
+        # For each synapse you receive, add its requirements
         for syn in self.net.syns[self.ID]:
-            for req = syn.upd_requirements:
-                self.syn_needs.add(req)
+            self.syn_needs.update(syn.upd_requirements)
 
-        # TODO:for each projection you send, check whether it needs the lpf presynaptic activity
+        pre_reqs = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.pre_lpf_slow])
+        self.syn_needs.difference_update(pre_reqs) # the "pre_" requirements are handled below
 
-                               
+        # For each projection you send, check if its synapse needs the lpf presynaptic activity
+        for syn_list in self.net.syns:
+            for syn in syn_list:
+                if syn.preID == self.ID:
+                    if syn_reqs.pre_lpf_fast in syn.upd_requirements:
+                        self.syn_needs.add(syn_reqs.lpf_fast)
+                    if syn_reqs.pre_lpf_mid in syn.upd_requirements:
+                        self.syn_needs.add(syn_reqs.lpf_mid)
+                    if syn_reqs.pre_lpf_slow in syn.upd_requirements:
+                        self.syn_needs.add(syn_reqs.lpf_slow)
+
+        # Create the pre_syn_update function and the associated variables
+        functions = set() 
+        for req in self.syn_needs:
+            if req is syn_reqs.lpf_fast:
+                if not hasattr(self,'tau_fast'): raise NameError(self.ID)
+                self.lpf_fast = self.init_val
+                functions.add(self.upd_lpf_fast)
+            else:
+                raise NotImplementedError('Asking for a requirement not implemented yet')
+
+        self.pre_syn_update = lambda time: [f(time) for f in functions]
+
+
+    def upd_lpf_fast(self,time):
+        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+                                        ' lpf_fast updated backwards in time']
+        cur_act = self.get_act(time) # current activity
+        # This updating rule comes from analytically solving 
+        # lpf_x' = ( x - lpf_x ) / tau
+        # and assuming x didn't change much between self.last_time and time.
+        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
+        self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
+                                   np.exp( (self.last_time-time)/self.tau_fast ) )
+
+
 class source(unit):
     # these guys are 'functional', as they may also have inputs, but no dynamics.
     # At some point I'll have units whose output depends on the plant's dynamics. 

@@ -10,23 +10,22 @@ June 2017
 
 from enum import Enum  # enumerators for the synapse and unit types
 # These enumeration classes provide human-readable and globally consistent constants
+
 # These are for all the unit models
 class unit_types(Enum):
     source = 1
     sigmoidal = 2
     linear = 3
     
-
 # These are for all the synapse models
 class synapse_types(Enum):
     static = 1
     oja = 2  
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibitionz
 
-
 # These are for all the variables that a synapse model may ask a unit
 # to maintain in order to support its learning function
-class synapse_reqs(Enum):
+class syn_reqs(Enum):
     lpf_fast = 1  # postsynaptic activity low-pass filtered with a fast time constant
     lpf_mid = 2   # postsynaptic activity low-pass filtered with a medium time constant
     lpf_slow = 3  # postsynaptic activity low-pass filtered with a slow time constant

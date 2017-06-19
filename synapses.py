@@ -3,7 +3,7 @@ synapses.py
 This file contains all the synapse models used in the sirasi simulator
 '''
 
-from sirasi import unit_types, synapse_types
+from sirasi import unit_types, synapse_types, syn_reqs  # names of models and requirements
 import numpy as np
 
 class synapse():
@@ -21,7 +21,7 @@ class synapse():
         # from its corresponding unit when the synapse updates. That information is contained 
         # in the 'upd_requirements' set. Each entry in upd_requirements corresponds to
         # a different variable that the unit must maintain each time the unit's
-        # update() function is called. The possible values are in the synapse_reqs
+        # update() function is called. The possible values are in the syn_reqs
         # enumerator of the sirasi module.
         self.upd_requirements = set() # start with an empty set
 
@@ -60,25 +60,19 @@ class oja_synapse(synapse):
         self.lpf_x = self.net.units[self.preID].get_act(self.last_time) # low-pass filtered presynaptic activity
         self.lpf_y = self.net.units[self.postID].get_act(self.last_time) # low-pass filtered postsynaptic activity
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
-        self.upd_requirements
+        # The Oja rule requires the current pre- and post-synaptic activity
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast])
         assert self.type is synapse_types.oja, ['Synapse from ' + str(self.preID) + ' to ' +
                                                           str(self.postID) + ' instantiated with the wrong type']
 
     
     def update(self, time):
-        assert time >= self.last_time, ['Synapse from ' + str(self.preID) + ' to ' +
-                                         str(self.postID) + ' updated backwards in time']
-        cur_x = self.net.units[self.preID].get_act(time) # current presynaptic activity
-        cur_y = self.net.units[self.postID].get_act(time) # current postsynaptic activity
-        
-        # This updating rule comes from analytically solving 
-        # lpf_x' = ( x - lpf_x ) / tau
-        # and assuming x didn't change much between self.last_time and time.
-        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
-        self.lpf_x = cur_x + (self.lpf_x - cur_x)*np.exp((self.last_time-time)/self.tau_x)
-        self.lpf_y = cur_y + (self.lpf_y - cur_y)*np.exp((self.last_time-time)/self.tau_y)
+        # If the network is correctly initialized, the pre- and post-synaptic units
+        # are updating their lpf_fast variables at each update() call
+        lpf_post = self.net.units[self.postID].lpf_fast
+        lpf_pre = self.net.units[self.preID].lpf_fast
         
         # A forward Euler step with the Oja learning rule 
-        self.w = self.w + self.alpha * self.lpf_y * ( self.lpf_x - self.lpf_y*self.w )
+        self.w = self.w + self.alpha * lpf_post * ( lpf_pre - lpf_post*self.w )
 
 

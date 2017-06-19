@@ -3,7 +3,7 @@ network.py
 The network class used in the sirasi simulator.
 '''
 
-from sirasi import unit_types, synapse_types
+from sirasi import unit_types, synapse_types, syn_reqs  # names of models and requirements
 from units import *
 from synapses import *
 import numpy as np
@@ -102,8 +102,10 @@ class network():
                     self.units[source].delay = conn_spec['delay']+self.min_delay
                     self.units[source].init_buffers()
 
-         # TODO: run init_pre_syn_update for all the units, but make sure that running it
-         # each time you add new synapses doesn't screw things up
+        # run init_pre_syn_update for all the units connected 
+        for u in set(sources).union(targets):
+            self.units[u].init_pre_syn_update()
+
     
     def run(self, total_time):
         # A basic runner.
