@@ -190,13 +190,25 @@ class source(unit):
         super(source, self).__init__(ID, params, network)
         self.get_act = funct  # the function which returns activation given the time
         assert self.type is unit_types.source, ['Unit ' + str(self.ID) + 
-                                                         ' instantiated with the wrong type']
+                                                ' instantiated with the wrong type']
+
     def set_function(self, function):
+        #print('Assignment to unit ' + str(self.ID) + ' has happened')
         self.get_act = function
+        # What if you're doing this after the connections have already been made?
+        # Then net.act has links to functions other than this get_act.
+        # Thus, we need to reset all those net.act entries...
+        for idx1, syn_list in enumerate(self.net.syns):
+            for idx2, syn in enumerate(syn_list):
+                if syn.preID == self.ID:
+                    self.net.act[idx1][idx2] = self.get_act
+
+        #print('My get_act('+str(self.net.sim_time)+') = ' + str(self.get_act(self.net.sim_time)))
 
     def update(self, time):
-    # The update function for source units does nothing
-        return
+        self.pre_syn_update(time) # update any variables needed for the synapse to update
+        self.last_time = time # last_time is used to update some pre_syn_update values
+
 
     
 class sigmoidal(unit): 

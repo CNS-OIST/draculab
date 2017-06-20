@@ -35,7 +35,7 @@ class network():
         
         unit_list = list(range(self.n_units, self.n_units + n))
         if params['type'] == unit_types.source:
-            default_fun = lambda x: 0.  # source units start with a null function
+            default_fun = lambda x: None  # source units start with a null function
             for ID in unit_list:
                 self.units.append(source(ID,params,default_fun,self))
         elif params['type'] == unit_types.sigmoidal:
@@ -102,7 +102,7 @@ class network():
                     self.units[source].delay = conn_spec['delay']+self.min_delay
                     self.units[source].init_buffers()
 
-        # run init_pre_syn_update for all the units connected 
+        # After connecting, run init_pre_syn_update for all the units connected 
         for u in set(sources).union(targets):
             self.units[u].init_pre_syn_update()
 
@@ -113,10 +113,9 @@ class network():
         # use their own methods to advance their state variables.
         Nsteps = int(total_time/self.min_delay)
         storage = [np.zeros(Nsteps) for i in range(self.n_units)]
-        times = np.zeros(Nsteps)
+        times = np.zeros(Nsteps) + self.sim_time
         
         for step in range(Nsteps):
-            self.sim_time = self.min_delay*step
             times[step] = self.sim_time
             
             # store current state
@@ -126,6 +125,8 @@ class network():
             # update units
             for unit in range(self.n_units):
                 self.units[unit].update(self.sim_time)
+
+            self.sim_time += self.min_delay
 
         return times, storage        
 

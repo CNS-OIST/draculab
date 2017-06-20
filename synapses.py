@@ -54,8 +54,6 @@ class oja_synapse(synapse):
     def __init__(self, params, network):
         super(oja_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
-        self.tau_x = params['tau_x'] # time constant used to track the presynaptic activity
-        self.tau_y = params['tau_y'] # time constant used to track the postsynaptic activity
         self.last_time = self.net.sim_time # time of the last call to the update function
         self.lpf_x = self.net.units[self.preID].get_act(self.last_time) # low-pass filtered presynaptic activity
         self.lpf_y = self.net.units[self.postID].get_act(self.last_time) # low-pass filtered postsynaptic activity
