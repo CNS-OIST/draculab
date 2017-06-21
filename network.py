@@ -60,12 +60,11 @@ class network():
         # connect the units in the 'from_list' to the units in the 'to_list' using the
         # connection specifications in the 'conn_spec' dictionary, and the
         # synapse specfications in the 'syn_spec' dictionary
-        # The current version only handles one single delay value
+        # The current version only handles one single delay value and allows multapses
         
         # A quick test first
         if (np.amax(from_list + to_list) > self.n_units-1) or (np.amin(from_list + to_list) < 0):
-            print('Attempting to connect units with an ID out of range. Nothing done.')
-            return
+            raise ValueError('Attempting to connect units with an ID out of range')
        
         # Let's find out the synapse type
         if syn_spec['type'] == synapse_types.static:
@@ -73,37 +72,64 @@ class network():
         elif syn_spec['type'] == synapse_types.oja:
             syn_class = oja_synapse
         else:
-            print('Attempting connect with an unknown synapse type. Nothing done.')
-            return
+            raise ValueError('Attempting connect with an unknown synapse type')
         
-        # To specify connectivity, you need to update 3 lists: delays, act, and syns
         # The units connected depend on the connectivity rule in conn_spec
+        # We'll specify which units to connect by creating a list with all the
+        # pairs of units to connect
+        connections = []  # the list with all the connection pairs as (source,target)
         if conn_spec['rule'] == 'fixed_outdegree':
-            sources = from_list
-            targets = random.sample(conn_spec['outdegree'], to_list)
+            for u in from_list:
+                if conn_spec['allow_autapses']:
+                    targets = random.sample(to_list, conn_spec['outdegree'])
+                else:
+                    to_copy = to_list.copy()
+                    while u in to_copy:
+                        to_copy.remove(u)
+                    targets = random.sample(to_copy, conn_spec['outdegree'])
+                connections += [(u,y) for y in targets]
+        elif conn_spec['rule'] == 'fixed_indegree':
+            for u in to_list:
+                if conn_spec['allow_autapses']:
+                    sources = random.sample(from_list, conn_spec['indegree'])
+                else:
+                    from_copy = from_list.copy()
+                    while u in from_copy:
+                        from_copy.remove(u)
+                    sources = random.sample(from_copy, conn_spec['indegree'])
+                connections += [(x,u) for x in sources]
         elif conn_spec['rule'] == 'all_to_all':
             targets = to_list
             sources = from_list
+            if conn_spec['allow_autapses']:
+                connections = [(x,y) for x in sources for y in targets]
+            else:
+                connections = [(x,y) for x in sources for y in targets if x != y]
+        elif conn_spec['rule'] == 'one_to_one':
+            if len(to_list) != len(from_list):
+                raise ValueError('one_to_one connectivity requires equal number of source and targets')
+            connections = list(zip(from_list, to_list))
+            if conn_spec['allow_autapses'] == False:
+                connections = [(x,y) for x,y in connections if x != y]
         else:
-            print('Attempting connect with an unknown rule. Nothing done.')
-            return
+            raise ValueError('Attempting connect with an unknown rule')
             
-        for source in sources:
-            for target in targets:
-                if source == target and conn_spec['allow_autapses'] == False:
-                    continue     
-                self.delays[target].append(conn_spec['delay'])
-                self.act[target].append(self.units[source].get_act)
-                syn_params = syn_spec # a copy of syn_spec just for this connection
-                syn_params['preID'] = source
-                syn_params['postID'] = target
-                self.syns[target].append(syn_class(syn_params, self))
-                if self.units[source].delay <= conn_spec['delay']: # this is the longest delay for this source
-                    self.units[source].delay = conn_spec['delay']+self.min_delay
-                    self.units[source].init_buffers()
+
+        # To specify connectivity, you need to update 3 lists: delays, act, and syns
+        for source,target in connections:
+            self.delays[target].append(conn_spec['delay'])
+            self.act[target].append(self.units[source].get_act)
+            syn_params = syn_spec # a copy of syn_spec just for this connection
+            syn_params['preID'] = source
+            syn_params['postID'] = target
+            self.syns[target].append(syn_class(syn_params, self))
+            if self.units[source].delay <= conn_spec['delay']: # this is the longest delay for this source
+                self.units[source].delay = conn_spec['delay']+self.min_delay
+                self.units[source].init_buffers()
 
         # After connecting, run init_pre_syn_update for all the units connected 
-        for u in set(sources).union(targets):
+        connected = [x for x,y in connections] + [y for x,y in connections]
+        for u in set(connected):
             self.units[u].init_pre_syn_update()
 
     
