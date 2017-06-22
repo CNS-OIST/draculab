@@ -107,21 +107,38 @@ class network():
                 connections = [(x,y) for x in sources for y in targets if x != y]
         elif conn_spec['rule'] == 'one_to_one':
             if len(to_list) != len(from_list):
-                raise ValueError('one_to_one connectivity requires equal number of source and targets')
+                raise ValueError('one_to_one connectivity requires equal number of sources and targets')
             connections = list(zip(from_list, to_list))
             if conn_spec['allow_autapses'] == False:
                 connections = [(x,y) for x,y in connections if x != y]
         else:
             raise ValueError('Attempting connect with an unknown rule')
             
+        n_conns = len(connections)  # number of connections we'll make
+
+        # Let's find out how we are going to initialize the weights. We'll create a list that
+        # has a weight for each entry in 'connections'
+        if type(syn_spec['init_w']) is dict: 
+            w_dict = syn_spec['init_w']
+            if w_dict['distribution'] == 'uniform':
+                weights = np.random.uniform(w_dict['low'], w_dict['high'], n_conns)
+            else:
+                raise NotImplementedError('Initializing weights with an unknown distribution')
+            
+        elif type(syn_spec['init_w']) is float or type(syn_spec['init_w']) is int:
+            weights = [float(syn_spec['init_w'])] * n_conns
+        else:
+            raise TypeError('The value given to the initial weight is of the wrong type')
+        
 
         # To specify connectivity, you need to update 3 lists: delays, act, and syns
-        for source,target in connections:
+        for idx, (source,target) in enumerate(connections):
             self.delays[target].append(conn_spec['delay'])
             self.act[target].append(self.units[source].get_act)
             syn_params = syn_spec # a copy of syn_spec just for this connection
             syn_params['preID'] = source
             syn_params['postID'] = target
+            syn_params['init_w'] = weights[idx]
             self.syns[target].append(syn_class(syn_params, self))
             if self.units[source].delay <= conn_spec['delay']: # this is the longest delay for this source
                 self.units[source].delay = conn_spec['delay']+self.min_delay
