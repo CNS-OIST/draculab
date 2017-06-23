@@ -74,3 +74,59 @@ class oja_synapse(synapse):
         self.w = self.w + self.alpha * lpf_post * ( lpf_pre - lpf_post*self.w )
 
 
+class anti_hebbian_synapse(synapse):
+    ''' This class implements a simple version of the anti-Hebbian rule:
+        units that fire together learn to inhibit each other.
+    '''
+    def __init__(self, params, network):
+        super(anti_hebbian_synapse, self).__init__(params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.last_time = self.net.sim_time # time of the last call to the update function
+        self.lpf_x = self.net.units[self.preID].get_act(self.last_time) # low-pass filtered presynaptic activity
+        self.lpf_y = self.net.units[self.postID].get_act(self.last_time) # low-pass filtered postsynaptic activity
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        # The anti-Hebbian rule requires the current pre- and post-synaptic activity
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast])
+        assert self.type is synapse_types.antihebb, ['Synapse from ' + str(self.preID) + ' to ' +
+                                                          str(self.postID) + ' instantiated with the wrong type']
+    
+    def update(self, time):
+        # If the network is correctly initialized, the pre- and post-synaptic units
+        # are updating their lpf_fast variables at each update() call
+        lpf_post = self.net.units[self.postID].lpf_fast
+        lpf_pre = self.net.units[self.preID].lpf_fast
+        
+        # A forward Euler step with the anti-Hebbian learning rule 
+        self.w = self.w - self.alpha * lpf_post * lpf_pre 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -22,8 +22,8 @@ class unit():
         # These are the time constants for the low-pass filters (used for plasticity).
         # They are optional. No default value is given.
         if 'tau_fast' in params: self.tau_fast = params['tau_fast']
-        if 'tau_mid' in params: self.tau_mid= params['tau_mid']
-        if 'tau_slow' in params: self.tau_slow= params['tau_slow']
+        if 'tau_mid' in params: self.tau_mid = params['tau_mid']
+        if 'tau_slow' in params: self.tau_slow = params['tau_slow']
         self.net = network # the network where the unit lives
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
@@ -75,7 +75,7 @@ class unit():
     '''
     def get_weights(self, time):
         # once you include axo-axonic connections you have to modify the list below
-        return [ synapse.get_w(time) for synapse in self.net.syns[self.ID]]
+        return [ synapse.get_w(time) for synapse in self.net.syns[self.ID] ]
 
     '''
         This update function will replace the values in the activation buffer 
@@ -84,7 +84,7 @@ class unit():
         source units replace this with an empty update function.
     '''
     def update(self,time):
-        # the 'time' argument is currently only used to ensure times buffer is in sync
+        # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
         # Maybe there should be a single 'times' array in the network. This seems more parallelizable, though.
         assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
 

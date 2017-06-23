@@ -20,7 +20,8 @@ class unit_types(Enum):
 # These are for all the synapse models
 class synapse_types(Enum):
     static = 1
-    oja = 2  
+    oja = 2   # implements the Oja learning rule 
+    antihebb = 3  # implements the anti-Hebbian learning rule
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibitionz
 
 # These are for all the variables that a synapse model may ask a unit
