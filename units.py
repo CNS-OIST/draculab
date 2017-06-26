@@ -128,7 +128,7 @@ class unit():
         init_pre_syn_update creates the function pre_syn_update, and initializes all the
         variables it requires. To do this, it compiles the requirements of all the
         relevant synapses in the set self.syn_needs. 
-        For each requirement, the unit class already has the function to calculate it,
+        For each requirement, the unit class should already have the function to calculate it,
         so all init_pre_syn_update needs to do is to ensure that a call to pre_syn_update
         executes all the right functions.
 
@@ -150,7 +150,7 @@ class unit():
         for syn_list in self.net.syns:
             for syn in syn_list:
                 if syn.preID == self.ID:
-                    if syn_reqs.pre_lpf_fast in syn.upd_requirements:
+                    if (syn_reqs.pre_lpf_fast or syn_reqs.inp_avg) in syn.upd_requirements:
                         self.syn_needs.add(syn_reqs.lpf_fast)
                     if syn_reqs.pre_lpf_mid in syn.upd_requirements:
                         self.syn_needs.add(syn_reqs.lpf_mid)
@@ -158,16 +158,33 @@ class unit():
                         self.syn_needs.add(syn_reqs.lpf_slow)
 
         # Create the pre_syn_update function and the associated variables
-        functions = set() 
+        if not hasattr(self, 'functions'): # so we don't erase previous requirements
+            self.functions = set() 
+
         for req in self.syn_needs:
             if req is syn_reqs.lpf_fast:
-                if not hasattr(self,'tau_fast'): raise NameError(self.ID)
+                if not hasattr(self,'tau_fast'): 
+                    raise NameError( 'Synaptic plasticity required unit parameter tau_fast, not yet set' )
                 self.lpf_fast = self.init_val
-                functions.add(self.upd_lpf_fast)
+                self.functions.add(self.upd_lpf_fast)
+            elif req is syn_reqs.lpf_slow:
+                if not hasattr(self,'tau_slow'): 
+                    raise NameError( 'Synaptic plasticity required unit parameter tau_slow, not yet set' )
+                self.lpf_slow = self.init_val
+                self.functions.add(self.upd_lpf_slow)
+            elif req is syn_reqs.inp_avg:
+                self.snorm_list = []  # a list with all the presynaptic neurons 
+                                      # providing hebbsnorm synapses
+                for syn in self.net.syns[self.ID]:
+                    if syn.type is synapse_types.hebbsnorm:
+                        self.snorm_list.append(self.net.units[syn.preID])
+                self.n_hebbsnorm = len(self.snorm_list) # number of hebbsnorm synapses received
+                self.inp_avg = 0.2  # an arbitrary initialization of the average input value
+                self.functions.add(self.upd_inp_avg)
             else:
                 raise NotImplementedError('Asking for a requirement not implemented yet')
 
-        self.pre_syn_update = lambda time: [f(time) for f in functions]
+        self.pre_syn_update = lambda time: [f(time) for f in self.functions]
 
 
     def upd_lpf_fast(self,time):
@@ -181,6 +198,24 @@ class unit():
         self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_fast ) )
 
+    def upd_lpf_slow(self,time):
+        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+                                        ' lpf_slow updated backwards in time']
+        cur_act = self.get_act(time) # current activity
+        # This updating rule comes from analytically solving 
+        # lpf_x' = ( x - lpf_x ) / tau
+        # and assuming x didn't change much between self.last_time and time.
+        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
+        self.lpf_slow = cur_act + ( (self.lpf_slow - cur_act) * 
+                                   np.exp( (self.last_time-time)/self.tau_slow ) )
+
+    def upd_inp_avg(self, time):
+    # Calculate the average of the inputs with hebb_subsnorm synapses 
+        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+                                        ' inp_avg updated backwards in time']
+        self.inp_avg = sum([u.lpf_fast for u in self.snorm_list]) / self.n_hebbsnorm
+        
+
 
 class source(unit):
     # these guys are 'functional', as they may also have inputs, but no dynamics.
@@ -193,7 +228,6 @@ class source(unit):
                                                 ' instantiated with the wrong type']
 
     def set_function(self, function):
-        #print('Assignment to unit ' + str(self.ID) + ' has happened')
         self.get_act = function
         # What if you're doing this after the connections have already been made?
         # Then net.act has links to functions other than this get_act.
@@ -202,8 +236,6 @@ class source(unit):
             for idx2, syn in enumerate(syn_list):
                 if syn.preID == self.ID:
                     self.net.act[idx1][idx2] = self.get_act
-
-        #print('My get_act('+str(self.net.sim_time)+') = ' + str(self.get_act(self.net.sim_time)))
 
     def update(self, time):
         self.pre_syn_update(time) # update any variables needed for the synapse to update

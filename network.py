@@ -96,6 +96,12 @@ class network():
             syn_class = oja_synapse
         elif syn_spec['type'] == synapse_types.antihebb:
             syn_class = anti_hebbian_synapse
+        elif syn_spec['type'] == synapse_types.cov:
+            syn_class = covariance_synapse
+        elif syn_spec['type'] == synapse_types.anticov:
+            syn_class = anti_covariance_synapse
+        elif syn_spec['type'] == synapse_types.hebbsnorm:
+            syn_class = hebb_subsnorm_synapse
         else:
             raise ValueError('Attempting connect with an unknown synapse type')
         

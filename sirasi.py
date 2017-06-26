@@ -22,6 +22,9 @@ class synapse_types(Enum):
     static = 1
     oja = 2   # implements the Oja learning rule 
     antihebb = 3  # implements the anti-Hebbian learning rule
+    cov = 4 # implements the covariance learning rule
+    anticov = 5  # implements the anti-covariance rule 
+    hebbsnorm = 6 # Hebbian rule with substractive normalization
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibitionz
 
 # These are for all the variables that a synapse model may ask a unit
@@ -33,13 +36,15 @@ class syn_reqs(Enum):
     pre_lpf_fast = 4  # presynaptic activity low-pass filtered with a fast time constant
     pre_lpf_mid = 5   # presynaptic activity low-pass filtered with a medium time constant
     pre_lpf_slow = 6  # presynaptic activity low-pass filtered with a slow time constant
-    w_list = 7    # A list with the weights of all synapses of the unit
-    sum_w = 8     # The sum of the weights of all the synapses of the unit
-    inputs = 9    # A list with all the inputs of the unit
-    inp_sum = 10  # The sum of all presynaptic inputs
-    sc_inp_sum = 11 # Scaled input sum. This is the sum of presynaptic inputs, 
+    sum_w = 7     # The sum of the weights of all the synapses of the unit  << NOT IMPLEMENTED
+    w_list = 9    # A list with the weights of all synapses of the unit   << NOT IMPLEMENTED
+    inputs = 10    # A list with all the inputs of the unit   << NOT IMPLEMENTED
+    inp_sum = 11  # The sum of all presynaptic inputs   << NOT IMPLEMENTED
+    inp_avg = 12   # Sum of LPF'd inputs of one kind, divided by number of inputs of the same kind
+    sc_inp_sum = 13 # Scaled input sum. This is the sum of presynaptic inputs, 
                     # each multiplied by its synaptic weight. Same as the 
-                    # steady-state output of a linear unit.
+                    # steady-state output of a linear unit. << NOT IMPLEMENTED
+
 
 
 # Importing the classes used by the simulator

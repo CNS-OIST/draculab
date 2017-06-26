@@ -99,34 +99,91 @@ class anti_hebbian_synapse(synapse):
         # A forward Euler step with the anti-Hebbian learning rule 
         self.w = self.w - self.alpha * lpf_post * lpf_pre 
 
+class covariance_synapse(synapse):
+    ''' This class implements a version of the covariance rule.
+        No tests are made to see if the synapse becomes negative.
+    '''
+    def __init__(self, params, network):
+        super(covariance_synapse, self).__init__(params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.last_time = self.net.sim_time # time of the last call to the update function
+        self.lpf_x = self.net.units[self.preID].get_act(self.last_time) # low-pass filtered presynaptic activity
+        self.lpf_y = self.net.units[self.postID].get_act(self.last_time) # low-pass filtered postsynaptic activity
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        # The covaraince rule requires the current pre- and post-synaptic activity
+        # For the postsynaptic activity, both fast and slow averages are used
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.lpf_slow])
+        assert self.type is synapse_types.cov, ['Synapse from ' + str(self.preID) + ' to ' +
+                                                          str(self.postID) + ' instantiated with the wrong type']
+    
+    def update(self, time):
+        # If the network is correctly initialized, the pre-synaptic unit is updatig lpf_fast, and the 
+        # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
+        avg_post = self.net.units[self.postID].lpf_slow
+        post = self.net.units[self.postID].lpf_fast
+        pre = self.net.units[self.preID].lpf_fast
+        
+        # A forward Euler step with the covariance learning rule 
+        self.w = self.w + self.alpha * (post - avg_post) * pre 
 
 
+class anti_covariance_synapse(synapse):
+    ''' This class implements a version of the covariance rule, with the
+        sign of plasticity reversed.     
+    '''
+    def __init__(self, params, network):
+        super(anti_covariance_synapse, self).__init__(params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.last_time = self.net.sim_time # time of the last call to the update function
+        self.lpf_x = self.net.units[self.preID].get_act(self.last_time) # low-pass filtered presynaptic activity
+        self.lpf_y = self.net.units[self.postID].get_act(self.last_time) # low-pass filtered postsynaptic activity
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        # The anti-covaraince rule requires the current pre- and post-synaptic activity
+        # For the postsynaptic activity, both fast and slow averages are used
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.lpf_slow])
+        assert self.type is synapse_types.anticov, ['Synapse from ' + str(self.preID) + ' to ' +
+                                                          str(self.postID) + ' instantiated with the wrong type']
+    
+    def update(self, time):
+        # If the network is correctly initialized, the pre-synaptic unit is updatig lpf_fast, and the 
+        # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
+        avg_post = self.net.units[self.postID].lpf_slow
+        post = self.net.units[self.postID].lpf_fast
+        pre = self.net.units[self.preID].lpf_fast
+        
+        # A forward Euler step with the anti-covariance learning rule 
+        self.w = self.w - self.alpha * (post - avg_post) * pre 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+class hebb_subsnorm_synapse(synapse):
+    ''' This class implements a version of the Hebbian rule with substractive normalization.
+        This is the rule: dw = (pre * post) - (post) * (average of inputs).
+        This rule keeps the sum of the synaptic weights constant.
+        Notice that this rule will ignore any inputs with other type of synapses 
+        when it obtains the average input value (see unit.upd_inp_avg and unit.init_pre_syn_update).
+        No tests are made to see if the synapse becomes negative.
+    '''
+    def __init__(self, params, network):
+        super(hebb_subsnorm_synapse, self).__init__(params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.last_time = self.net.sim_time # time of the last call to the update function
+        self.lpf_x = self.net.units[self.preID].get_act(self.last_time) # low-pass filtered presynaptic activity
+        self.lpf_y = self.net.units[self.postID].get_act(self.last_time) # low-pass filtered postsynaptic activity
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        # The Hebbian rule requires the current pre- and post-synaptic activity.
+        # Substractive normalization requires the average input value, obtained from lpf_fast values.
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.inp_avg])
+        assert self.type is synapse_types.hebbsnorm, ['Synapse from ' + str(self.preID) + ' to ' +
+                                                          str(self.postID) + ' instantiated with the wrong type']
+    
+    def update(self, time):
+        # If the network is correctly initialized, the pre-is updatig lpf_fast, and the 
+        # post-synaptic unit is updating lpf_fast and the input average.
+        inp_avg = self.net.units[self.postID].inp_avg
+        post = self.net.units[self.postID].lpf_fast
+        pre = self.net.units[self.preID].lpf_fast
+        
+        # A forward Euler step with the normalized Hebbian learning rule 
+        self.w = self.w + self.alpha *  post * (pre - inp_avg)
 
 
 
