@@ -160,7 +160,8 @@ class hebb_subsnorm_synapse(synapse):
         This rule keeps the sum of the synaptic weights constant.
         Notice that this rule will ignore any inputs with other type of synapses 
         when it obtains the average input value (see unit.upd_inp_avg and unit.init_pre_syn_update).
-        No tests are made to see if the synapse becomes negative.
+        No tests are made to see if the synapsic weight becomes negative, in which case weights should
+        saturate at zero, and upd_inp_avg should ignore saturated weights.
     '''
     def __init__(self, params, network):
         super(hebb_subsnorm_synapse, self).__init__(params, network)

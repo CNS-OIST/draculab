@@ -15,24 +15,30 @@ class unit():
         self.ID = ID # unit's unique identifier
         # Copying parameters from dictionary
         # Inside the class there are no dictionaries to avoid their retrieval operations
-        self.coordinates = params['coordinates'] # spatial coordinates of the unit [cm]
-        self.delay = params['delay']             # maximum delay on sending projections [ms]
         self.type = params['type'] # an enum identifying the type of unit being instantiated
         self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
+        self.net = network # the network where the unit lives
+        # The delay of a unit is the maximum delay among the projections it sends. 
+        # Its final value of 'delay' should be set by network.connect(), after the unit is created.
+        if 'delay' in params: 
+            self.delay = params['delay']
+            # delay must be a multiple of net.min_delay. Next line checks that.
+            assert (self.delay+1e-6)%self.net.min_delay < 2e-6, ['unit' + str(self.ID) + 
+                                                                 ': delay is not a multiple of min_delay']       
+        else:  # giving a temporary value
+            self.delay = 2 * self.net.min_delay 
+        # These are the optional parameters. 
+        # No default values are given so an error can arise if the parameter was needed.
+        if 'coordinates' in params: self.coordinates = params['coordinates']
         # These are the time constants for the low-pass filters (used for plasticity).
-        # They are optional. No default value is given.
         if 'tau_fast' in params: self.tau_fast = params['tau_fast']
         if 'tau_mid' in params: self.tau_mid = params['tau_mid']
         if 'tau_slow' in params: self.tau_slow = params['tau_slow']
-        self.net = network # the network where the unit lives
+
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
         self.last_time = 0  # time of last call to the update function
         
-        # The delay of a unit is the maximum delay among the projections it sends. It
-        # must be a multiple of min_delay. Next line checks that.
-        assert (self.delay+1e-6)%self.net.min_delay < 2e-6, ['unit' + str(self.ID) + 
-                                                             ': delay is not a multiple of min_delay']       
         self.init_buffers() # This will create the buffers that store states and times
         
         self.pre_syn_update = lambda time : None # See init_pre_syn_update below
@@ -210,7 +216,7 @@ class unit():
                                    np.exp( (self.last_time-time)/self.tau_slow ) )
 
     def upd_inp_avg(self, time):
-    # Calculate the average of the inputs with hebb_subsnorm synapses 
+    # Calculate the average of the inputs with hebbsnorm synapses 
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' inp_avg updated backwards in time']
         self.inp_avg = sum([u.lpf_fast for u in self.snorm_list]) / self.n_hebbsnorm

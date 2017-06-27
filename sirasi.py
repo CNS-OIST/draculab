@@ -36,11 +36,11 @@ class syn_reqs(Enum):
     pre_lpf_fast = 4  # presynaptic activity low-pass filtered with a fast time constant
     pre_lpf_mid = 5   # presynaptic activity low-pass filtered with a medium time constant
     pre_lpf_slow = 6  # presynaptic activity low-pass filtered with a slow time constant
+    inp_avg = 12   # Sum of fast-LPF'd hebbsnorm inputs, divided by number of hebbsnorm inputs 
     sum_w = 7     # The sum of the weights of all the synapses of the unit  << NOT IMPLEMENTED
     w_list = 9    # A list with the weights of all synapses of the unit   << NOT IMPLEMENTED
     inputs = 10    # A list with all the inputs of the unit   << NOT IMPLEMENTED
     inp_sum = 11  # The sum of all presynaptic inputs   << NOT IMPLEMENTED
-    inp_avg = 12   # Sum of LPF'd inputs of one kind, divided by number of inputs of the same kind
     sc_inp_sum = 13 # Scaled input sum. This is the sum of presynaptic inputs, 
                     # each multiplied by its synaptic weight. Same as the 
                     # steady-state output of a linear unit. << NOT IMPLEMENTED

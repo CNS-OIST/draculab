@@ -37,16 +37,18 @@ class network():
 
         # Any entry in 'params' other than 'coordinates' and 'type' 
         # should either be a scalar, a list of length 'n', or a numpy array of length 'n'
+        # 'coordinates' should be either a list (with 'n' tuples) or a (1|2|3)-tuple
         listed = [] # the entries in 'params' specified with a list
         for par in params:
-            if par != 'coordinates' and par != 'type':
+            if par != 'type':
                 if (type(params[par]) is list) or (type(params[par]) is np.ndarray):
                     if len(params[par]) == n:
                         listed.append(par)
                     else:
                         raise ValueError('Found parameter list of incorrect size during unit creation')
                 elif (type(params[par]) != float) and (type(params[par]) != int):
-                    raise TypeError('Found a parameter of the wrong type during unit creation')
+                    if not (par == 'coordinates' and type(params[par]) is tuple):
+                        raise TypeError('Found a parameter of the wrong type during unit creation')
                     
         params_copy = params.copy() # The 'params' dictionary that a unit receives in its constructor
                                     # should only contain scalar values. params_copy won't have lists
