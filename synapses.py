@@ -185,6 +185,9 @@ class hebb_subsnorm_synapse(synapse):
         
         # A forward Euler step with the normalized Hebbian learning rule 
         self.w = self.w + self.alpha *  post * (pre - inp_avg)
+        # TODO: If you ever use this seriously, you should program a check to ensure that weights
+        # becoming negative saturate to zero instead. This also entails changing unit.upd_inp_avg so it
+        # ignores saturated weights.
 
 
 

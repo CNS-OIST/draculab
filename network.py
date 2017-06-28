@@ -3,24 +3,34 @@ network.py
 The network class used in the sirasi simulator.
 '''
 
-from sirasi import unit_types, synapse_types, syn_reqs  # names of models and requirements
+from sirasi import unit_types, synapse_types, plant_models, syn_reqs  # names of models and requirements
 from units import *
 from synapses import *
+from plants import *
 import numpy as np
 import random # to create random connections
 
-''' This class has the tools to build a network.
-    First, you create an instance of 'network'; 
-    second, you use the create() method to add units;
-    third, you use set_function() for source units, which provide inputs;
+class network():
+    ''' 
+    This class has the tools to build a network.
+    First, you create an instance of network(); 
+    second, you use the create() method to add units and plants;
+    third, you use source.set_function() for source units, which provide inputs;
     fourth, you use the connect() method to connect the units, 
     finally you use the run() method to run a simulation.
-'''
-class network():
+    '''
+
     def __init__(self, params):
+        '''
+        The constructor receives a 'params' dictionary, which only requires two entries:
+        A minimum transmission delay 'min_delay', and
+        a minimum buffer size 'min_buff_size'.
+        '''
         self.sim_time = 0.0  # current simulation time [ms]
         self.n_units = 0     # current number of units in the network
         self.units = []      # list with all the unit objects
+        self.n_plants = 0    # current number of plants in the network
+        self.plants = []     # list with all the plant objects
         # The next 3 lists implement the connectivity of the network
         self.delays = [] # delays[i][j] is the delay of the j-th connection to unit i in [ms]
         self.act = []    # act[i][j] is the function from which unit i obtains its j-th input
@@ -28,10 +38,44 @@ class network():
         self.min_delay = params['min_delay'] # minimum transmission delay [ms]
         self.min_buff_size = params['min_buff_size']  # number of values stored during a minimum delay period
         
+
     def create(self, n, params):
-        # create 'n' units of type 'params['type']' and parameters from 'params'
-        # If you want one of the parameters to have particular values for each unit, you can have a list
-        # (or numpy array) of length 'n' in the corresponding 'params' entry
+        '''
+        This method is just a front to find out whether we're creating units or a plant
+        '''
+        if hasattr(unit_types, params['type'].name):
+            return self.create_units(n,params)
+        elif hasattr(plant_models, params['type'].name):
+            return self.create_plant(n, params)
+        else:
+            raise TypeError('Tried to create an object of an unknown type')
+
+
+    def create_plant(self, n, params):
+        '''
+        Create a plant with model params['model']. The current implementation only 
+        creates one plant per call.
+        The method returns the ID of the created plant.
+        '''
+        assert self.sim_time == 0., 'A plant is being created when the simulation time is not zero'
+        if n != 1:
+            raise ValueError('Only one plant can be created on each call to create()')
+        plantID = self.n_plants
+        if params['type'] == plant_models.pendulum:
+            self.plants.append(pendulum(plantID, params, self))
+        else:
+            raise NotImplementedError('Attempting to create a plant with an unknown model type.')
+        self.n_plants += 1
+        return plantID
+   
+
+    def create_units(self, n, params):
+        '''
+        create 'n' units of type 'params['type']' and parameters from 'params'.
+        The method returns a list with the ID's of the created units.
+        If you want one of the parameters to have different values for each unit, you can have a list
+        (or numpy array) of length 'n' in the corresponding 'params' entry
+        '''
         assert (type(n) == int) and (n > 0), 'Number of units must be a positive integer'
         assert self.sim_time == 0., 'Units are being created when the simulation time is not zero'
 
@@ -82,10 +126,17 @@ class network():
         return unit_list
     
     def connect(self, from_list, to_list, conn_spec, syn_spec):
-        # connect the units in the 'from_list' to the units in the 'to_list' using the
-        # connection specifications in the 'conn_spec' dictionary, and the
-        # synapse specfications in the 'syn_spec' dictionary
-        # The current version always allows multapses
+        '''
+        connect the units in the 'from_list' to the units in the 'to_list' using the
+        connection specifications in the 'conn_spec' dictionary, and the
+        synapse specfications in the 'syn_spec' dictionary.
+        The current version always allows multapses.
+
+        :param from_list: A list with all the units sending the connections
+        :param to_list: A list of all the units receiving the connections
+        :conn_spec: A dictionary specifying a connection rule, and delays
+        :return: returns nothing
+        '''
         
         # A quick test first
         if (np.amax(from_list + to_list) > self.n_units-1) or (np.amin(from_list + to_list) < 0):
@@ -205,25 +256,41 @@ class network():
 
     
     def run(self, total_time):
-        # A basic runner.
-        # It takes steps of 'min_delay' length, in which the units and synapses 
-        # use their own methods to advance their state variables.
+        '''
+        A simple runner.
+        It takes steps of 'min_delay' length, in which the units, synapses 
+        and plants use their own methods to advance their state variables.
+        The method returns a 3-tuple with numpy arrays containing the simulation
+        times when the update functions were called, and the unit activities and 
+        plant states corresponding to those times.
+        After run(...) is finished, calling run(T) again continues the simulation
+        from the last state for T time units.
+        '''
         Nsteps = int(total_time/self.min_delay)
-        storage = [np.zeros(Nsteps) for i in range(self.n_units)]
+        unit_stor = [np.zeros(Nsteps) for i in range(self.n_units)]
+        plant_stor = [np.zeros((Nsteps,p.dim)) for p in self.plants]
         times = np.zeros(Nsteps) + self.sim_time
         
         for step in range(Nsteps):
             times[step] = self.sim_time
             
-            # store current state
-            for unit in range(self.n_units):
-                storage[unit][step] = self.units[unit].get_act(self.sim_time)
+            # store current unit activities
+            for uid, unit in enumerate(self.units):
+                unit_stor[uid][step] = unit.get_act(self.sim_time)
+           
+            # store current plant state variables 
+            for pid, plant in enumerate(self.plants):
+                plant_stor[pid][step,:] = plant.get_state(self.sim_time)
                 
             # update units
-            for unit in range(self.n_units):
-                self.units[unit].update(self.sim_time)
+            for unit in self.units:
+                unit.update(self.sim_time)
+
+            # update plants
+            for plant in self.plants:
+                plant.update(self.sim_time)
 
             self.sim_time += self.min_delay
 
-        return times, storage        
+        return times, unit_stor, plant_stor
 

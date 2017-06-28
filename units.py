@@ -11,6 +11,9 @@ from scipy.integrate import odeint # to integrate ODEs
 
 
 class unit():
+    '''
+    The parent class of all unit models.
+    '''
     def __init__(self, ID, params, network):
         self.ID = ID # unit's unique identifier
         # Copying parameters from dictionary
@@ -120,8 +123,10 @@ class unit():
         # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
         return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
                         fill_value="extrapolate", assume_sorted=True)(time)
+
   
-    '''
+    def init_pre_syn_update(self):
+        '''
         Correlational learning rules require the pre- and post-synaptic activity, in this
         case low-pass filtered in order to implement a running average. Moreover, for
         heterosynaptic plasticity individual synapses need information about all the
@@ -140,9 +145,7 @@ class unit():
 
         init_pre_syn_update is called for a unit everytime network.connect() connects it, 
         which may be more than once.
-    '''
-    def init_pre_syn_update(self):
-    
+        ''' 
         assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
                                          str(self.ID) + ' when simulation time is not zero']
         # For each synapse you receive, add its requirements

@@ -6,6 +6,8 @@ A plant is very similar to a unit, but it has a vector output.
 
 import numpy as np
 from scipy.integrate import odeint
+from scipy.interpolate import interp1d 
+from sirasi import plant_models
 
 class plant():
     def __init__(self, ID, params, network):
@@ -44,17 +46,27 @@ class plant():
         self.times = np.linspace(-self.delay, 0., self.buff_size) # times for each buffer row
         self.times_grid = np.linspace(0, min_del, min_buff+1) # used to create values for 'times'
 
+    def get_state(self, time):
+        # returns an array with the state vector
+        return interp1d(self.times, self.buffer, kind='linear', axis=0, bounds_error=False, 
+                        copy=False, fill_value="extrapolate", assume_sorted=True)(time)
 
-''' The simplest model of an arm is a rigid rod with one end attached to a rotational
+
+class pendulum(plant):
+    ''' 
+    The simplest model of an arm is a rigid rod with one end attached to a rotational
     joint with 1 degree of freedom. Like a rigid pendulum, but the gravity vector is
     optional. 
     
     On the XY plane the joint is at the origin, the positive X direction
     aligns with zero degrees, and gravity points in the negative Y direction.
     Counterclockwise rotation and torques are positive.
-'''
-class pendulum(plant):
+    '''
+
     def __init__(self, ID, params, network):
+        self.type = params['type']
+        assert self.type is plant_models.pendulum, ['Plant ' + str(self.ID) + 
+                                                    ' instantiated with the wrong type']
         params['dimension'] = 2 # notifying dimensionality of model to parent constructor
         super(pendulum, self).__init__(ID, params, network)
         self.length = params['length']  # length of the rod [m]
@@ -66,11 +78,14 @@ class pendulum(plant):
         # The gravitational force per kilogram can be set as a parameter
         if 'g' in params: self.g = params['g']
         else: self.g = 9.8  # [m/s^2]
-        # But we'll usually use 'g' mutliplied by length/2, so
-        glo2 = self.g * self.length / 2.
+        # But we'll usually use 'g' mutliplied by mass*length/2, so
+        self.glo2 = self.g * self.mass * self.length / 2.
         # We may also have an input gain
         if 'inp_gain' in params: self.inp_gain = params['inp_gain']
         else: self.inp_gain = 1.
+        # And finally, we may have a viscous friction coefficient
+        if 'mu' in params: self.mu = params['mu']
+        else: self.mu = 0.
 
 
     ''' This function returns the derivatives of the state variables at a given point in time.
@@ -80,8 +95,8 @@ class pendulum(plant):
         # y[1] = angular velocity
         # 'inputs' should contain functions providing input torques
         torque = self.inp_gain * sum([inp(t) for inp in self.inputs])
-        # further torque may come from gravity
-        torque -= np.cos(y[0]) * self.glo2  
+        # torque may come from gravity and friction
+        torque -= ( np.cos(y[0]) * self.glo2 ) + ( self.mu * y[1] ) 
         # angular acceleration = torque / (inertia moment)
         ang_accel = torque / self.I
 
@@ -99,7 +114,7 @@ class pendulum(plant):
         
         # odeint also returns the initial condition, so to produce min_buff_size new states
         # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
-        new_buff = odeint(self.derivatives, [self.buffer[-1,:]], new_times)
+        new_buff = odeint(self.derivatives, self.buffer[-1,:], new_times)
         self.buffer = np.roll(self.buffer, -self.net.min_buff_size, axis=0)
         self.buffer[self.offset:,:] = new_buff[1:,:] 
         # TODO: numpy.pad may probably do this with two lines. Not sure it's better.
