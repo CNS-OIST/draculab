@@ -13,8 +13,11 @@ class plant():
     def __init__(self, ID, params, network):
         self.ID = ID # An integer identifying the plant
         self.net = network # the network where the plant lives
-        self.inputs = [] # This is a list with the get_act functions of the units that 
+        self.inp_dim = params['inp_dim'] # input dimensionality; number of qualitatively different input types.
+        self.inputs =  [[] for _ in range(self.inp_dim)]
+        # self.inputs is a list of lists, with the get_act functions of the units that 
                          # provide inputs to the plant (like a list in net.act)
+                         # inputs[i][j] = j-th input of the i-th type.
         self.type = params['type'] # an enum identifying the type of plant being instantiated
         self.dim = params['dimension'] # dimensionality of the state vector
         # The delay of a plant is the maximum delay among the projections it sends. 
@@ -52,8 +55,34 @@ class plant():
                         copy=False, fill_value="extrapolate", assume_sorted=True)(time)
 
 
+    def append_inputs(self, inp_funcs, ports):
+        """ Put the given input functions in the specified input ports.
+
+        An input port is just a list in the 'inputs' list. The 'inputs' list contains 'inp_dim' lists,
+        each one with all the functions providing that type of input.
+
+        Args:
+            inp_funcs: a list with functions that will provide inputs to the plant.
+            ports: a list with integers, identifying the type of input that the corresponding entry
+                   in inp_funcs will provide. 
+
+        Raises:
+            ValueError.
+        """
+        # Test the port specification
+        test1 = len(inp_funcs) == len(ports)
+        test2 = (np.amax(ports) < self.inp_dim) and (np.amin(ports) >= 0)
+        if not(test1 and test2):
+            raise ValueError('Invalid input port specification when adding inputs to plant')
+
+        for portz, funz in zip(inp_functs, ports):
+            self.inputs[portz].append(funz)
+
+
 class pendulum(plant):
-    ''' 
+    """ 
+    Model of a rigid, homogeneous rod with a 1-dimensional rotational joint at one end.
+
     The simplest model of an arm is a rigid rod with one end attached to a rotational
     joint with 1 degree of freedom. Like a rigid pendulum, but the gravity vector is
     optional. 
@@ -61,13 +90,37 @@ class pendulum(plant):
     On the XY plane the joint is at the origin, the positive X direction
     aligns with zero degrees, and gravity points in the negative Y direction.
     Counterclockwise rotation and torques are positive.
-    '''
+
+    The inputs to the model are all torques applied at the joint.
+    """
 
     def __init__(self, ID, params, network):
+        """ The class constructor.
+
+        Args:
+            ID: An integer serving as a unique identifier in the network.
+            params: A dictionary with parameters to initialize the model.
+                REQUIRED PARAMETERS
+                'type' : A model from the plant_models enum.
+                'length' : length of the rod [m]
+                'mass' : mass of the rod [kg]
+                'init_angle' : initial angle of the rod. [rad]
+                'init_ang_vel' : initial angular velocity of the rod. [rad/s]
+                OPTIONAL PARAMETERS
+                'g' : gravitational acceleration constant. [m/s^2] (Default: 9.8)
+                'inp_gain' : A gain value that multiplies the inputs. (Default: 1)
+                'mu' : A viscous friction coefficient. (Default: 0)
+            network: the network where the plant instance lives.
+
+        Raises:
+            AssertionError.
+
+        """
         self.type = params['type']
         assert self.type is plant_models.pendulum, ['Plant ' + str(self.ID) + 
                                                     ' instantiated with the wrong type']
         params['dimension'] = 2 # notifying dimensionality of model to parent constructor
+        params['inp_dim'] = 1 # notifying there is only one type of inputs
         super(pendulum, self).__init__(ID, params, network)
         self.length = params['length']  # length of the rod [m]
         self.mass = params['mass']   # mass of the rod [kg]
@@ -88,13 +141,12 @@ class pendulum(plant):
         else: self.mu = 0.
 
 
-    ''' This function returns the derivatives of the state variables at a given point in time.
-    '''
     def derivatives(self, y, t):
+        ''' This function returns the derivatives of the state variables at a given point in time. '''
         # y[0] = angle
         # y[1] = angular velocity
         # 'inputs' should contain functions providing input torques
-        torque = self.inp_gain * sum([inp(t) for inp in self.inputs])
+        torque = self.inp_gain * sum([inp(t) for inp in self.inputs[0]])
         # torque may come from gravity and friction
         torque -= ( np.cos(y[0]) * self.glo2 ) + ( self.mu * y[1] ) 
         # angular acceleration = torque / (inertia moment)
@@ -103,9 +155,8 @@ class pendulum(plant):
         return np.array([y[1], ang_accel])
 
     
-    ''' This function advances the state for net.min_delay time units.
-    '''
     def update(self,time):
+        ''' This function advances the state for net.min_delay time units. '''
         assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
 
         new_times = self.times[-1] + self.times_grid

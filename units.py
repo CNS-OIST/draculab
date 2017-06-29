@@ -15,6 +15,27 @@ class unit():
     The parent class of all unit models.
     '''
     def __init__(self, ID, params, network):
+        """ The class constructor.
+
+        Args:
+            ID: The unique integer identifier of the unit within the network;
+                it is usually assigned by network.connect().
+            params: A dictionary with parameters to initialize the unit.
+                REQUIRED PARAMETERS
+                'type' : A unit type from the unit_types enum.
+                'init_val' : initial value for the activation (not used for source units).
+                OPTIONAL PARAMETERS
+                'delay': maximum delay among the projections sent by the unit.
+                'coordinates' : a tuple specifying the spatial location of the unit.
+                'tau_fast' : time constant for the fast low-pass filter.
+                'tau_mid' : time constant for the medium-speed low-pass filter.
+                'tau_slow' : time constant for the slow low-pass filter.
+            network: the network where the unit lives.
+
+        Raises:
+            AssertionError.
+        """
+
         self.ID = ID # unit's unique identifier
         # Copying parameters from dictionary
         # Inside the class there are no dictionaries to avoid their retrieval operations
@@ -48,8 +69,11 @@ class unit():
 
      
     def init_buffers(self):
-        # This method (re)initializes the buffer variables according to the current parameters.
-        # It is useful because new connections may increase self.delay, and thus the size of the buffers.
+        """
+        This method (re)initializes the buffer variables according to the current parameters.
+
+        It is useful because new connections may increase self.delay, and thus the size of the buffers.
+        """
     
         assert self.net.sim_time == 0., 'Buffers are being reset when the simulation time is not zero'
         
@@ -67,32 +91,35 @@ class unit():
         self.times_grid = np.linspace(0, min_del, min_buff+1) # used to create values for 'times'
 
         
-    ''' 
-        get_inputs(self, time)
+    def get_inputs(self, time):
+        ''' 
         Returns a list with the inputs received by the unit from all other units at time 'time'.
+
         The returned inputs already account for the transmission delays.
         To do this: in the network's activation tower the entry corresponding to the unit's ID
         (e.g. self.net.act[self.ID]) is a list; for each i-th entry (a function) retrieve
         the value at time "time - delays[ID][i]".  
-    '''
-    def get_inputs(self, time):
+        '''
         # the one-liner
         return [ fun(time - self.net.delays[self.ID][idx]) for idx, fun in enumerate(self.net.act[self.ID]) ]
     
-    ''' get_weights will return a list with the synaptic weights corresponding to the input
-        list obtained with get_inputs
-    '''
+
     def get_weights(self, time):
+        ''' Returns a list with the weights corresponding to the input list obtained with get_inputs.
+        '''
         # once you include axo-axonic connections you have to modify the list below
         return [ synapse.get_w(time) for synapse in self.net.syns[self.ID] ]
 
-    '''
+    def update(self,time):
+        '''
+        Advance the dynamics from time to time+min_delay.
+
         This update function will replace the values in the activation buffer 
         corresponding to the latest "min_delay" time units, introducing "min_buff_size" new values.
         In addition, all the synapses of the unit are updated.
         source units replace this with an empty update function.
-    '''
-    def update(self,time):
+        '''
+
         # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
         # Maybe there should be a single 'times' array in the network. This seems more parallelizable, though.
         assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
@@ -115,11 +142,12 @@ class unit():
         self.last_time = time # last_time is used to update some pre_syn_update values
 
 
-    ''' get_act(t)' gives you the activity at a previous time 't' (within buffer range)
+    def get_act(self,time):
+        ''' Gives you the activity at a previous time 't' (within buffer range).
+
         This version works for units that store their previous activity values in a buffer.
         Units without buffers (e.g. source units) have their own get_act function.
-    '''
-    def get_act(self,time):
+        '''
         # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
         return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
                         fill_value="extrapolate", assume_sorted=True)(time)
@@ -127,6 +155,8 @@ class unit():
   
     def init_pre_syn_update(self):
         '''
+        Create a pre_syn_update function according to current synaptic requirements.
+
         Correlational learning rules require the pre- and post-synaptic activity, in this
         case low-pass filtered in order to implement a running average. Moreover, for
         heterosynaptic plasticity individual synapses need information about all the
@@ -197,6 +227,7 @@ class unit():
 
 
     def upd_lpf_fast(self,time):
+        """ Update the lpf_fast variable. """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' lpf_fast updated backwards in time']
         cur_act = self.get_act(time) # current activity
@@ -208,6 +239,7 @@ class unit():
                                    np.exp( (self.last_time-time)/self.tau_fast ) )
 
     def upd_lpf_slow(self,time):
+        """ Update the lpf_slow variable. """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' lpf_slow updated backwards in time']
         cur_act = self.get_act(time) # current activity
@@ -219,7 +251,7 @@ class unit():
                                    np.exp( (self.last_time-time)/self.tau_slow ) )
 
     def upd_inp_avg(self, time):
-    # Calculate the average of the inputs with hebbsnorm synapses 
+        """ Update the average of the inputs with hebbsnorm synapses. """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' inp_avg updated backwards in time']
         self.inp_avg = sum([u.lpf_fast for u in self.snorm_list]) / self.n_hebbsnorm
@@ -227,16 +259,40 @@ class unit():
 
 
 class source(unit):
-    # these guys are 'functional', as they may also have inputs, but no dynamics.
+    """ The class of units whose activity comes from some Python function.
+    
+        source units serve two main roles. First, they can provide inputs to the
+        network. Second, they can receive the outputs from plants, and thus 
+        communicate them to other units in the network.
+    """
+    
     # At some point I'll have units whose output depends on the plant's dynamics. 
     # Should I call them afferent units? transducer units?
     def __init__(self, ID, params, funct, network):
+        """ The class constructor.
+
+        In practice, the function giving the activity of the unit is set after the
+        constructor has been called, using source.set_function .
+
+        Args:
+            ID, params, network : same as in the parent class (unit).
+            funct : Reference to a Python function that gives the activity of the unit.
+
+        Raises:
+            AssertionError.
+        """
         super(source, self).__init__(ID, params, network)
         self.get_act = funct  # the function which returns activation given the time
         assert self.type is unit_types.source, ['Unit ' + str(self.ID) + 
                                                 ' instantiated with the wrong type']
 
     def set_function(self, function):
+        """ 
+        Set the function determiing the unit's activity value.
+
+        Args:
+            function: a reference to a Python function.
+        """
         self.get_act = function
         # What if you're doing this after the connections have already been made?
         # Then net.act has links to functions other than this get_act.
@@ -247,6 +303,13 @@ class source(unit):
                     self.net.act[idx1][idx2] = self.get_act
 
     def update(self, time):
+        """ 
+        Update the unit's state variables.
+
+        In the case of source units, update() only updates any values being used by
+        synapses where it is the presynaptic component.
+        """
+
         self.pre_syn_update(time) # update any variables needed for the synapse to update
         self.last_time = time # last_time is used to update some pre_syn_update values
 
@@ -259,6 +322,21 @@ class sigmoidal(unit):
     # Because this unit operates in real time, it updates its value gradually, with
     # a 'tau' time constant.
     def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function.
+                'tau' : Time constant of the update dynamics.
+
+        Raises:
+            AssertionError.
+
+        """
+
         super(sigmoidal, self).__init__(ID, params, network)
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
@@ -267,14 +345,12 @@ class sigmoidal(unit):
         assert self.type is unit_types.sigmoidal, ['Unit ' + str(self.ID) + 
                                                             ' instantiated with the wrong type']
         
-    ''' This is the sigmoidal function. Could roughly think of it as an f-I curve
-    '''
     def f(self, arg):
+        ''' This is the sigmoidal function. Could roughly think of it as an f-I curve. '''
         return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
     
-    ''' This function returns the derivatives of the state variables at a given point in time.
-    '''
     def derivatives(self, y, t):
+        ''' This function returns the derivatives of the state variables at a given point in time. '''
         # there is only one state variable (the activity)
         scaled_inputs = sum([inp*w for inp,w in zip(self.get_inputs(t), self.get_weights(t))])
         return ( self.f(scaled_inputs) - y[0] ) * self.rtau
@@ -285,15 +361,26 @@ class linear(unit):
     # The output is the sum of the inputs multiplied by their synaptic weights.
     # The output upates with time constant 'tau'.
     def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                'tau' : Time constant of the update dynamics.
+
+        Raises:
+            AssertionError.
+
+        """
         super(linear, self).__init__(ID, params, network)
         self.tau = params['tau']  # the time constant of the dynamics
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         assert self.type is unit_types.linear, ['Unit ' + str(self.ID) + 
                                                             ' instantiated with the wrong type']
         
-    ''' This function returns the derivatives of the state variables at a given point in time.
-    '''
     def derivatives(self, y, t):
+        ''' This function returns the derivatives of the state variables at a given point in time. '''
         # there is only one state variable (the activity)
         scaled_inputs = sum([inp*w for inp,w in zip(self.get_inputs(t), self.get_weights(t))])
         return ( scaled_inputs - y[0] ) * self.rtau

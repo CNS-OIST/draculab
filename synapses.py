@@ -7,7 +7,21 @@ from sirasi import unit_types, synapse_types, syn_reqs  # names of models and re
 import numpy as np
 
 class synapse():
+    """ The parent class of all synapse models. """
+
     def __init__(self, params, network):
+        """ The class constructor. 
+          
+        Args:
+            params: A parameter dictionary to initialize the synapse.
+            REQUIRED PARAMETERS
+                'preID' : the ID of the presynaptic unit.
+                'postID' : the ID of the postsynaptic unit.
+                'init_w' : initial synaptic weight.
+                'type' : A type from the synapse_types enum.
+            network: the network where the synapse lives.
+
+        """
         self.preID = params['preID']   # the ID of the presynaptic unit 
         self.postID = params['postID'] # the ID of the postsynaptic unit
         self.w = params['init_w'] # initializing the synaptic weight
@@ -26,32 +40,55 @@ class synapse():
         self.upd_requirements = set() # start with an empty set
 
     def get_w(self, time): 
+        """ Returns the current synaptic weight. 
+
+        The 'time' argument is currently not used.
+        """
         # If I'm going to use time, I need to use buffers and interpolation.
         # Not necessary so far.
         return self.w
 
     def update(self,time):
-        # The default update rule does nothing
+        # The default update rule does nothing.
         return
 
     
 class static_synapse(synapse):
+    """ A class for the synapses that don't change their weight value. """
+
     def __init__(self, params, network):
+        """ Unit constructor.
+
+        Args: same as the parent class.
+
+        Raises: AssertionError.
+        """
         super(static_synapse, self).__init__(params, network)
         assert self.type is synapse_types.static, ['Synapse from ' + str(self.preID) + ' to ' +
                                                             str(self.postID) + ' instantiated with the wrong type']
 
-    # static synapses don't do anything when updated
     def update(self,time):
+        # Static synapses don't do anything when updated.
         return
 
           
 class oja_synapse(synapse):
-    ''' This class implements a continuous version of the Oja learning rule. 
+    """ This class implements a continuous version of the Oja learning rule. 
+
         Since there are no discrete inputs, the presynaptic activity is tracked with a low-pass filter,
         and used to adapt the weight everytime the "update" function is called.
-    '''
+    """
     def __init__(self, params, network):
+        """ The  class constructor.
+
+        Args: 
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+        Raises:
+            AssertionError.
+
+        """
         super(oja_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.last_time = self.net.sim_time # time of the last call to the update function
@@ -65,6 +102,7 @@ class oja_synapse(synapse):
 
     
     def update(self, time):
+        """ Update the weight according to the Oja learning rule."""
         # If the network is correctly initialized, the pre- and post-synaptic units
         # are updating their lpf_fast variables at each update() call
         lpf_post = self.net.units[self.postID].lpf_fast
@@ -75,10 +113,22 @@ class oja_synapse(synapse):
 
 
 class anti_hebbian_synapse(synapse):
-    ''' This class implements a simple version of the anti-Hebbian rule:
-        units that fire together learn to inhibit each other.
+    ''' This class implements a simple version of the anti-Hebbian rule.
+    
+        Units that fire together learn to inhibit each other.
     '''
+
     def __init__(self, params, network):
+        """ The  class constructor.
+
+        Args: 
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+        Raises:
+            AssertionError.
+
+        """
         super(anti_hebbian_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.last_time = self.net.sim_time # time of the last call to the update function
@@ -91,6 +141,7 @@ class anti_hebbian_synapse(synapse):
                                                           str(self.postID) + ' instantiated with the wrong type']
     
     def update(self, time):
+        """ Update the weight according to the anti-Hebbian learning rule."""
         # If the network is correctly initialized, the pre- and post-synaptic units
         # are updating their lpf_fast variables at each update() call
         lpf_post = self.net.units[self.postID].lpf_fast
@@ -99,11 +150,23 @@ class anti_hebbian_synapse(synapse):
         # A forward Euler step with the anti-Hebbian learning rule 
         self.w = self.w - self.alpha * lpf_post * lpf_pre 
 
+
 class covariance_synapse(synapse):
     ''' This class implements a version of the covariance rule.
+
         No tests are made to see if the synapse becomes negative.
     '''
     def __init__(self, params, network):
+        """ The  class constructor.
+
+        Args: 
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+        Raises:
+            AssertionError.
+
+        """
         super(covariance_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.last_time = self.net.sim_time # time of the last call to the update function
@@ -117,6 +180,7 @@ class covariance_synapse(synapse):
                                                           str(self.postID) + ' instantiated with the wrong type']
     
     def update(self, time):
+        """ Update the weight according to the covariance learning rule."""
         # If the network is correctly initialized, the pre-synaptic unit is updatig lpf_fast, and the 
         # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
         avg_post = self.net.units[self.postID].lpf_slow
@@ -128,10 +192,19 @@ class covariance_synapse(synapse):
 
 
 class anti_covariance_synapse(synapse):
-    ''' This class implements a version of the covariance rule, with the
-        sign of plasticity reversed.     
-    '''
+    ''' This class implements a version of the covariance rule, with the sign of plasticity reversed.'''
+
     def __init__(self, params, network):
+        """ The  class constructor.
+
+        Args: 
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+        Raises:
+            AssertionError.
+
+        """
         super(anti_covariance_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.last_time = self.net.sim_time # time of the last call to the update function
@@ -145,6 +218,7 @@ class anti_covariance_synapse(synapse):
                                                           str(self.postID) + ' instantiated with the wrong type']
     
     def update(self, time):
+        """ Update the weight according to the anti-covariance learning rule."""
         # If the network is correctly initialized, the pre-synaptic unit is updatig lpf_fast, and the 
         # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
         avg_post = self.net.units[self.postID].lpf_slow
@@ -156,6 +230,7 @@ class anti_covariance_synapse(synapse):
 
 class hebb_subsnorm_synapse(synapse):
     ''' This class implements a version of the Hebbian rule with substractive normalization.
+
         This is the rule: dw = (pre * post) - (post) * (average of inputs).
         This rule keeps the sum of the synaptic weights constant.
         Notice that this rule will ignore any inputs with other type of synapses 
@@ -164,6 +239,16 @@ class hebb_subsnorm_synapse(synapse):
         saturate at zero, and upd_inp_avg should ignore saturated weights.
     '''
     def __init__(self, params, network):
+        """ The  class constructor.
+
+        Args: 
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+        Raises:
+            AssertionError.
+
+        """
         super(hebb_subsnorm_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.last_time = self.net.sim_time # time of the last call to the update function
@@ -177,6 +262,7 @@ class hebb_subsnorm_synapse(synapse):
                                                           str(self.postID) + ' instantiated with the wrong type']
     
     def update(self, time):
+        """ Update the weight with the Hebbian rule with substractive normalization. """
         # If the network is correctly initialized, the pre-is updatig lpf_fast, and the 
         # post-synaptic unit is updating lpf_fast and the input average.
         inp_avg = self.net.units[self.postID].inp_avg

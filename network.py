@@ -41,7 +41,10 @@ class network():
 
     def create(self, n, params):
         '''
-        This method is just a front to find out whether we're creating units or a plant
+        This method is just a front to find out whether we're creating units or a plant.
+
+        If we're creating units, it will call create_units().
+        If we're creating a plant, it will call create_plant().
         '''
         if hasattr(unit_types, params['type'].name):
             return self.create_units(n,params)
@@ -200,7 +203,7 @@ class network():
             
         n_conns = len(connections)  # number of connections we'll make
 
-        # Initialize the weights. We'll create a list that 'weights' that
+        # Initialize the weights. We'll create a list called 'weights' that
         # has a weight for each entry in 'connections'
         if type(syn_spec['init_w']) is dict: 
             w_dict = syn_spec['init_w']
@@ -254,17 +257,63 @@ class network():
         for u in set(connected):
             self.units[u].init_pre_syn_update()
 
+
+    def set_plant_input(self, unitIDs, plantID, conn_spec, syn_spec):
+        """ Make the activity of some units provide inputs to a plant.
+
+            Args:
+                unitIDs: a list with the IDs of the input units
+                plantID: ID of the plant that will receive the inputs
+                conn_spec: a dictionary with the connection specifications
+                    REQUIRED ENTRIES
+                    'inp_ports' : A list. The i-th entry determines the input type of
+                                  the i-th element in the unitIDs list.
+                    'delays' : A delay value for the inputs.
+                syn_spec: a dictionary with the synapses specifications
+                    'type' : one of the synapse_types. Currently only 'transd' allowed
+
+            Raises:
+                ValueError
+
+        """
+        # First check that the IDs are inside the right range
+        if (np.amax(unitIDs) > self.n_units-1) or (np.amin(unitIDs) < 0):
+            raise ValueError('Attempting to connect units with an ID out of range')
+        if (plantID > self.n_plants-1) or (plantID < 0):
+            raise ValueError('Attempting to connect to a plant with an ID out of range')
+
+        # Then connect them to the plant
+        inp_funcs = [self.units[uid].get_act() for uid in unitIDs]
+        self.plants[plantID].append_inputs(inp_funcs, conn_spec['inp_ports'])
+
+        # And for the time being ignore the syn_spec
+        
+
+
+    def connect_plant(self, sender, receiver, conn_spec, syn_spec):
+        """ Connect a plant to some units. """
+        # NOT BEING USED AT THE TIME
+        # First we test the arguments
+        if isinstance(sender, plant) and type(receiver) is list:
+            print("We'll connect from the plant")
+        elif isinstance(receiver, plant) and type(sender) is list:
+            print("We'll connet to the plant")
+        else:
+            print("Weird arguments")
+
     
+
     def run(self, total_time):
         '''
-        A simple runner.
+        Simulate the network for the given time.
+
         It takes steps of 'min_delay' length, in which the units, synapses 
         and plants use their own methods to advance their state variables.
         The method returns a 3-tuple with numpy arrays containing the simulation
         times when the update functions were called, and the unit activities and 
         plant states corresponding to those times.
-        After run(...) is finished, calling run(T) again continues the simulation
-        from the last state for T time units.
+        After run(T) is finished, calling run(T) again continues the simulation
+        starting at the last state of the previous simulation.
         '''
         Nsteps = int(total_time/self.min_delay)
         unit_stor = [np.zeros(Nsteps) for i in range(self.n_units)]
