@@ -100,8 +100,9 @@ class unit():
         (e.g. self.net.act[self.ID]) is a list; for each i-th entry (a function) retrieve
         the value at time "time - delays[ID][i]".  
         '''
-        # the one-liner
-        return [ fun(time - self.net.delays[self.ID][idx]) for idx, fun in enumerate(self.net.act[self.ID]) ]
+        return [ fun(time - dely) for dely,fun in zip(self.net.delays[self.ID], self.net.act[self.ID]) ]
+        # A possibly slower option:
+        #return [ fun(time - self.net.delays[self.ID][idx]) for idx, fun in enumerate(self.net.act[self.ID]) ]
     
 
     def get_weights(self, time):
@@ -117,7 +118,7 @@ class unit():
         This update function will replace the values in the activation buffer 
         corresponding to the latest "min_delay" time units, introducing "min_buff_size" new values.
         In addition, all the synapses of the unit are updated.
-        source units replace this with an empty update function.
+        source units override this with a shorter update function.
         '''
 
         # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
@@ -175,6 +176,9 @@ class unit():
 
         init_pre_syn_update is called for a unit everytime network.connect() connects it, 
         which may be more than once.
+
+        Raises:
+            NameError, NotImplementedError.
         ''' 
         assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
                                          str(self.ID) + ' when simulation time is not zero']

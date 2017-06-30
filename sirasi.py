@@ -29,6 +29,7 @@ class synapse_types(Enum):
 class plant_models(Enum):
     """ An enum class with all the implemented plant models. """
     pendulum = 1
+    conn_tester = 2
 
 class syn_reqs(Enum):
     """ This enum contains all the variables that a synapse model may ask a unit

@@ -233,7 +233,6 @@ class network():
         else:
             raise TypeError('The value given to the delay is of the wrong type')
 
-
         # To specify connectivity, you need to update 3 lists: delays, act, and syns
         # Using 'connections', 'weights', and 'delayz' this is straightforward
         for idx, (source,target) in enumerate(connections):
@@ -258,7 +257,7 @@ class network():
             self.units[u].init_pre_syn_update()
 
 
-    def set_plant_input(self, unitIDs, plantID, conn_spec, syn_spec):
+    def set_plant_inputs(self, unitIDs, plantID, conn_spec, syn_spec):
         """ Make the activity of some units provide inputs to a plant.
 
             Args:
@@ -268,12 +267,13 @@ class network():
                     REQUIRED ENTRIES
                     'inp_ports' : A list. The i-th entry determines the input type of
                                   the i-th element in the unitIDs list.
-                    'delays' : A delay value for the inputs.
-                syn_spec: a dictionary with the synapses specifications
-                    'type' : one of the synapse_types. Currently only 'transd' allowed
+                    'delays' : Delay value for the inputs. A scalar, or a list of length len(unitIDs)
+                syn_spec: a dictionary with the synapses specifications.
+                    'type' : one of the synapse_types. Currently only 'static' allowed.
+                    'init_w': initial synaptic weight. A scalar, or a list of length len(unitIDs)
 
             Raises:
-                ValueError
+                ValueError, NotImplementedError
 
         """
         # First check that the IDs are inside the right range
@@ -282,26 +282,45 @@ class network():
         if (plantID > self.n_plants-1) or (plantID < 0):
             raise ValueError('Attempting to connect to a plant with an ID out of range')
 
-        # Then connect them to the plant
-        inp_funcs = [self.units[uid].get_act() for uid in unitIDs]
-        self.plants[plantID].append_inputs(inp_funcs, conn_spec['inp_ports'])
-
-        # And for the time being ignore the syn_spec
-        
-
-
-    def connect_plant(self, sender, receiver, conn_spec, syn_spec):
-        """ Connect a plant to some units. """
-        # NOT BEING USED AT THE TIME
-        # First we test the arguments
-        if isinstance(sender, plant) and type(receiver) is list:
-            print("We'll connect from the plant")
-        elif isinstance(receiver, plant) and type(sender) is list:
-            print("We'll connet to the plant")
+        # Then connect them to the plant...
+        # Have to create a list with the delays (if one is not given in the conn_spec)
+        if type(conn_spec['delays']) is float:
+            delys = [conn_spec['delays'] for _ in inp_funcs]
+        elif (type(conn_spec['delays']) is list) or (type(conn_spec['delays']) is np.ndarray):
+            delys = conn_spec['delays']
         else:
-            print("Weird arguments")
+            raise ValueError('Invalid value for delays when connecting units to plant')
+        # Have to create a list with all the synapses 
+        if syn_spec['type'] is synapse_types.static: 
+            synaps = []
+            syn_spec['postID'] = plantID
+            if type(syn_spec['init_w']) is float:
+                weights = [syn_spec['init_w']]*len(unitIDs)
+            elif (type(syn_spec['init_w']) is list) or (type(syn_spec['init_w']) is np.ndarray):
+                weights = syn_spec['init_w']
+            else:
+                raise ValueError('Invalid value for initial weights when connecting units to plant')
 
-    
+            for pre,w in zip(unitIDs,weights):
+                syn_spec['preID'] = pre
+                syn_spec['init_w'] = w
+                synaps.append( static_synapse(syn_spec, self) )
+        else:
+            raise NotImplementedError('Inputs to plants only use static synapses')
+
+        inp_funcs = [self.units[uid].get_act for uid in unitIDs]
+        ports = conn_spec['inp_ports']
+        
+        # Now just use this auxiliary function in the plant class
+        self.plants[plantID].append_inputs(inp_funcs, ports, delys, synaps)
+
+        # You may need to update the delay of some sending units
+        for dely, unit in zip(delys, [self.units[id] for id in unitIDs]):
+            if dely >= unit.delay: # This is the longest delay for the sending unit
+                unit.delay = dely + self.min_delay
+                unit.init_buffers()
+
+
 
     def run(self, total_time):
         '''
