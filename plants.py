@@ -179,22 +179,20 @@ class pendulum(plant):
         """
         # This is the stuff that goes into all model constructors. Adjust accordingly.
         #-------------------------------------------------------------------------------
-        self.type = params['type']
-        assert self.type is plant_models.pendulum, ['Plant ' + str(self.ID) + 
+        assert params['type'] is plant_models.pendulum, ['Plant ' + str(self.ID) + 
                                                     ' instantiated with the wrong type']
         params['dimension'] = 2 # notifying dimensionality of model to parent constructor
         params['inp_dim'] = 1 # notifying there is only one type of inputs
         super(pendulum, self).__init__(ID, params, network) # calling parent constructor
 
-        # Using model-specific parameters, initialize the state vector.
+        # Using model-specific initial values, initialize the state vector.
         self.init_state = np.array([params['init_angle'], params['init_ang_vel']])
         self.buffer = np.array([self.init_state]*self.buff_size) # initializing buffer
         #-------------------------------------------------------------------------------
-
+        # Initialize the parameters specific to this model
         
         self.length = params['length']  # length of the rod [m]
         self.mass = params['mass']   # mass of the rod [kg]
-
         # To get the moment of inertia assume a homogeneous rod, so I = m(l/2)^2
         self.I = self.mass * self.length * self.length / 4.
         # The gravitational force per kilogram can be set as a parameter
@@ -247,20 +245,21 @@ class conn_tester(plant):
         """ conn_tester constructor """
         # This is the stuff that goes into all model constructors. 
         #-------------------------------------------------------------------------------
-        self.type = params['type']
-        assert self.type is plant_models.conn_tester, ['Plant ' + str(self.ID) + 
+        assert params['type'] is plant_models.conn_tester, ['Plant ' + str(self.ID) + 
                                                     ' instantiated with the wrong type']
         params['dimension'] = 3 # notifying dimensionality of model to parent constructor
         params['inp_dim'] = 3 # notifying number of input ports
         super(conn_tester, self).__init__(ID, params, network) # calling parent constructor
 
-        # Using model-specific parameters, initialize the state vector.
+        # Using model-specific initial values, initialize the state vector.
         self.init_state = np.array(params['init_state'])
         self.buffer = np.array([self.init_state]*self.buff_size) # initializing buffer
         #-------------------------------------------------------------------------------
 
     def derivatives(self, y, t):
-        return np.array([-y[1]*get_input_sum(t,0),y[0]*get_input_sum(t,1),-y[2]*get_input_sum(t,2)])
+        return np.array([-y[1]*self.get_input_sum(t,0),
+                          y[0]*self.get_input_sum(t,1),
+                         -y[2]*self.get_input_sum(t,2)])
 
 
 

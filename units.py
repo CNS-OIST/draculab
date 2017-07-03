@@ -306,6 +306,11 @@ class source(unit):
                 if syn.preID == self.ID:
                     self.net.act[idx1][idx2] = self.get_act
 
+        # TODO: If the connection is to a plant, the code above is not sufficient.
+        # You need to cycle through all the plants in the network, and for each
+        # plant, cycle through all its synapses in search for any where the
+        # preID == self.ID .
+
     def update(self, time):
         """ 
         Update the unit's state variables.

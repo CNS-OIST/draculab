@@ -66,6 +66,8 @@ class network():
         plantID = self.n_plants
         if params['type'] == plant_models.pendulum:
             self.plants.append(pendulum(plantID, params, self))
+        elif params['type'] == plant_models.conn_tester:
+            self.plants.append(conn_tester(plantID, params, self))
         else:
             raise NotImplementedError('Attempting to create a plant with an unknown model type.')
         self.n_plants += 1
@@ -290,7 +292,7 @@ class network():
             delys = conn_spec['delays']
         else:
             raise ValueError('Invalid value for delays when connecting units to plant')
-        # Have to create a list with all the synapses 
+        # Have to create a list with all the synaptic weights
         if syn_spec['type'] is synapse_types.static: 
             synaps = []
             syn_spec['postID'] = plantID
