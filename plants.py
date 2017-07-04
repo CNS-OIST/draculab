@@ -78,7 +78,7 @@ class plant():
     def get_input_sum(self, time, port):
         """ Returns the sum of all inputs of type 'port', as received at the given 'time'.
 
-            For each input of type 'port', you'll get its value of at the time 'time' - delay, 
+            For each input of type 'port', you get its value of at the time 'time' - delay, 
             multiply that value by the corresponding synaptic weight, and then sum all the
             scaled values. This sum is the returned value, which constitutes the total
             input provided by all inputs in the given port.
@@ -257,14 +257,15 @@ class conn_tester(plant):
         #-------------------------------------------------------------------------------
 
     def derivatives(self, y, t):
+        ''' The first two equations, when their input sum is 1, have sin and cos solutions. 
+    
+        Different ratios of the input amplitudes should bring differernt ratios of the solution 
+        amplitudes, and the amplitude of the inputs should change the frequency of the solutions.
+        The third equation has an exponential solution, with time constant equal to the input.
+        '''
         return np.array([-y[1]*self.get_input_sum(t,0),
                           y[0]*self.get_input_sum(t,1),
                          -y[2]*self.get_input_sum(t,2)])
-
-
-
-
-
 
 
 

@@ -270,8 +270,6 @@ class source(unit):
         communicate them to other units in the network.
     """
     
-    # At some point I'll have units whose output depends on the plant's dynamics. 
-    # Should I call them afferent units? transducer units?
     def __init__(self, ID, params, funct, network):
         """ The class constructor.
 
@@ -306,10 +304,14 @@ class source(unit):
                 if syn.preID == self.ID:
                     self.net.act[idx1][idx2] = self.get_act
 
-        # TODO: If the connection is to a plant, the code above is not sufficient.
-        # You need to cycle through all the plants in the network, and for each
-        # plant, cycle through all its synapses in search for any where the
-        # preID == self.ID .
+        # The same goes when the connection is to a plant instead of a unit...
+        for plant in self.net.plants:
+            for syn_list, inp_list in zip(plant.inp_syns, plant.inputs):
+                for idx, syn in enumerate(syn_list):
+                    if syn.preID == self.ID:
+                        inp_list[idx] = self.get_act
+                        
+                        
 
     def update(self, time):
         """ 
