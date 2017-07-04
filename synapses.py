@@ -19,6 +19,8 @@ class synapse():
                 'postID' : the ID of the postsynaptic unit.
                 'init_w' : initial synaptic weight.
                 'type' : A type from the synapse_types enum.
+            OPTIONAL PARAMETERS
+                'inp_port' : the input port for the synapse.
             network: the network where the synapse lives.
 
         """
@@ -27,6 +29,10 @@ class synapse():
         self.w = params['init_w'] # initializing the synaptic weight
         self.type = params['type'] # assigning the synapse type
         self.net = network # the network where the synapse lives
+        # To allow for qualitatively different types of inputs (e.g. receptors), each 
+        # input arrives at a particular 'input port', characterized by some integer.
+        if 'inp_port' in params: self.port = params['inp_port']
+        else: self.port = 0
         assert self.net.n_units >= self.preID, 'Synapse connected from non existing unit ' + str(self.preID)  
         assert self.net.n_units >= self.postID, 'Synapse connected to non existing unit ' + str(self.postID)  
         assert self.net.sim_time == 0., 'Synapse being created when sim_time is not zero'

@@ -24,7 +24,7 @@ class synapse_types(Enum):
     cov = 4 # implements the covariance learning rule
     anticov = 5  # implements the anti-covariance rule 
     hebbsnorm = 6 # Hebbian rule with substractive normalization
-    #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibitionz
+    #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
 class plant_models(Enum):
     """ An enum class with all the implemented plant models. """

@@ -30,6 +30,7 @@ class unit():
                 'tau_fast' : time constant for the fast low-pass filter.
                 'tau_mid' : time constant for the medium-speed low-pass filter.
                 'tau_slow' : time constant for the slow low-pass filter.
+                'n_ports' : number of inputs ports. Defaults to 1.
             network: the network where the unit lives.
 
         Raises:
@@ -52,12 +53,14 @@ class unit():
         else:  # giving a temporary value
             self.delay = 2 * self.net.min_delay 
         # These are the optional parameters. 
-        # No default values are given so an error can arise if the parameter was needed.
+        # Default values are sometimes omitted so an error can arise if the parameter was needed.
         if 'coordinates' in params: self.coordinates = params['coordinates']
         # These are the time constants for the low-pass filters (used for plasticity).
         if 'tau_fast' in params: self.tau_fast = params['tau_fast']
         if 'tau_mid' in params: self.tau_mid = params['tau_mid']
         if 'tau_slow' in params: self.tau_slow = params['tau_slow']
+        if 'n_ports' in params: self.n_ports = params['n_ports']
+        else: self.n_ports = 1
 
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function

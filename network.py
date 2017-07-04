@@ -45,6 +45,9 @@ class network():
 
         If we're creating units, it will call create_units().
         If we're creating a plant, it will call create_plant().
+
+        Raises:
+            TypeError.
         '''
         if hasattr(unit_types, params['type'].name):
             return self.create_units(n,params)
@@ -57,9 +60,10 @@ class network():
     def create_plant(self, n, params):
         '''
         Create a plant with model params['model']. The current implementation only 
-        creates one plant per call.
+        creates one plant per call, so n != 1 will raise an exception.
         The method returns the ID of the created plant.
         '''
+        # TODO: finish documentation
         assert self.sim_time == 0., 'A plant is being created when the simulation time is not zero'
         if n != 1:
             raise ValueError('Only one plant can be created on each call to create()')
@@ -81,6 +85,7 @@ class network():
         If you want one of the parameters to have different values for each unit, you can have a list
         (or numpy array) of length 'n' in the corresponding 'params' entry
         '''
+        # TODO: finish documentation
         assert (type(n) == int) and (n > 0), 'Number of units must be a positive integer'
         assert self.sim_time == 0., 'Units are being created when the simulation time is not zero'
 
@@ -137,10 +142,35 @@ class network():
         synapse specfications in the 'syn_spec' dictionary.
         The current version always allows multapses.
 
-        :param from_list: A list with all the units sending the connections
-        :param to_list: A list of all the units receiving the connections
-        :conn_spec: A dictionary specifying a connection rule, and delays
-        :return: returns nothing
+        from_list: A list with the IDs of the units sending the connections
+        to_list: A list the IDs of the units receiving the connections
+        conn_spec: A dictionary specifying a connection rule, and delays.
+            REQUIRED PARAMETERS
+            'rule' : a string specifying a rule on how to create the connections. 
+                     Currently implemented: 
+                     'fixed_outdegree' - an 'outdegree' integer entry must also be in conn_spec,
+                     'fixed_indegree', - an 'indegree' integer entry must also be in conn_spec,
+                     'one_to_one',
+                     'all_to_all'.
+            'allow_autapses' : True or False. Can units connect to themselves?
+            'delay' : either a dictionary specifying a distribution, or a scalar delay value that
+                      will be applied to all connections. Implemented dsitributions:
+                      'uniform' - the delay dictionary must also include 'low' and 'high' values.
+        syn_spec: A dictionary used to initialize the synapses in the connections.
+            REQUIRED PARAMETERS
+            'type' : a synapse type from the synapse_types enum.
+            'init_w' : Initial weight values. Either a dictionary specifying a distribution, or a
+                       scalar value to be applied for all created synapses. Distributions:
+                      'uniform' - the delay dictionary must also include 'low' and 'high' values.
+            'preID' : the identifier of the presynaptic unit (or the presynaptic plant).
+            'postID' : the identifier of the postsynaptic unit (or the postsynaptic plant).
+            OPTIONAL PARAMETERS
+            'inp_ports' : input ports of the connections. Either a single integer, or a list.
+                          If using a list, its length must match the number of connections being
+                          created, which depends on the conection rule.
+                
+        Raises:
+            ValueError, TypeError, NotImplementedError.
         '''
         
         # A quick test first
@@ -235,8 +265,20 @@ class network():
         else:
             raise TypeError('The value given to the delay is of the wrong type')
 
+        # Initialize the input ports, if specified in the parameters dictionary
+        if 'inp_ports' in params:
+            if type(params['inp_ports']) is int:
+                portz = [params['inp_ports']]*n_conns
+            elif type(params['inp_ports']) is list:
+                if len(params['inp_ports']) == n_conns:
+                    portz = params['inp_ports']
+                else:
+                    raise ValueError('Number of input ports specified does not match number of connections created')
+            else:
+                raise TypeError('Input ports were specified with the wrong data type')
+
         # To specify connectivity, you need to update 3 lists: delays, act, and syns
-        # Using 'connections', 'weights', and 'delayz' this is straightforward
+        # Using 'connections', 'weights', 'delayz', and 'portz' this is straightforward
         for idx, (source,target) in enumerate(connections):
             # specify that 'target' neuron has the 'source' input
             self.act[target].append(self.units[source].get_act)
@@ -245,6 +287,7 @@ class network():
             syn_params['preID'] = source
             syn_params['postID'] = target
             syn_params['init_w'] = weights[idx]
+            syn_params['inp_port'] = portz[idx]
             self.syns[target].append(syn_class(syn_params, self))
             # specify the delay of the connection
             self.delays[target].append( delayz[idx] )
