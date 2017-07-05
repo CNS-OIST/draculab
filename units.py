@@ -11,9 +11,9 @@ from scipy.integrate import odeint # to integrate ODEs
 
 
 class unit():
-    '''
+    """
     The parent class of all unit models.
-    '''
+    """
     def __init__(self, ID, params, network):
         """ The class constructor.
 

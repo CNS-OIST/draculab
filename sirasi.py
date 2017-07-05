@@ -15,6 +15,29 @@ class unit_types(Enum):
     source = 1
     sigmoidal = 2
     linear = 3
+
+    def get_class(self):
+        """ Return the class object corresponding to a given object type enum. 
+
+        Because this method is in a subclass of Enum, it does NOT show in the
+        unit_types class; it only shows in its members. For example,
+        unit_types.source.get_class()
+        returns the source class object.
+    
+        Raises:
+            NotImplementedError.
+        """
+        if self == unit_types.source:
+            unit_class = source
+        elif self == unit_types.sigmoidal:
+            unit_class = sigmoidal
+        elif self == unit_types.linear:
+            unit_class = linear
+        else:
+            raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
+            # TODO: NameError instead?
+        return unit_class
+
     
 class synapse_types(Enum):
     """ An enum class with all the implemented synapse models. """
@@ -26,10 +49,60 @@ class synapse_types(Enum):
     hebbsnorm = 6 # Hebbian rule with substractive normalization
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
+    def get_class(self):
+        """ Return the class object corresponding to a given synapse type enum. 
+
+        Because this method is in a subclass of Enum, it does NOT show in the
+        synapse_types class; it only shows in its members. For example,
+        synapse_types.static.get_class()
+        returns the static_synapse class object.
+    
+        Raises:
+            ValueError.
+        """
+        if self == synapse_types.static:
+            syn_class = static_synapse
+        elif self == synapse_types.oja:
+            syn_class = oja_synapse
+        elif self == synapse_types.antihebb:
+            syn_class = anti_hebbian_synapse
+        elif self == synapse_types.cov:
+            syn_class = covariance_synapse
+        elif self == synapse_types.anticov:
+            syn_class = anti_covariance_synapse
+        elif self == synapse_types.hebbsnorm:
+            syn_class = hebb_subsnorm_synapse
+        else:
+            raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
+        
+        return syn_class
+
+
 class plant_models(Enum):
     """ An enum class with all the implemented plant models. """
     pendulum = 1
     conn_tester = 2
+
+    def get_class(self):
+        """ Return the class object corresponding to a given plant enum. 
+
+        Because this method is in a subclass of Enum, it does NOT show in the
+        plant_models class; it only shows in its members. For example,
+        plant_models.pendulum.get_class()
+        returns the pendulum class object.
+    
+        Raises:
+            NotImplementedError.
+        """
+        if self == plant_models.pendulum:
+            plant_class = pendulum 
+        elif self == plant_models.conn_tester:
+            plant_class = conn_tester
+        else:
+            raise NotImplementedError('Attempting to retrieve the class for an unknown plant model')
+
+        return plant_class
+
 
 class syn_reqs(Enum):
     """ This enum contains all the variables that a synapse model may ask a unit

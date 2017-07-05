@@ -62,18 +62,29 @@ class network():
         Create a plant with model params['model']. The current implementation only 
         creates one plant per call, so n != 1 will raise an exception.
         The method returns the ID of the created plant.
+
+        Raises:
+            NotImplementedError, ValueError.
         '''
         # TODO: finish documentation
         assert self.sim_time == 0., 'A plant is being created when the simulation time is not zero'
         if n != 1:
             raise ValueError('Only one plant can be created on each call to create()')
         plantID = self.n_plants
+        try:
+            plant_class = params['type'].get_class()
+        except NotImplementedError: # raising the same exception with a different message
+            raise NotImplementedError('Attempting to create a plant with an unknown model type')
+
+        self.plants.append(plant_class(plantID, params, self))
+        '''
         if params['type'] == plant_models.pendulum:
             self.plants.append(pendulum(plantID, params, self))
         elif params['type'] == plant_models.conn_tester:
             self.plants.append(conn_tester(plantID, params, self))
         else:
             raise NotImplementedError('Attempting to create a plant with an unknown model type.')
+        '''
         self.n_plants += 1
         return plantID
    
@@ -114,6 +125,18 @@ class network():
                 for par in listed:
                     params_copy[par] = params[par][ID-self.n_units]
                 self.units.append(source(ID, params_copy, default_fun, self))
+        else:
+            try: 
+                unit_class = params['type'].get_class()
+            except NotImplementedError:
+                raise NotImplementedError('Attempting to create a unit with an unknown type')
+
+            for ID in unit_list:
+                for par in listed:
+                    params_copy[par] = params[par][ID-self.n_units]
+                self.units.append(unit_class(ID, params_copy, self))
+
+        '''
         elif params['type'] == unit_types.sigmoidal:
             for ID in unit_list:
                 for par in listed:
@@ -126,7 +149,7 @@ class network():
                 self.units.append(linear(ID, params_copy, self))
         else:
             raise NotImplementedError('Attempting to create a unit with an unknown model type.')
-        
+        ''' 
         self.n_units += n
         # putting n new slots in the delays, act, and syns lists
         self.delays += [[] for i in range(n)]
@@ -162,8 +185,6 @@ class network():
             'init_w' : Initial weight values. Either a dictionary specifying a distribution, or a
                        scalar value to be applied for all created synapses. Distributions:
                       'uniform' - the delay dictionary must also include 'low' and 'high' values.
-            'preID' : the identifier of the presynaptic unit (or the presynaptic plant).
-            'postID' : the identifier of the postsynaptic unit (or the postsynaptic plant).
             OPTIONAL PARAMETERS
             'inp_ports' : input ports of the connections. Either a single integer, or a list.
                           If using a list, its length must match the number of connections being
@@ -176,23 +197,10 @@ class network():
         # A quick test first
         if (np.amax(from_list + to_list) > self.n_units-1) or (np.amin(from_list + to_list) < 0):
             raise ValueError('Attempting to connect units with an ID out of range')
+
+        # Retrieve the synapse class from its type object
+        syn_class = syn_spec['type'].get_class()
        
-        # Let's find out the synapse type
-        if syn_spec['type'] == synapse_types.static:
-            syn_class = static_synapse
-        elif syn_spec['type'] == synapse_types.oja:
-            syn_class = oja_synapse
-        elif syn_spec['type'] == synapse_types.antihebb:
-            syn_class = anti_hebbian_synapse
-        elif syn_spec['type'] == synapse_types.cov:
-            syn_class = covariance_synapse
-        elif syn_spec['type'] == synapse_types.anticov:
-            syn_class = anti_covariance_synapse
-        elif syn_spec['type'] == synapse_types.hebbsnorm:
-            syn_class = hebb_subsnorm_synapse
-        else:
-            raise ValueError('Attempting connect with an unknown synapse type')
-        
         # The units connected depend on the connectivity rule in conn_spec
         # We'll specify  connectivity by creating a list of 2-tuples with all the
         # pairs of units to connect
@@ -265,17 +273,19 @@ class network():
         else:
             raise TypeError('The value given to the delay is of the wrong type')
 
-        # Initialize the input ports, if specified in the parameters dictionary
-        if 'inp_ports' in params:
-            if type(params['inp_ports']) is int:
-                portz = [params['inp_ports']]*n_conns
-            elif type(params['inp_ports']) is list:
-                if len(params['inp_ports']) == n_conns:
-                    portz = params['inp_ports']
+        # Initialize the input ports, if specified in the syn_spec dictionary
+        if 'inp_ports' in syn_spec:
+            if type(syn_spec['inp_ports']) is int:
+                portz = [syn_spec['inp_ports']]*n_conns
+            elif type(syn_spec['inp_ports']) is list:
+                if len(syn_spec['inp_ports']) == n_conns:
+                    portz = syn_spec['inp_ports']
                 else:
                     raise ValueError('Number of input ports specified does not match number of connections created')
             else:
                 raise TypeError('Input ports were specified with the wrong data type')
+        else:
+            portz = [0]*n_conns
 
         # To specify connectivity, you need to update 3 lists: delays, act, and syns
         # Using 'connections', 'weights', 'delayz', and 'portz' this is straightforward
@@ -313,8 +323,10 @@ class network():
                     'inp_ports' : A list. The i-th entry determines the input type of
                                   the i-th element in the unitIDs list.
                     'delays' : Delay value for the inputs. A scalar, or a list of length len(unitIDs)
-                syn_spec: a dictionary with the synapses specifications.
-                    'type' : one of the synapse_types. Currently only 'static' allowed.
+                syn_spec: a dictionary with the synapse specifications.
+                    REQUIRED ENTRIES
+                    'type' : one of the synapse_types. Currently only 'static' allowed, because the
+                             plant does not update the synapse dynamics in its update method.
                     'init_w': initial synaptic weight. A scalar, or a list of length len(unitIDs)
 
             Raises:
@@ -322,9 +334,9 @@ class network():
 
         """
         # First check that the IDs are inside the right range
-        if (np.amax(unitIDs) > self.n_units-1) or (np.amin(unitIDs) < 0):
+        if (np.amax(unitIDs) >= self.n_units) or (np.amin(unitIDs) < 0):
             raise ValueError('Attempting to connect units with an ID out of range')
-        if (plantID > self.n_plants-1) or (plantID < 0):
+        if (plantID >= self.n_plants) or (plantID < 0):
             raise ValueError('Attempting to connect to a plant with an ID out of range')
 
         # Then connect them to the plant...
@@ -364,6 +376,51 @@ class network():
             if dely >= unit.delay: # This is the longest delay for the sending unit
                 unit.delay = dely + self.min_delay
                 unit.init_buffers()
+
+   
+    def set_plant_outputs(self, plantID, unitIDs, conn_spec, syn_spec):
+        """ Connect the outputs of a plant to the units in a list.
+
+        Args:
+            plantID: ID of the plant sending the outpus.
+            unitIDs: a list with the IDs of the units receiving inputs from the plant.
+            conn_spec: a dictionary with the connection specifications.
+                REQUIRED ENTRIES
+                'port_map': a list used to specify which output of the plant goes to which input
+                            port in each of the units. There are two options for this, one uses the
+                            same output-to-port map for all units, and one specifies it separately
+                            for each individual unit. More precisely, the two options are:
+                            1) port_map is a list of 2-tuples (a,b), indicating that output 'a' of
+                               the plant (the a-th element in the state vector) connects to port 'b'.
+                            2) port_map[i] is a list of 2-tuples (a,b), indicating that output 'a' of the 
+                               plant is connected to port 'b' for the i-th neuron in the neuronIDs list.
+                'delays': Delay value for the connections. A scalar, or a list of length len(unitIDs).
+            syn_spec: a dictionary with the synapse specifications.
+                REQUIRED ENTRIES
+                'type' : one of the synapse_types. Currently only 'static' allowed.
+                'init_w': initial synaptic weight. A scalar, or a list of length len(unitIDs)
+
+        Raises:
+            ValueError.
+        """
+        # TODO: This method is work in progress
+
+        # First check that the IDs are inside the right range
+        if (np.amax(unitIDs) >= self.n_units) or (np.amin(unitIDs) < 0):
+            raise ValueError('Attempting to connect units with an ID out of range')
+        if (plantID >= self.n_plants) or (plantID < 0):
+            raise ValueError('Attempting to connect to a plant with an ID out of range')
+       
+        # Let's retrieve the synapse class from its type object
+        syn_class = syn_spec['type'].get_class()
+        
+        connections = []  # the list with all the connection pairs as (source,target)
+        for unit in unitIDs:
+            connections.append((plantID,unit))
+
+
+        n_conns = len(connections)
+
 
 
 
