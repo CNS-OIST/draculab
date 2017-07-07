@@ -95,34 +95,36 @@ class unit():
 
         
     def get_inputs(self, time):
-        ''' 
+        """ 
         Returns a list with the inputs received by the unit from all other units at time 'time'.
 
         The returned inputs already account for the transmission delays.
         To do this: in the network's activation tower the entry corresponding to the unit's ID
         (e.g. self.net.act[self.ID]) is a list; for each i-th entry (a function) retrieve
         the value at time "time - delays[ID][i]".  
-        '''
+
+        This function ignores input ports.
+        """
         return [ fun(time - dely) for dely,fun in zip(self.net.delays[self.ID], self.net.act[self.ID]) ]
         # A possibly slower option:
         #return [ fun(time - self.net.delays[self.ID][idx]) for idx, fun in enumerate(self.net.act[self.ID]) ]
     
 
     def get_weights(self, time):
-        ''' Returns a list with the weights corresponding to the input list obtained with get_inputs.
-        '''
+        """ Returns a list with the weights corresponding to the input list obtained with get_inputs.
+        """
         # once you include axo-axonic connections you have to modify the list below
         return [ synapse.get_w(time) for synapse in self.net.syns[self.ID] ]
 
     def update(self,time):
-        '''
+        """
         Advance the dynamics from time to time+min_delay.
 
         This update function will replace the values in the activation buffer 
         corresponding to the latest "min_delay" time units, introducing "min_buff_size" new values.
         In addition, all the synapses of the unit are updated.
         source units override this with a shorter update function.
-        '''
+        """
 
         # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
         # Maybe there should be a single 'times' array in the network. This seems more parallelizable, though.
@@ -147,18 +149,18 @@ class unit():
 
 
     def get_act(self,time):
-        ''' Gives you the activity at a previous time 't' (within buffer range).
+        """ Gives you the activity at a previous time 't' (within buffer range).
 
         This version works for units that store their previous activity values in a buffer.
         Units without buffers (e.g. source units) have their own get_act function.
-        '''
+        """
         # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
         return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
                         fill_value="extrapolate", assume_sorted=True)(time)
 
   
     def init_pre_syn_update(self):
-        '''
+        """
         Create a pre_syn_update function according to current synaptic requirements.
 
         Correlational learning rules require the pre- and post-synaptic activity, in this
@@ -182,7 +184,7 @@ class unit():
 
         Raises:
             NameError, NotImplementedError.
-        ''' 
+        """ 
         assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
                                          str(self.ID) + ' when simulation time is not zero']
         # For each synapse you receive, add its requirements
@@ -371,9 +373,12 @@ class sigmoidal(unit):
     
 
 class linear(unit): 
-    # An implementation of a linear unit.
-    # The output is the sum of the inputs multiplied by their synaptic weights.
-    # The output upates with time constant 'tau'.
+    """ An implementation of a linear unit.
+
+    The output is the sum of the inputs multiplied by their synaptic weights.
+    The output upates with time constant 'tau'.
+    """
+
     def __init__(self, ID, params, network):
         """ The unit constructor.
 

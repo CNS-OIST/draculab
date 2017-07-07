@@ -24,8 +24,8 @@ class synapse():
             network: the network where the synapse lives.
 
         """
-        self.preID = params['preID']   # the ID of the presynaptic unit 
-        self.postID = params['postID'] # the ID of the postsynaptic unit
+        self.preID = params['preID']   # the ID of the presynaptic unit or plant
+        self.postID = params['postID'] # the ID of the postsynaptic unit or plant
         self.w = params['init_w'] # initializing the synaptic weight
         self.type = params['type'] # assigning the synapse type
         self.net = network # the network where the synapse lives
@@ -33,6 +33,10 @@ class synapse():
         # input arrives at a particular 'input port', characterized by some integer.
         if 'inp_port' in params: self.port = params['inp_port']
         else: self.port = 0
+        # The input may come from a plant, in which case we want to know from which output
+        if 'plant_out' in params: self.plant_out = params['plant_out']
+        # TODO: these tests assume unit-to-unit connections, and if there are more plants than units, 
+        # the tests may fail. There should be something to indicate whether the synapse is on a plant
         assert self.net.n_units >= self.preID, 'Synapse connected from non existing unit ' + str(self.preID)  
         assert self.net.n_units >= self.postID, 'Synapse connected to non existing unit ' + str(self.postID)  
         assert self.net.sim_time == 0., 'Synapse being created when sim_time is not zero'

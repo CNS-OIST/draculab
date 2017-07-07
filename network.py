@@ -254,7 +254,7 @@ class network():
         elif type(syn_spec['init_w']) is float or type(syn_spec['init_w']) is int:
             weights = [float(syn_spec['init_w'])] * n_conns
         else:
-            raise TypeError('The value given to the initial weight is of the wrong type')
+            raise TypeError('The value given to the initial weights is of the wrong type')
 
         # Initialize the delays. We'll create a list 'delayz' that
         # has a delay value for each entry in 'connections'
@@ -394,16 +394,37 @@ class network():
                                the plant (the a-th element in the state vector) connects to port 'b'.
                             2) port_map[i] is a list of 2-tuples (a,b), indicating that output 'a' of the 
                                plant is connected to port 'b' for the i-th neuron in the neuronIDs list.
-                'delays': Delay value for the connections. A scalar, or a list of length len(unitIDs).
+                            For example if unitIDs has two elements:
+                                [(0,0),(1,1)] -> output 0 to port 0 and output 1 to port 1 for the 2 units.
+                                [ [(0,0),(1,1)], [(0,1)] ] -> Same as above for the first unit,
+                                map 0 to 1 for the second unit. 
+                'delays' : either a dictionary specifying a distribution, a scalar delay value that
+                           will be applied to all connections, or a list of values. 
+                           Implemented dsitributions:
+                           'uniform' - the delay dictionary must also include 'low' and 'high' values.
             syn_spec: a dictionary with the synapse specifications.
                 REQUIRED ENTRIES
-                'type' : one of the synapse_types. Currently only 'static' allowed.
+                'type' : one of the synapse_types. 
                 'init_w': initial synaptic weight. A scalar, or a list of length len(unitIDs)
 
         Raises:
-            ValueError.
+            ValueError, TypeError.
         """
-        # TODO: This method is work in progress
+        # There is some code duplication with connect, when setting weights and delays, 
+        # but it's not quite the same.
+
+        # Some utility functions
+        # this function gets a list, returns True if all elements are tuples
+        T_if_tup = lambda x : (True if (len(x) == 1 and type(x[0]) is tuple) else 
+                               (type(x[-1]) is tuple) and T_if_tup(x[:-1]) )
+        # this function gets a list, returns True if all elements are lists
+        T_if_lis = lambda x : (True if (len(x) == 1 and type(x[0]) is list) else 
+                               (type(x[-1]) is list) and T_if_tup(x[:-1]) )
+        # this function returns true if its argument is float or int
+        foi = lambda x : True if (type(x) is float) or (type(x) is int) else False
+        # this function gets a list, returns True if all elements are float or int
+        T_if_scal = lambda x : ( True if (len(x) == 1 and foi(x[0])) else 
+                                 foi(x[-1])  and T_if_scal(x[:-1]) )
 
         # First check that the IDs are inside the right range
         if (np.amax(unitIDs) >= self.n_units) or (np.amin(unitIDs) < 0):
@@ -411,15 +432,91 @@ class network():
         if (plantID >= self.n_plants) or (plantID < 0):
             raise ValueError('Attempting to connect to a plant with an ID out of range')
        
-        # Let's retrieve the synapse class from its type object
+        # Retrieve the synapse class from its type object
         syn_class = syn_spec['type'].get_class()
-        
-        connections = []  # the list with all the connection pairs as (source,target)
-        for unit in unitIDs:
-            connections.append((plantID,unit))
 
-
+        # Now we create a list with all the connections. In this case, each connection is
+        # described by a 3-tuple (a,b,c). a=plant's output port. b=ID of receiving unit.
+        # c=input port of receiving unit.
+        pm = conn_spec['port_map']
+        connections = []
+        if T_if_tup(pm): # one single list of tuples
+            for uid in unitIDs: 
+                for tup in pm:
+                    connections.append((tup[1], uid, tup[0]))
+        elif T_if_lis(pm): # a list of lists of tuples
+            if len(pm) == len(unitIDs):
+                for uid, lis in zip(unitIDs, pm):
+                    if T_if_tup(lis):
+                        for tup in lis:
+                            connections.append((tup[1], uid, tup[0]))
+                    else:
+                        raise ValueError('Incorrect port map format for unit ' + str(uid))
+            else:
+                raise ValueError('Wrong number of entries in port map list')
+        else:
+            raise TypeError('port map specification should be a list of tuples, or a list of lists of tuples')
+            
         n_conns = len(connections)
+
+        # Initialize the weights. We'll create a list called 'weights' that
+        # has a weight for each entry in 'connections'
+        if type(syn_spec['init_w']) is float or type(syn_spec['init_w']) is int:
+            weights = [float(syn_spec['init_w'])] * n_conns
+        elif type(syn_spec['init_w']) is list and T_if_scal(syn_spec['init_w']):
+            if len(syn_spec['init_w']) == n_conns:
+                weights = syn_spec['init_w']
+            else:
+                raise ValueError('Number of initial weights does not match number of connections being created')
+        else:
+            raise TypeError('The value given to the initial weights is of the wrong type')
+
+        # Initialize the delays. We'll create a list 'delayz' that
+        # has a delay value for each entry in 'connections'
+        if type(conn_spec['delays']) is dict: 
+            d_dict = conn_spec['delay']
+            if d_dict['distribution'] == 'uniform':  #<----------------------
+                # delays must be multiples of the minimum delay
+                low_int = max(1, round(d_dict['low']/self.min_delay))
+                high_int = max(1, round(d_dict['high']/self.min_delay)) + 1 #+1, so randint can choose it
+                delayz = np.random.randint(low_int, high_int,  n_conns)
+                delayz = self.min_delay * delayz
+            else:
+                raise NotImplementedError('Initializing delays with an unknown distribution')
+        elif type(conn_spec['delays']) is float or type(conn_spec['delays']) is int:
+            delayz = [float(conn_spec['delay'])] * n_conns
+        elif type(conn_spec['delays']) is list and T_if_scal(conn_spec['delays']):
+            if len(conn_spec['delays']) == n_conns:
+                delayz = conn_spec['delays']
+            else:
+                raise ValueError('Number of delays does not match the number of connections being created')
+        else:
+            raise TypeError('The value given to the delay is of the wrong type')
+
+        # To specify connectivity, you need to update 3 lists: delays, act, and syns
+        # Using 'connections', 'weights', and 'delayz', this is straightforward
+        for idx, (output, target, port) in enumerate(connections):
+            # specify that 'target' neuron has the 'output' input
+            self.act[target].append(self.plants[plantID].get_state_var_fun(output))
+            # add a new synapse object for our connection
+            syn_params = syn_spec # a copy of syn_spec just for this connection
+            syn_params['preID'] = plantID
+            syn_params['postID'] = target
+            syn_params['init_w'] = weights[idx]
+            syn_params['inp_port'] = port
+            syn_params['plant_out'] = output
+            self.syns[target].append(syn_class(syn_params, self))
+            # specify the delay of the connection
+            self.delays[target].append( delayz[idx] )
+            if self.plants[plantID].delay <= delayz[idx]: # this is the longest delay for this source
+                self.plants[plantID].delay = delayz[idx]+self.min_delay
+                # added self.min_delay because the ODE solver may ask for values a bit out of range
+                self.plants[plantID].init_buffers()
+
+        # After connecting, run init_pre_syn_update for all the units connected 
+        connected = [y for x,y,z in connections] 
+        for u in set(connected):
+            self.units[u].init_pre_syn_update()
 
 
 

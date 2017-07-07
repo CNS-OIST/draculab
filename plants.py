@@ -75,10 +75,24 @@ class plant():
         return interp1d(self.times, self.buffer, kind='linear', axis=0, bounds_error=False, 
                         copy=False, fill_value="extrapolate", assume_sorted=True)(time)
 
+
+    def get_state_var(self, t, idx):
+        """ Returns the value of the state variable with index 'idx' at time 't'. """
+        # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
+        return interp1d(self.times, self.buffer[:,idx], kind='linear', bounds_error=False, copy=False,
+                        fill_value="extrapolate", assume_sorted=True)(t)
+
+    def get_state_var_fun(self, idx):
+        """ Returns a function that returns the state variable with index 'idx' at a given time. """
+        #return lambda t: self.get_state_var(t, idx)
+        return lambda t: interp1d(self.times, self.buffer[:,idx], kind='linear', bounds_error=False, copy=False,
+                        fill_value="extrapolate", assume_sorted=True)(t)
+
+
     def get_input_sum(self, time, port):
         """ Returns the sum of all inputs of type 'port', as received at the given 'time'.
 
-            For each input of type 'port', you get its value of at the time 'time' - delay, 
+            For each input of type 'port', you'll get its value at the time ('time' - delay),
             multiply that value by the corresponding synaptic weight, and then sum all the
             scaled values. This sum is the returned value, which constitutes the total
             input provided by all inputs in the given port.
@@ -223,15 +237,11 @@ class pendulum(plant):
 
     
     def get_angle(self,time):
-        # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
-        return interp1d(self.times, self.buffer[:,0], kind='linear', bounds_error=False, copy=False,
-                        fill_value="extrapolate", assume_sorted=True)(time)
-
+        return self.get_state_var(time,0) 
+              
 
     def get_ang_vel(self,time):
-        # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
-        return interp1d(self.times, self.buffer[:,1], kind='linear', bounds_error=False, copy=False,
-                        fill_value="extrapolate", assume_sorted=True)(time)
+        return self.get_state_var(time,1) 
 
         
     
