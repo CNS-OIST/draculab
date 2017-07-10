@@ -55,8 +55,10 @@ class plant():
 
 
     def init_buffers(self):
-        # This method (re)initializes the buffer variables according to the current parameters.
-        # It is useful because new connections may increase self.delay, and thus the size of the buffers.
+        """ This method (re)initializes the buffer variables according to the current parameters.
+
+        It is useful because new connections may increase self.delay, and thus the size of the buffers.
+        """
     
         assert self.net.sim_time == 0., 'Plant buffers were reset when the simulation time is not zero'
         
@@ -83,9 +85,11 @@ class plant():
                         fill_value="extrapolate", assume_sorted=True)(t)
 
     def get_state_var_fun(self, idx):
-        """ Returns a function that returns the state variable with index 'idx' at a given time. """
-        #return lambda t: self.get_state_var(t, idx)
-        return lambda t: interp1d(self.times, self.buffer[:,idx], kind='linear', bounds_error=False, copy=False,
+        """ Returns a function that returns the state variable with index 'idx' at a given time. 
+        
+        This is used so units can ignore any input port settings while receiving inputs from a plant.
+        """
+        return lambda t : interp1d(self.times, self.buffer[:,idx], kind='linear', bounds_error=False, copy=False,
                         fill_value="extrapolate", assume_sorted=True)(t)
 
 

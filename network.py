@@ -419,7 +419,7 @@ class network():
                                (type(x[-1]) is tuple) and T_if_tup(x[:-1]) )
         # this function gets a list, returns True if all elements are lists
         T_if_lis = lambda x : (True if (len(x) == 1 and type(x[0]) is list) else 
-                               (type(x[-1]) is list) and T_if_tup(x[:-1]) )
+                               (type(x[-1]) is list) and T_if_lis(x[:-1]) )
         # this function returns true if its argument is float or int
         foi = lambda x : True if (type(x) is float) or (type(x) is int) else False
         # this function gets a list, returns True if all elements are float or int
@@ -443,13 +443,13 @@ class network():
         if T_if_tup(pm): # one single list of tuples
             for uid in unitIDs: 
                 for tup in pm:
-                    connections.append((tup[1], uid, tup[0]))
+                    connections.append((tup[0], uid, tup[1]))
         elif T_if_lis(pm): # a list of lists of tuples
             if len(pm) == len(unitIDs):
                 for uid, lis in zip(unitIDs, pm):
                     if T_if_tup(lis):
                         for tup in lis:
-                            connections.append((tup[1], uid, tup[0]))
+                            connections.append((tup[0], uid, tup[1]))
                     else:
                         raise ValueError('Incorrect port map format for unit ' + str(uid))
             else:
@@ -497,7 +497,10 @@ class network():
         # Using 'connections', 'weights', and 'delayz', this is straightforward
         for idx, (output, target, port) in enumerate(connections):
             # specify that 'target' neuron has the 'output' input
-            self.act[target].append(self.plants[plantID].get_state_var_fun(output))
+            if self.units[target].multi_port: # if the unit has support for multiple input ports
+                self.act[target].append(self.plants[plantID].get_state_var)
+            else:
+                self.act[target].append(self.plants[plantID].get_state_var_fun(output))
             # add a new synapse object for our connection
             syn_params = syn_spec # a copy of syn_spec just for this connection
             syn_params['preID'] = plantID
@@ -509,15 +512,14 @@ class network():
             # specify the delay of the connection
             self.delays[target].append( delayz[idx] )
             if self.plants[plantID].delay <= delayz[idx]: # this is the longest delay for this source
-                self.plants[plantID].delay = delayz[idx]+self.min_delay
                 # added self.min_delay because the ODE solver may ask for values a bit out of range
+                self.plants[plantID].delay = delayz[idx]+self.min_delay
                 self.plants[plantID].init_buffers()
 
         # After connecting, run init_pre_syn_update for all the units connected 
         connected = [y for x,y,z in connections] 
         for u in set(connected):
             self.units[u].init_pre_syn_update()
-
 
 
 

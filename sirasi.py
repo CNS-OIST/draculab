@@ -15,6 +15,7 @@ class unit_types(Enum):
     source = 1
     sigmoidal = 2
     linear = 3
+    mp_linear  = 4
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -33,6 +34,8 @@ class unit_types(Enum):
             unit_class = sigmoidal
         elif self == unit_types.linear:
             unit_class = linear
+        elif self == unit_types.mp_linear:
+            unit_class = mp_linear
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # TODO: NameError instead?

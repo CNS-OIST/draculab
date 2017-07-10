@@ -61,6 +61,8 @@ class unit():
         if 'tau_slow' in params: self.tau_slow = params['tau_slow']
         if 'n_ports' in params: self.n_ports = params['n_ports']
         else: self.n_ports = 1
+        self.multi_port = False # indicates whether the unit has multi-port support, which 
+                                # means it has customized get_input* functions
 
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
@@ -106,8 +108,25 @@ class unit():
         This function ignores input ports.
         """
         return [ fun(time - dely) for dely,fun in zip(self.net.delays[self.ID], self.net.act[self.ID]) ]
-        # A possibly slower option:
-        #return [ fun(time - self.net.delays[self.ID][idx]) for idx, fun in enumerate(self.net.act[self.ID]) ]
+
+
+    def get_input_sum(self,time):
+        """ Returns the sum of all inputs at the given time, each scaled by its synaptic weight. 
+        
+        The sum accounts for transmission delays. Input ports are ignored. 
+        """
+        return sum([ syn.w * fun(time-dely) for syn,fun,dely in zip(self.net.syns[self.ID], 
+                        self.net.act[self.ID], self.net.delays[self.ID]) ])
+
+
+    def get_mp_input_sum(self, time):
+        """
+        Returns the sum of inputs scaled by their weights, assuming there are multiple input ports.
+
+        The sum accounts for transmission delays. All ports are treated identically. 
+        """
+        return sum([ syn.w * fun(time-dely, syn.plant_out) for syn,fun,dely in zip(self.net.syns[self.ID], 
+                        self.net.act[self.ID], self.net.delays[self.ID]) ])
     
 
     def get_weights(self, time):
@@ -115,6 +134,7 @@ class unit():
         """
         # once you include axo-axonic connections you have to modify the list below
         return [ synapse.get_w(time) for synapse in self.net.syns[self.ID] ]
+
 
     def update(self,time):
         """
@@ -401,7 +421,41 @@ class linear(unit):
     def derivatives(self, y, t):
         ''' This function returns the derivatives of the state variables at a given point in time. '''
         # there is only one state variable (the activity)
-        scaled_inputs = sum([inp*w for inp,w in zip(self.get_inputs(t), self.get_weights(t))])
-        return ( scaled_inputs - y[0] ) * self.rtau
+        return( self.get_input_sum(t) - y[0] ) * self.rtau
    
+
+class mp_linear(unit):
+    """ Same as the linear unit, but with several input ports; useful for tests."""
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                'tau' : Time constant of the update dynamics.
+
+        Raises:
+            AssertionError.
+
+        """
+        super(mp_linear, self).__init__(ID, params, network)
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.multi_port = True
+        assert self.type is unit_types.mp_linear, ['Unit ' + str(self.ID) + 
+                                                            ' instantiated with the wrong type']
+        
+    def derivatives(self, y, t):
+        ''' This function returns the derivatives of the state variables at a given point in time. '''
+        # there is only one state variable (the activity)
+        return 0 # (self.get_mp_input_sum(t) - y[0]) * self.rtau
+ 
+
+
+
+
+
+
 
