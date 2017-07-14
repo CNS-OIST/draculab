@@ -1,7 +1,7 @@
-''' 
+""" 
 network.py
 The network class used in the sirasi simulator.
-'''
+"""
 
 from sirasi import unit_types, synapse_types, plant_models, syn_reqs  # names of models and requirements
 from units import *
@@ -11,21 +11,31 @@ import numpy as np
 import random # to create random connections
 
 class network():
-    ''' 
-    This class has the tools to build a network.
+    """ 
+    This class has the tools to build and simulate a network.
+
+    Roughly, the steps are:
     First, you create an instance of network(); 
     second, you use the create() method to add units and plants;
     third, you use source.set_function() for source units, which provide inputs;
     fourth, you use the connect() method to connect the units, 
-    finally you use the run() method to run a simulation.
-    '''
+    fifth, you use set_plant_inputs() and set_plant_outputs() to connect the plants;
+    finally you use the run() method to run the simulation.
+
+    """
 
     def __init__(self, params):
-        '''
+        """
+        The network class constructor.
+
         The constructor receives a 'params' dictionary, which only requires two entries:
-        A minimum transmission delay 'min_delay', and
-        a minimum buffer size 'min_buff_size'.
-        '''
+        A minimum transmission delay 'min_delay', and a minimum buffer size 'min_buff_size'.
+        Optional parameters in 'params' are:
+            'rtol' = relative tolerance in the ODE integrator.
+            'atol' = absolute tolerance in the ODE integrator.
+                     See: https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.odeint.html
+
+        """
         self.sim_time = 0.0  # current simulation time [ms]
         self.n_units = 0     # current number of units in the network
         self.units = []      # list with all the unit objects
@@ -37,10 +47,14 @@ class network():
         self.syns = []   # syns[i][j] is the synapse object for the j-th connection to unit i
         self.min_delay = params['min_delay'] # minimum transmission delay [ms]
         self.min_buff_size = params['min_buff_size']  # number of values stored during a minimum delay period
+        if 'rtol' in params: self.rtol = params['rtol']
+        else: self.rtol = 1e-6 
+        if 'atol' in params: self.atol = params['atol']
+        else: self.atol = 1e-6 
         
 
     def create(self, n, params):
-        '''
+        """
         This method is just a front to find out whether we're creating units or a plant.
 
         If we're creating units, it will call create_units().
@@ -48,7 +62,7 @@ class network():
 
         Raises:
             TypeError.
-        '''
+        """
         if hasattr(unit_types, params['type'].name):
             return self.create_units(n,params)
         elif hasattr(plant_models, params['type'].name):
@@ -58,15 +72,24 @@ class network():
 
 
     def create_plant(self, n, params):
-        '''
-        Create a plant with model params['model']. The current implementation only 
-        creates one plant per call, so n != 1 will raise an exception.
-        The method returns the ID of the created plant.
+        """
+        Create a plant with model params['type']. 
+        
+        The current implementation only creates one plant per call, so n != 1 will 
+        raise an exception.  The method returns the ID of the created plant.
+
+        Args:
+            n: the integer 1.
+            params: a dictionary of parameters used for plant creation.
+                REQUIRED PARAMETERS
+                'type': a model from the plant_models enum.
+                Other required parameters depend on the specific plant model.
+
+        Returns: an integer with the ID of the created plant.
 
         Raises:
             NotImplementedError, ValueError.
-        '''
-        # TODO: finish documentation
+        """
         assert self.sim_time == 0., 'A plant is being created when the simulation time is not zero'
         if n != 1:
             raise ValueError('Only one plant can be created on each call to create()')
@@ -77,26 +100,32 @@ class network():
             raise NotImplementedError('Attempting to create a plant with an unknown model type')
 
         self.plants.append(plant_class(plantID, params, self))
-        '''
-        if params['type'] == plant_models.pendulum:
-            self.plants.append(pendulum(plantID, params, self))
-        elif params['type'] == plant_models.conn_tester:
-            self.plants.append(conn_tester(plantID, params, self))
-        else:
-            raise NotImplementedError('Attempting to create a plant with an unknown model type.')
-        '''
         self.n_plants += 1
         return plantID
    
 
     def create_units(self, n, params):
-        '''
+        """
         create 'n' units of type 'params['type']' and parameters from 'params'.
+
         The method returns a list with the ID's of the created units.
         If you want one of the parameters to have different values for each unit, you can have a list
         (or numpy array) of length 'n' in the corresponding 'params' entry
-        '''
-        # TODO: finish documentation
+
+        Args:
+            n: an integer indicating how many units to create.
+            params: a dictionary with the parameters used to initialize the units.
+                REQUIRED PARAMETERS
+                'type': a unit model form the unit_types enum.
+                'init_val': initial activation value (ignored for the source units).
+                For other required and optional parameters, consult the specific unit models.
+
+        Returns: a list with the ID's of the created units.
+            
+        Raises:
+            ValueError, TypeError, NotImplementedError
+                
+        """
         assert (type(n) == int) and (n > 0), 'Number of units must be a positive integer'
         assert self.sim_time == 0., 'Units are being created when the simulation time is not zero'
 
@@ -136,20 +165,7 @@ class network():
                     params_copy[par] = params[par][ID-self.n_units]
                 self.units.append(unit_class(ID, params_copy, self))
 
-        '''
-        elif params['type'] == unit_types.sigmoidal:
-            for ID in unit_list:
-                for par in listed:
-                    params_copy[par] = params[par][ID-self.n_units]
-                self.units.append(sigmoidal(ID, params_copy, self))
-        elif params['type'] == unit_types.linear:
-            for ID in unit_list:
-                for par in listed:
-                    params_copy[par] = params[par][ID-self.n_units]
-                self.units.append(linear(ID, params_copy, self))
-        else:
-            raise NotImplementedError('Attempting to create a unit with an unknown model type.')
-        ''' 
+         
         self.n_units += n
         # putting n new slots in the delays, act, and syns lists
         self.delays += [[] for i in range(n)]
@@ -159,7 +175,7 @@ class network():
         return unit_list
     
     def connect(self, from_list, to_list, conn_spec, syn_spec):
-        '''
+        """
         connect the units in the 'from_list' to the units in the 'to_list' using the
         connection specifications in the 'conn_spec' dictionary, and the
         synapse specfications in the 'syn_spec' dictionary.
@@ -179,6 +195,7 @@ class network():
             'delay' : either a dictionary specifying a distribution, or a scalar delay value that
                       will be applied to all connections. Implemented dsitributions:
                       'uniform' - the delay dictionary must also include 'low' and 'high' values.
+                      Delays should be multiples of the network minimum delay.
         syn_spec: A dictionary used to initialize the synapses in the connections.
             REQUIRED PARAMETERS
             'type' : a synapse type from the synapse_types enum.
@@ -192,7 +209,7 @@ class network():
                 
         Raises:
             ValueError, TypeError, NotImplementedError.
-        '''
+        """
         
         # A quick test first
         if (np.amax(from_list + to_list) > self.n_units-1) or (np.amin(from_list + to_list) < 0):
@@ -269,7 +286,10 @@ class network():
             else:
                 raise NotImplementedError('Initializing delays with an unknown distribution')
         elif type(conn_spec['delay']) is float or type(conn_spec['delay']) is int:
-            delayz = [float(conn_spec['delay'])] * n_conns
+            if (conn_spec['delay']+1e-6)%self.min_delay < 2e-6:
+                delayz = [float(conn_spec['delay'])] * n_conns
+            else:
+                raise ValueError('Delays should be multiples of the network minimum delay')
         else:
             raise TypeError('The value given to the delay is of the wrong type')
 
@@ -323,6 +343,7 @@ class network():
                     'inp_ports' : A list. The i-th entry determines the input type of
                                   the i-th element in the unitIDs list.
                     'delays' : Delay value for the inputs. A scalar, or a list of length len(unitIDs)
+                               Delays should be multiples of the network minimum delay.
                 syn_spec: a dictionary with the synapse specifications.
                     REQUIRED ENTRIES
                     'type' : one of the synapse_types. Currently only 'static' allowed, because the
@@ -402,6 +423,7 @@ class network():
                            will be applied to all connections, or a list of values. 
                            Implemented dsitributions:
                            'uniform' - the delay dictionary must also include 'low' and 'high' values.
+                            Delays should be multiples of the network minimum delay.
             syn_spec: a dictionary with the synapse specifications.
                 REQUIRED ENTRIES
                 'type' : one of the synapse_types. 
@@ -500,6 +522,9 @@ class network():
             if self.units[target].multi_port: # if the unit has support for multiple input ports
                 self.act[target].append(self.plants[plantID].get_state_var)
             else:
+                # It is important to run init_buffers before this, because the function returned
+                # by get_state_var_fun doesn't seem to update the buffer size. This is a potential
+                # bug when the plant outputs are connected twice, with larger delays on the second time.
                 self.act[target].append(self.plants[plantID].get_state_var_fun(output))
             # add a new synapse object for our connection
             syn_params = syn_spec # a copy of syn_spec just for this connection
@@ -509,13 +534,17 @@ class network():
             syn_params['inp_port'] = port
             syn_params['plant_out'] = output
             self.syns[target].append(syn_class(syn_params, self))
+
             # specify the delay of the connection
-            self.delays[target].append( delayz[idx] )
+            if (delayz[idx]+1e-6)%self.min_delay < 2e-6:
+                self.delays[target].append( delayz[idx] )
+            else:
+                raise ValueError('Delays should be multiples of the network minimum delay')
             if self.plants[plantID].delay <= delayz[idx]: # this is the longest delay for this source
                 # added self.min_delay because the ODE solver may ask for values a bit out of range
                 self.plants[plantID].delay = delayz[idx]+self.min_delay
                 self.plants[plantID].init_buffers()
-
+                
         # After connecting, run init_pre_syn_update for all the units connected 
         connected = [y for x,y,z in connections] 
         for u in set(connected):
@@ -524,17 +553,18 @@ class network():
 
 
     def run(self, total_time):
-        '''
+        """
         Simulate the network for the given time.
 
-        It takes steps of 'min_delay' length, in which the units, synapses 
+        This method takes steps of 'min_delay' length, in which the units, synapses 
         and plants use their own methods to advance their state variables.
         The method returns a 3-tuple with numpy arrays containing the simulation
         times when the update functions were called, and the unit activities and 
         plant states corresponding to those times.
         After run(T) is finished, calling run(T) again continues the simulation
         starting at the last state of the previous simulation.
-        '''
+        """
+
         Nsteps = int(total_time/self.min_delay)
         unit_stor = [np.zeros(Nsteps) for i in range(self.n_units)]
         plant_stor = [np.zeros((Nsteps,p.dim)) for p in self.plants]

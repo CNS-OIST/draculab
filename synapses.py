@@ -1,7 +1,7 @@
-'''
+"""
 synapses.py
 This file contains all the synapse models used in the sirasi simulator
-'''
+"""
 
 from sirasi import unit_types, synapse_types, syn_reqs  # names of models and requirements
 import numpy as np
@@ -123,10 +123,10 @@ class oja_synapse(synapse):
 
 
 class anti_hebbian_synapse(synapse):
-    ''' This class implements a simple version of the anti-Hebbian rule.
+    """ This class implements a simple version of the anti-Hebbian rule.
     
         Units that fire together learn to inhibit each other.
-    '''
+    """
 
     def __init__(self, params, network):
         """ The  class constructor.
@@ -162,10 +162,10 @@ class anti_hebbian_synapse(synapse):
 
 
 class covariance_synapse(synapse):
-    ''' This class implements a version of the covariance rule.
+    """ This class implements a version of the covariance rule.
 
         No tests are made to see if the synapse becomes negative.
-    '''
+    """
     def __init__(self, params, network):
         """ The  class constructor.
 
@@ -202,7 +202,7 @@ class covariance_synapse(synapse):
 
 
 class anti_covariance_synapse(synapse):
-    ''' This class implements a version of the covariance rule, with the sign of plasticity reversed.'''
+    """ This class implements a version of the covariance rule, with the sign of plasticity reversed."""
 
     def __init__(self, params, network):
         """ The  class constructor.
@@ -239,15 +239,13 @@ class anti_covariance_synapse(synapse):
         self.w = self.w - self.alpha * (post - avg_post) * pre 
 
 class hebb_subsnorm_synapse(synapse):
-    ''' This class implements a version of the Hebbian rule with substractive normalization.
+    """ This class implements a version of the Hebbian rule with substractive normalization.
 
         This is the rule: dw = (pre * post) - (post) * (average of inputs).
         This rule keeps the sum of the synaptic weights constant.
         Notice that this rule will ignore any inputs with other type of synapses 
         when it obtains the average input value (see unit.upd_inp_avg and unit.init_pre_syn_update).
-        No tests are made to see if the synapsic weight becomes negative, in which case weights should
-        saturate at zero, and upd_inp_avg should ignore saturated weights.
-    '''
+    """
     def __init__(self, params, network):
         """ The  class constructor.
 
@@ -267,7 +265,8 @@ class hebb_subsnorm_synapse(synapse):
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The Hebbian rule requires the current pre- and post-synaptic activity.
         # Substractive normalization requires the average input value, obtained from lpf_fast values.
-        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.inp_avg])
+        # The average input value obtained is only considers units with positive synaptic weights.
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.pos_inp_avg])
         assert self.type is synapse_types.hebbsnorm, ['Synapse from ' + str(self.preID) + ' to ' +
                                                           str(self.postID) + ' instantiated with the wrong type']
     
@@ -275,15 +274,13 @@ class hebb_subsnorm_synapse(synapse):
         """ Update the weight with the Hebbian rule with substractive normalization. """
         # If the network is correctly initialized, the pre-is updatig lpf_fast, and the 
         # post-synaptic unit is updating lpf_fast and the input average.
-        inp_avg = self.net.units[self.postID].inp_avg
+        inp_avg = self.net.units[self.postID].pos_inp_avg
         post = self.net.units[self.postID].lpf_fast
         pre = self.net.units[self.preID].lpf_fast
         
         # A forward Euler step with the normalized Hebbian learning rule 
         self.w = self.w + self.alpha *  post * (pre - inp_avg)
-        # TODO: If you ever use this seriously, you should program a check to ensure that weights
-        # becoming negative saturate to zero instead. This also entails changing unit.upd_inp_avg so it
-        # ignores saturated weights.
+        if self.w < 0: self.w = 0
 
 
 

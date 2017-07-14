@@ -118,6 +118,7 @@ class syn_reqs(Enum):
     pre_lpf_mid = 5   # presynaptic activity low-pass filtered with a medium time constant
     pre_lpf_slow = 6  # presynaptic activity low-pass filtered with a slow time constant
     inp_avg = 7   # Sum of fast-LPF'd hebbsnorm inputs, divided by number of hebbsnorm inputs 
+    pos_inp_avg = 8 # as inp_avg, but only considers inputs with positive synaptic weights
     '''
     sum_w = x     # The sum of the weights of all the synapses of the unit  << NOT IMPLEMENTED
     w_list = x    # A list with the weights of all synapses of the unit   << NOT IMPLEMENTED

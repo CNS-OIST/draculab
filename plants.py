@@ -50,6 +50,8 @@ class plant():
                                                                  ': delay is not a multiple of min_delay']       
         else:  # giving a temporary value
             self.delay = 2 * self.net.min_delay 
+        self.rtol = self.net.rtol # local copies of ODE solver tolerances
+        self.atol = self.net.atol
 
         self.init_buffers() # This will create the buffers that store states and times
 
@@ -68,9 +70,14 @@ class plant():
         self.offset = (self.steps-1)*min_buff # an index used in the update function of derived classes
         self.buff_size = int(round(self.steps*min_buff)) # number of state values to store
         # keeping with scipy.integrate.odeint, each row in the buffer will correspond to a state
-        self.buffer = np.ndarray(shape=(self.buff_size, self.dim), dtype=float) 
+        if hasattr(self, 'init_state'): # if we have initial values to put in the buffer
+            self.buffer = np.array([self.init_state]*self.buff_size) # initializing buffer
+        else:
+            self.buffer = np.ndarray(shape=(self.buff_size, self.dim), dtype=float) 
         self.times = np.linspace(-self.delay, 0., self.buff_size) # times for each buffer row
         self.times_grid = np.linspace(0, min_del, min_buff+1) # used to create values for 'times'
+
+
 
     def get_state(self, time):
         """ Returns an array with the state vector. """
@@ -114,7 +121,7 @@ class plant():
         
         # odeint also returns the initial condition, so to produce min_buff_size new states
         # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
-        new_buff = odeint(self.derivatives, self.buffer[-1,:], new_times)
+        new_buff = odeint(self.derivatives, self.buffer[-1,:], new_times, rtol=self.rtol, atol=self.atol)
         self.buffer = np.roll(self.buffer, -self.net.min_buff_size, axis=0)
         self.buffer[self.offset:,:] = new_buff[1:,:] 
         # TODO: numpy.pad may probably do this with two lines. Not sure it's better.

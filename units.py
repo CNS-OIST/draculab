@@ -1,7 +1,7 @@
-'''
+"""
 units.py
 This file contains all the unit models used in the sirasi simulator.
-'''
+"""
 
 from sirasi import unit_types, synapse_types, syn_reqs  # names of models and requirements
 from synapses import *
@@ -43,6 +43,8 @@ class unit():
         self.type = params['type'] # an enum identifying the type of unit being instantiated
         self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
         self.net = network # the network where the unit lives
+        self.rtol = self.net.rtol # local copies of the rtol and atol tolerances
+        self.atol = self.net.atol 
         # The delay of a unit is the maximum delay among the projections it sends. 
         # Its final value of 'delay' should be set by network.connect(), after the unit is created.
         if 'delay' in params: 
@@ -156,7 +158,7 @@ class unit():
         
         # odeint also returns the initial condition, so to produce min_buff_size new values
         # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
-        new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times)
+        new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times, rtol=self.rtol, atol=self.atol)
         self.buffer = np.roll(self.buffer, -self.net.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:,0] 
 
@@ -249,8 +251,19 @@ class unit():
                 self.n_hebbsnorm = len(self.snorm_list) # number of hebbsnorm synapses received
                 self.inp_avg = 0.2  # an arbitrary initialization of the average input value
                 self.functions.add(self.upd_inp_avg)
+            elif req is syn_reqs.pos_inp_avg:
+                self.snorm_units = []  # a list with all the presynaptic neurons 
+                                      # providing hebbsnorm synapses
+                self.snorm_syns = []  # a list with the synapses for the list above
+                for syn in self.net.syns[self.ID]:
+                    if syn.type is synapse_types.hebbsnorm:
+                        self.snorm_syns.append(syn)
+                        self.snorm_units.append(self.net.units[syn.preID])
+                self.pos_inp_avg = 0.2  # an arbitrary initialization of the average input value
+                self.n_vec = np.ones(len(self.snorm_units)) # the 'n' vector from Pg.290 of Dayan&Abbott
+                self.functions.add(self.upd_pos_inp_avg)
             else:
-                raise NotImplementedError('Asking for a requirement not implemented yet')
+                raise NotImplementedError('Asking for a requirement not implemented')
 
         self.pre_syn_update = lambda time: [f(time) for f in self.functions]
 
@@ -280,19 +293,37 @@ class unit():
                                    np.exp( (self.last_time-time)/self.tau_slow ) )
 
     def upd_inp_avg(self, time):
-        """ Update the average of the inputs with hebbsnorm synapses. """
+        """ Update the average of the inputs with hebbsnorm synapses. 
+        
+            The actual value being averaged is lpf_fast of the presynaptic units.
+        """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' inp_avg updated backwards in time']
         self.inp_avg = sum([u.lpf_fast for u in self.snorm_list]) / self.n_hebbsnorm
         
 
+    def upd_pos_inp_avg(self, time):
+        """ Update the average of the inputs with hebbsnorm synapses. 
+        
+            The actual value being averaged is lpf_fast of the presynaptic units.
+            Inputs whose synaptic weight is zero or negative  are saturated to zero and
+            excluded from the computation.
+        """
+        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+                                        ' pos_inp_avg updated backwards in time']
 
+        # first, update the n vector from Eq. 8.14, pg. 290 in Dayan & Abbott
+        self.n_vec = [ 1. if syn.w>0. else 0. for syn in self.snorm_syns ]
+        
+        self.pos_inp_avg = sum([n*(u.lpf_fast) for n,u in zip(self.n_vec, self.snorm_units)]) / sum(self.n_vec)
+        
+        
 class source(unit):
     """ The class of units whose activity comes from some Python function.
     
-        source units serve two main roles. First, they can provide inputs to the
-        network. Second, they can receive the outputs from plants, and thus 
-        communicate them to other units in the network.
+        source units serve provide inputs to the network. They can be conceived as units
+        whose activity at time 't' comes from a function specified with the set_function
+        method.
     """
     
     def __init__(self, ID, params, funct, network):
@@ -352,11 +383,14 @@ class source(unit):
 
     
 class sigmoidal(unit): 
-    # An implementation of a typical sigmoidal unit. Its output is produced by linearly
-    # summing the inputs (times the synaptic weights), and feeding the sum to a sigmoidal
-    # function, which constraints the output to values beween zero and one.
-    # Because this unit operates in real time, it updates its value gradually, with
-    # a 'tau' time constant.
+    """
+    An implementation of a typical sigmoidal unit. Its output is produced by linearly
+    suming the inputs (times the synaptic weights), and feeding the sum to a sigmoidal
+    function, which constraints the output to values beween zero and one.
+    Because this unit operates in real time, it updates its value gradually, with
+    a 'tau' time constant.
+    """
+
     def __init__(self, ID, params, network):
         """ The unit constructor.
 
@@ -419,7 +453,7 @@ class linear(unit):
                                                             ' instantiated with the wrong type']
         
     def derivatives(self, y, t):
-        ''' This function returns the derivatives of the state variables at a given point in time. '''
+        """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
         return( self.get_input_sum(t) - y[0] ) * self.rtau
    
@@ -448,9 +482,9 @@ class mp_linear(unit):
                                                             ' instantiated with the wrong type']
         
     def derivatives(self, y, t):
-        ''' This function returns the derivatives of the state variables at a given point in time. '''
+        """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
-        return 0 # (self.get_mp_input_sum(t) - y[0]) * self.rtau
+        return (self.get_mp_input_sum(t) - y[0]) * self.rtau
  
 
 
