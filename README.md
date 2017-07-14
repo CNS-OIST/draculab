@@ -6,7 +6,7 @@ that autonomously learn to control a simulated physical plant.
 Because of this, rate units and their synapses are dynamical
 systems operating in continuous time. Moreover, since 
 instantaneous connections are unrealistic, there is a minimum
-connection delay, and all connection delays in the network 
+connection delay, and all connection delays in the network are
 multiples of it.
 
 The simulator is expected to be simple and compact enough that 
