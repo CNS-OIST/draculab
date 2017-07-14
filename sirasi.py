@@ -50,6 +50,7 @@ class synapse_types(Enum):
     cov = 4 # implements the covariance learning rule
     anticov = 5  # implements the anti-covariance rule 
     hebbsnorm = 6 # Hebbian rule with substractive normalization
+    inp_corr = 7 # Input correlation
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
     def get_class(self):
@@ -75,6 +76,8 @@ class synapse_types(Enum):
             syn_class = anti_covariance_synapse
         elif self == synapse_types.hebbsnorm:
             syn_class = hebb_subsnorm_synapse
+        elif self == synapse_types.inp_corr:
+            syn_class = input_correlation_synapse
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -119,6 +122,7 @@ class syn_reqs(Enum):
     pre_lpf_slow = 6  # presynaptic activity low-pass filtered with a slow time constant
     inp_avg = 7   # Sum of fast-LPF'd hebbsnorm inputs, divided by number of hebbsnorm inputs 
     pos_inp_avg = 8 # as inp_avg, but only considers inputs with positive synaptic weights
+    err_deriv = 9 # The approximate derivative of the error signal used in input correlation
     '''
     sum_w = x     # The sum of the weights of all the synapses of the unit  << NOT IMPLEMENTED
     w_list = x    # A list with the weights of all synapses of the unit   << NOT IMPLEMENTED

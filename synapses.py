@@ -7,7 +7,13 @@ from sirasi import unit_types, synapse_types, syn_reqs  # names of models and re
 import numpy as np
 
 class synapse():
-    """ The parent class of all synapse models. """
+    """ The parent class of all synapse models. 
+    
+        The models in this class update their weights using their update() functions.
+        It is assumed that this function will be called for each synapse by their postsynaptic
+        units, and that this will be done whenever the simulation advances network.min_delay
+        time units.
+    """
 
     def __init__(self, params, network):
         """ The class constructor. 
@@ -101,9 +107,6 @@ class oja_synapse(synapse):
         """
         super(oja_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
-        self.last_time = self.net.sim_time # time of the last call to the update function
-        self.lpf_x = self.net.units[self.preID].get_act(self.last_time) # low-pass filtered presynaptic activity
-        self.lpf_y = self.net.units[self.postID].get_act(self.last_time) # low-pass filtered postsynaptic activity
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The Oja rule requires the current pre- and post-synaptic activity
         self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast])
@@ -141,9 +144,6 @@ class anti_hebbian_synapse(synapse):
         """
         super(anti_hebbian_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
-        self.last_time = self.net.sim_time # time of the last call to the update function
-        self.lpf_x = self.net.units[self.preID].get_act(self.last_time) # low-pass filtered presynaptic activity
-        self.lpf_y = self.net.units[self.postID].get_act(self.last_time) # low-pass filtered postsynaptic activity
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The anti-Hebbian rule requires the current pre- and post-synaptic activity
         self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast])
@@ -179,9 +179,6 @@ class covariance_synapse(synapse):
         """
         super(covariance_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
-        self.last_time = self.net.sim_time # time of the last call to the update function
-        self.lpf_x = self.net.units[self.preID].get_act(self.last_time) # low-pass filtered presynaptic activity
-        self.lpf_y = self.net.units[self.postID].get_act(self.last_time) # low-pass filtered postsynaptic activity
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The covaraince rule requires the current pre- and post-synaptic activity
         # For the postsynaptic activity, both fast and slow averages are used
@@ -217,9 +214,6 @@ class anti_covariance_synapse(synapse):
         """
         super(anti_covariance_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
-        self.last_time = self.net.sim_time # time of the last call to the update function
-        self.lpf_x = self.net.units[self.preID].get_act(self.last_time) # low-pass filtered presynaptic activity
-        self.lpf_y = self.net.units[self.postID].get_act(self.last_time) # low-pass filtered postsynaptic activity
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The anti-covaraince rule requires the current pre- and post-synaptic activity
         # For the postsynaptic activity, both fast and slow averages are used
@@ -259,9 +253,6 @@ class hebb_subsnorm_synapse(synapse):
         """
         super(hebb_subsnorm_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
-        self.last_time = self.net.sim_time # time of the last call to the update function
-        self.lpf_x = self.net.units[self.preID].get_act(self.last_time) # low-pass filtered presynaptic activity
-        self.lpf_y = self.net.units[self.postID].get_act(self.last_time) # low-pass filtered postsynaptic activity
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The Hebbian rule requires the current pre- and post-synaptic activity.
         # Substractive normalization requires the average input value, obtained from lpf_fast values.
@@ -271,9 +262,10 @@ class hebb_subsnorm_synapse(synapse):
                                                           str(self.postID) + ' instantiated with the wrong type']
     
     def update(self, time):
-        """ Update the weight with the Hebbian rule with substractive normalization. """
-        # If the network is correctly initialized, the pre-is updatig lpf_fast, and the 
-        # post-synaptic unit is updating lpf_fast and the input average.
+        """ Update the weight with the Hebbian rule with substractive normalization. 
+            If the network is correctly initialized, the pre-synaptic unit will update lpf_fast, 
+            and the post-synaptic unit is updating lpf_fast and its input average.
+        """
         inp_avg = self.net.units[self.postID].pos_inp_avg
         post = self.net.units[self.postID].lpf_fast
         pre = self.net.units[self.preID].lpf_fast
@@ -281,6 +273,55 @@ class hebb_subsnorm_synapse(synapse):
         # A forward Euler step with the normalized Hebbian learning rule 
         self.w = self.w + self.alpha *  post * (pre - inp_avg)
         if self.w < 0: self.w = 0
+
+
+class input_correlation_synapse(synapse):
+    """ This class implements a version of the input correlation learning rule.
+
+    The rule is based on Porr & Worgotter 2006, Neural Computation 18, 1380-1412. 
+    But we have no constrain on the number of different types of predictive inputs, or on the
+    number of error signals, whose sum acts as the \'error\' signal.
+    """
+
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the parent class, with some additions.
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            'input_type' : each input can be either predictive or error. The predictive inputs are
+                           the ones where the input correlation learning rule is applied, based on
+                           an approximation of the derivatie of the error inputs.
+                           'pred' : predictive input.
+                           'error' : error input.
+
+        Raises:
+            ValueError, AssertionError.
+        """
+
+        super(input_correlation_synapse, self).__init__(params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        self.input_type = params['input_type'] # either 'pred' or 'error'
+
+        # to approximate the input derivatives, we use LPFs at two different time scales
+        if self.input_type == 'error':
+            self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.err_deriv])
+        elif self.input_type = 'pred':
+            self.upd_requirements = set([syn_reqs.err_deriv])
+        else:
+            raise ValueError('The input_type parameter for input correlation synapses should be either pred or error')
+
+        assert self.type is synapse_types.inp_corr, ['Synapse from ' + str(self.preID) + ' to ' +
+                                                          str(self.postID) + ' instantiated with the wrong type']
+    
+    def update(self, time):
+        """ Update the weight using input correlation learning. """
+        if self.input_type == 'pred':
+            pre = self.net.units[self.preID].get_act(time) # If needed, could use lpf_fast instead
+            err_diff = self.net.units[self.preID].
+            self.w = self.w + self.alpha * pre * ...
+
 
 
 

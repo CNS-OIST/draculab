@@ -262,6 +262,15 @@ class unit():
                 self.pos_inp_avg = 0.2  # an arbitrary initialization of the average input value
                 self.n_vec = np.ones(len(self.snorm_units)) # the 'n' vector from Pg.290 of Dayan&Abbott
                 self.functions.add(self.upd_pos_inp_avg)
+            elif req is syn_reqs.err_deriv: 
+                self.err_idx = [] # a list with the indexes of the inputs that provide errors
+                self.pred_idx = [] # a list with the indexes of the inputs that provide predictors 
+                for idx,syn in enumerate(self.net.syns[self.ID]):
+                    if syn.type is synapse_types.inp_corr:
+                        if syn.input_type == 'error'
+                            self.err_idx.append(idx)
+                        else: # assuming input_type == 'pred'
+                            self.pred_idx.append(idx)
             else:
                 raise NotImplementedError('Asking for a requirement not implemented')
 
@@ -311,11 +320,22 @@ class unit():
         """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' pos_inp_avg updated backwards in time']
-
         # first, update the n vector from Eq. 8.14, pg. 290 in Dayan & Abbott
         self.n_vec = [ 1. if syn.w>0. else 0. for syn in self.snorm_syns ]
         
         self.pos_inp_avg = sum([n*(u.lpf_fast) for n,u in zip(self.n_vec, self.snorm_units)]) / sum(self.n_vec)
+
+
+    def upd_err_deriv(self, time):
+        """ Update an approximate derivative of the error inputs used for input correlation learning. 
+
+            A very simple approach is taken, where the derivative is approximated as the difference
+            between the fast and medium low-pass filtered inputs. 
+        """
+        self.err_deriv = ( sum([ self.net.units[i].lpf_fast for i in self.err_idx ]) -
+                           sum([ self.net.units[i].lpf_mid for i in self.err_idx ]) )
+       
+
         
         
 class source(unit):
