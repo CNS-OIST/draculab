@@ -122,7 +122,7 @@ class syn_reqs(Enum):
     pre_lpf_slow = 6  # presynaptic activity low-pass filtered with a slow time constant
     inp_avg = 7   # Sum of fast-LPF'd hebbsnorm inputs, divided by number of hebbsnorm inputs 
     pos_inp_avg = 8 # as inp_avg, but only considers inputs with positive synaptic weights
-    err_deriv = 9 # The approximate derivative of the error signal used in input correlation
+    err_diff = 9 # The approximate derivative of the error signal used in input correlation
     '''
     sum_w = x     # The sum of the weights of all the synapses of the unit  << NOT IMPLEMENTED
     w_list = x    # A list with the weights of all synapses of the unit   << NOT IMPLEMENTED

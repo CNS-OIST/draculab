@@ -69,7 +69,7 @@ class unit():
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
         self.last_time = 0  # time of last call to the update function
-        
+                            # Used by the upd_lpf_X functions
         self.init_buffers() # This will create the buffers that store states and times
         
         self.pre_syn_update = lambda time : None # See init_pre_syn_update below
@@ -134,7 +134,7 @@ class unit():
     def get_weights(self, time):
         """ Returns a list with the weights corresponding to the input list obtained with get_inputs.
         """
-        # once you include axo-axonic connections you have to modify the list below
+        # if you include axo-axonic connections you have to modify the list below
         return [ synapse.get_w(time) for synapse in self.net.syns[self.ID] ]
 
 
@@ -205,7 +205,7 @@ class unit():
         which may be more than once.
 
         Raises:
-            NameError, NotImplementedError.
+            NameError, NotImplementedError, ValueError.
         """ 
         assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
                                          str(self.ID) + ' when simulation time is not zero']
@@ -232,17 +232,22 @@ class unit():
             self.functions = set() 
 
         for req in self.syn_needs:
-            if req is syn_reqs.lpf_fast:
+            if req is syn_reqs.lpf_fast:  # <----------------------------------
                 if not hasattr(self,'tau_fast'): 
-                    raise NameError( 'Synaptic plasticity required unit parameter tau_fast, not yet set' )
+                    raise NameError( 'Synaptic plasticity requires unit parameter tau_fast, not yet set' )
                 self.lpf_fast = self.init_val
                 self.functions.add(self.upd_lpf_fast)
-            elif req is syn_reqs.lpf_slow:
+            elif req is syn_reqs.lpf_mid:  # <----------------------------------
+                if not hasattr(self,'tau_mid'): 
+                    raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
+                self.lpf_mid = self.init_val
+                self.functions.add(self.upd_lpf_mid)
+            elif req is syn_reqs.lpf_slow:  # <----------------------------------
                 if not hasattr(self,'tau_slow'): 
-                    raise NameError( 'Synaptic plasticity required unit parameter tau_slow, not yet set' )
+                    raise NameError( 'Synaptic plasticity requires unit parameter tau_slow, not yet set' )
                 self.lpf_slow = self.init_val
                 self.functions.add(self.upd_lpf_slow)
-            elif req is syn_reqs.inp_avg:
+            elif req is syn_reqs.inp_avg:  # <----------------------------------
                 self.snorm_list = []  # a list with all the presynaptic neurons 
                                       # providing hebbsnorm synapses
                 for syn in self.net.syns[self.ID]:
@@ -251,7 +256,7 @@ class unit():
                 self.n_hebbsnorm = len(self.snorm_list) # number of hebbsnorm synapses received
                 self.inp_avg = 0.2  # an arbitrary initialization of the average input value
                 self.functions.add(self.upd_inp_avg)
-            elif req is syn_reqs.pos_inp_avg:
+            elif req is syn_reqs.pos_inp_avg:  # <----------------------------------
                 self.snorm_units = []  # a list with all the presynaptic neurons 
                                       # providing hebbsnorm synapses
                 self.snorm_syns = []  # a list with the synapses for the list above
@@ -262,17 +267,21 @@ class unit():
                 self.pos_inp_avg = 0.2  # an arbitrary initialization of the average input value
                 self.n_vec = np.ones(len(self.snorm_units)) # the 'n' vector from Pg.290 of Dayan&Abbott
                 self.functions.add(self.upd_pos_inp_avg)
-            elif req is syn_reqs.err_deriv: 
-                self.err_idx = [] # a list with the indexes of the inputs that provide errors
-                self.pred_idx = [] # a list with the indexes of the inputs that provide predictors 
-                for idx,syn in enumerate(self.net.syns[self.ID]):
+            elif req is syn_reqs.err_diff:  # <----------------------------------
+                self.err_idx = [] # a list with the indexes of the units that provide errors
+                self.pred_idx = [] # a list with the indexes of the units that provide predictors 
+                self.err_diff = 0. # approximation of error derivative, updated by upd_err_diff
+                for syn in self.net.syns[self.ID]:
                     if syn.type is synapse_types.inp_corr:
-                        if syn.input_type == 'error'
-                            self.err_idx.append(idx)
-                        else: # assuming input_type == 'pred'
-                            self.pred_idx.append(idx)
-            else:
-                raise NotImplementedError('Asking for a requirement not implemented')
+                        if syn.input_type == 'error':
+                            self.err_idx.append(syn.preID)
+                        elif syn.input_type == 'pred': 
+                            self.pred_idx.append(syn.preID) # not currently using this list
+                        else:
+                            raise ValueError('Incorrect input_type ' + str(syn.input_type) + ' found in synapse')
+                self.functions.add(self.upd_err_diff)
+            else:  # <----------------------------------------------------------------------
+                raise NotImplementedError('Asking for a requirement that is not implemented')
 
         self.pre_syn_update = lambda time: [f(time) for f in self.functions]
 
@@ -288,6 +297,18 @@ class unit():
         # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
         self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_fast ) )
+
+    def upd_lpf_mid(self,time):
+        """ Update the lpf_mid variable. """
+        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+                                        ' lpf_mid updated backwards in time']
+        cur_act = self.get_act(time) # current activity
+        # This updating rule comes from analytically solving 
+        # lpf_x' = ( x - lpf_x ) / tau
+        # and assuming x didn't change much between self.last_time and time.
+        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
+        self.lpf_mid = cur_act + ( (self.lpf_mid - cur_act) * 
+                                   np.exp( (self.last_time-time)/self.tau_mid) )
 
     def upd_lpf_slow(self,time):
         """ Update the lpf_slow variable. """
@@ -326,14 +347,14 @@ class unit():
         self.pos_inp_avg = sum([n*(u.lpf_fast) for n,u in zip(self.n_vec, self.snorm_units)]) / sum(self.n_vec)
 
 
-    def upd_err_deriv(self, time):
+    def upd_err_diff(self, time):
         """ Update an approximate derivative of the error inputs used for input correlation learning. 
 
             A very simple approach is taken, where the derivative is approximated as the difference
             between the fast and medium low-pass filtered inputs. 
         """
-        self.err_deriv = ( sum([ self.net.units[i].lpf_fast for i in self.err_idx ]) -
-                           sum([ self.net.units[i].lpf_mid for i in self.err_idx ]) )
+        self.err_diff = ( sum([ self.net.units[i].lpf_fast for i in self.err_idx ]) -
+                          sum([ self.net.units[i].lpf_mid for i in self.err_idx ]) )
        
 
         
@@ -404,10 +425,13 @@ class source(unit):
     
 class sigmoidal(unit): 
     """
-    An implementation of a typical sigmoidal unit. Its output is produced by linearly
-    suming the inputs (times the synaptic weights), and feeding the sum to a sigmoidal
-    function, which constraints the output to values beween zero and one.
-    Because this unit operates in real time, it updates its value gradually, with
+    An implementation of a typical sigmoidal unit. 
+    
+    Its output is produced by linearly suming the inputs (times the synaptic weights), 
+    and feeding the sum to a sigmoidal function, which constraints the output to values 
+    beween zero and one.
+
+    Because this unit operates in real time, it updates its value gradualy, with
     a 'tau' time constant.
     """
 
@@ -506,9 +530,6 @@ class mp_linear(unit):
         # there is only one state variable (the activity)
         return (self.get_mp_input_sum(t) - y[0]) * self.rtau
  
-
-
-
 
 
 

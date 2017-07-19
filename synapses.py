@@ -262,9 +262,10 @@ class hebb_subsnorm_synapse(synapse):
                                                           str(self.postID) + ' instantiated with the wrong type']
     
     def update(self, time):
-        """ Update the weight with the Hebbian rule with substractive normalization. 
-            If the network is correctly initialized, the pre-synaptic unit will update lpf_fast, 
-            and the post-synaptic unit is updating lpf_fast and its input average.
+        """ Update the weight using the Hebbian rule with substractive normalization. 
+        
+            If the network is correctly initialized, the pre-synaptic unit updates lpf_fast, 
+            and the post-synaptic unit updates lpf_fast and its input average.
         """
         inp_avg = self.net.units[self.postID].pos_inp_avg
         post = self.net.units[self.postID].lpf_fast
@@ -278,9 +279,9 @@ class hebb_subsnorm_synapse(synapse):
 class input_correlation_synapse(synapse):
     """ This class implements a version of the input correlation learning rule.
 
-    The rule is based on Porr & Worgotter 2006, Neural Computation 18, 1380-1412. 
-    But we have no constrain on the number of different types of predictive inputs, or on the
-    number of error signals, whose sum acts as the \'error\' signal.
+        The rule is based on Porr & Worgotter 2006, Neural Computation 18, 1380-1412;
+        but we have no constrain on the number of different types of predictive inputs, or on the
+        number of error signals, whose sum acts as the \'error\' signal.
     """
 
     def __init__(self, params, network):
@@ -291,7 +292,7 @@ class input_correlation_synapse(synapse):
             'lrate' : A scalar value that will multiply the derivative of the weight.
             'input_type' : each input can be either predictive or error. The predictive inputs are
                            the ones where the input correlation learning rule is applied, based on
-                           an approximation of the derivatie of the error inputs.
+                           an approximation of the derivative of the error inputs.
                            'pred' : predictive input.
                            'error' : error input.
 
@@ -306,9 +307,9 @@ class input_correlation_synapse(synapse):
 
         # to approximate the input derivatives, we use LPFs at two different time scales
         if self.input_type == 'error':
-            self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.err_deriv])
-        elif self.input_type = 'pred':
-            self.upd_requirements = set([syn_reqs.err_deriv])
+            self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.err_diff])
+        elif self.input_type == 'pred':
+            self.upd_requirements = set([syn_reqs.err_diff, syn_reqs.pre_lpf_fast])
         else:
             raise ValueError('The input_type parameter for input correlation synapses should be either pred or error')
 
@@ -318,9 +319,12 @@ class input_correlation_synapse(synapse):
     def update(self, time):
         """ Update the weight using input correlation learning. """
         if self.input_type == 'pred':
-            pre = self.net.units[self.preID].get_act(time) # If needed, could use lpf_fast instead
-            err_diff = self.net.units[self.preID].
-            self.w = self.w + self.alpha * pre * ...
+            pre = self.net.units[self.preID].lpf_fast  
+            err_diff = self.net.units[self.postID].err_diff
+            self.w = self.w + self.alpha * pre * err_diff
+
+        # In this version of the rule, the error signals don't alter their weights, and we don't
+        # test for weights becoming negative
 
 
 
