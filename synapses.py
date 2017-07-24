@@ -282,6 +282,10 @@ class input_correlation_synapse(synapse):
         The rule is based on Porr & Worgotter 2006, Neural Computation 18, 1380-1412;
         but we have no constrain on the number of different types of predictive inputs, or on the
         number of error signals, whose sum acts as the \'error\' signal.
+
+        The learning rule for this synapse may fail when combined with a learning rule for
+        selecting the error signals, because the combined error signal used here is
+        not scaled by the synaptic weights.
     """
 
     def __init__(self, params, network):
@@ -322,10 +326,46 @@ class input_correlation_synapse(synapse):
             pre = self.net.units[self.preID].lpf_fast  
             err_diff = self.net.units[self.postID].err_diff
             self.w = self.w + self.alpha * pre * err_diff
-
         # In this version of the rule, the error signals don't alter their weights, and we don't
         # test for weights becoming negative
 
+
+class bcm_synapse(synapse):
+    """ This class implements a version of the BCM learning rule.
+
+        In particular, the Law and Cooper 1994 version.
+        Notice that unlike, for example, Udeigwe, Munro, and Ermentrout 2017, the average
+        used in the learning rule is not the square of the activity, but just the activity.
+        This could have the consequence of making the network less stable.
+    """
+
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the parent class, with one addition.
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+
+        Raises:
+            AssertionError.
+        """
+
+        super(bcm_synapse, self).__init__(params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_fast, syn_reqs.lpf_slow])
+
+        assert self.type is synapse_types.bcm, ['Synapse from ' + str(self.preID) + ' to ' +
+                                                          str(self.postID) + ' instantiated with the wrong type']
+
+    
+    def update(self, time):
+        """ Update the weight using the BCM rule. """
+        post = self.net.units[self.postID].lpf_fast
+        avg = self.net.units[self.postID].lpf_slow
+        pre = self.net.units[self.preID].lpf_fast
+        # A forward Euler step 
+        self.w = self.w + self.alpha * post * (post - avg) * pre / avg
 
 
 

@@ -51,6 +51,7 @@ class synapse_types(Enum):
     anticov = 5  # implements the anti-covariance rule 
     hebbsnorm = 6 # Hebbian rule with substractive normalization
     inp_corr = 7 # Input correlation
+    bcm = 8 # Bienenstock, Cooper, and Munro learning rule
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
     def get_class(self):
@@ -78,6 +79,8 @@ class synapse_types(Enum):
             syn_class = hebb_subsnorm_synapse
         elif self == synapse_types.inp_corr:
             syn_class = input_correlation_synapse
+        elif self == synapse_types.bcm:
+            syn_class = bcm_synapse
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
