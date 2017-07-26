@@ -16,6 +16,7 @@ class unit_types(Enum):
     sigmoidal = 2
     linear = 3
     mp_linear  = 4
+    custom_fi = 5
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -36,9 +37,11 @@ class unit_types(Enum):
             unit_class = linear
         elif self == unit_types.mp_linear:
             unit_class = mp_linear
+        elif self == unit_types.custom_fi:
+            unit_class = custom_fi
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
-            # TODO: NameError instead?
+            # NameError instead?
         return unit_class
 
     
@@ -52,6 +55,7 @@ class synapse_types(Enum):
     hebbsnorm = 6 # Hebbian rule with substractive normalization
     inp_corr = 7 # Input correlation
     bcm = 8 # Bienenstock, Cooper, and Munro learning rule
+    sq_hebbsnorm = 9 # Hebbian rule with substractive normalization, second version
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
     def get_class(self):
@@ -77,6 +81,8 @@ class synapse_types(Enum):
             syn_class = anti_covariance_synapse
         elif self == synapse_types.hebbsnorm:
             syn_class = hebb_subsnorm_synapse
+        elif self == synapse_types.sq_hebbsnorm:
+            syn_class = sq_hebb_subsnorm_synapse
         elif self == synapse_types.inp_corr:
             syn_class = input_correlation_synapse
         elif self == synapse_types.bcm:
@@ -126,14 +132,13 @@ class syn_reqs(Enum):
     inp_avg = 7   # Sum of fast-LPF'd hebbsnorm inputs, divided by number of hebbsnorm inputs 
     pos_inp_avg = 8 # as inp_avg, but only considers inputs with positive synaptic weights
     err_diff = 9 # The approximate derivative of the error signal used in input correlation
+    sc_inp_sum = 10 # Scaled input sum. This is the sum of presynaptic inputs, each multiplied 
+                    # by its synaptic weight, or also the steady-state output of a linear unit. 
     '''
     sum_w = x     # The sum of the weights of all the synapses of the unit  << NOT IMPLEMENTED
     w_list = x    # A list with the weights of all synapses of the unit   << NOT IMPLEMENTED
     inputs = x    # A list with all the inputs of the unit   << NOT IMPLEMENTED
     inp_sum = x  # The sum of all presynaptic inputs   << NOT IMPLEMENTED
-    sc_inp_sum = x # Scaled input sum. This is the sum of presynaptic inputs, 
-                    # each multiplied by its synaptic weight. Same as the 
-                    # steady-state output of a linear unit. << NOT IMPLEMENTED
     '''
 
 

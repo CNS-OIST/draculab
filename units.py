@@ -23,7 +23,7 @@ class unit():
             params: A dictionary with parameters to initialize the unit.
                 REQUIRED PARAMETERS
                 'type' : A unit type from the unit_types enum.
-                'init_val' : initial value for the activation (not used for source units).
+                'init_val' : initial value for the activation 
                 OPTIONAL PARAMETERS
                 'delay': maximum delay among the projections sent by the unit.
                 'coordinates' : a tuple specifying the spatial location of the unit.
@@ -41,10 +41,10 @@ class unit():
         # Copying parameters from dictionary
         # Inside the class there are no dictionaries to avoid their retrieval operations
         self.type = params['type'] # an enum identifying the type of unit being instantiated
-        self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
         self.net = network # the network where the unit lives
         self.rtol = self.net.rtol # local copies of the rtol and atol tolerances
         self.atol = self.net.atol 
+        self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
         # The delay of a unit is the maximum delay among the projections it sends. 
         # Its final value of 'delay' should be set by network.connect(), after the unit is created.
         if 'delay' in params: 
@@ -280,6 +280,17 @@ class unit():
                         else:
                             raise ValueError('Incorrect input_type ' + str(syn.input_type) + ' found in synapse')
                 self.functions.add(self.upd_err_diff)
+            elif req is syn_reqs.sc_inp_sum: # <----------------------------------
+                sq_snorm_units = [] # a list with all the presynaptic neurons providing
+                                        # sq_hebbsnorm synapses
+                sq_snorm_syns = []  # a list with all the sq_hebbsnorm synapses
+                for syn in self.net.syns[self.ID]:
+                    if syn.type is synapse_types.sq_hebbsnorm:
+                        sq_snorm_syns.append(syn)
+                        sq_snorm_units.append(self.net.units[syn.preID])
+                self.u_syn = list(zip(sq_snorm_units, sq_snorm_syns)) # both lists zipped
+                self.sc_inp_sum = 0.2  # an arbitrary initialization of the scaled input value
+                self.functions.add(self.upd_sc_inp_sum)
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
@@ -357,17 +368,25 @@ class unit():
                           sum([ self.net.units[i].lpf_mid for i in self.err_idx ]) )
        
 
+    def upd_sc_inp_sum(self, time):
+        """ Update the sum of the inputs multiplied by their synaptic weights.
+        
+            The actual value being summed is lpf_fast of the presynaptic units.
+        """
+        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+                                        ' sc_inp_sum updated backwards in time']
+        self.sc_inp_sum = sum([u.lpf_fast * syn.w for u,syn in self.u_syn])
         
         
 class source(unit):
     """ The class of units whose activity comes from some Python function.
     
         source units serve provide inputs to the network. They can be conceived as units
-        whose activity at time 't' comes from a function specified with the set_function
-        method.
+        whose activity at time 't' comes from a function f(t). This function is passed to
+        the constructor as a parameter, or later specified with the set_function method.
     """
     
-    def __init__(self, ID, params, funct, network):
+    def __init__(self, ID, params, network):
         """ The class constructor.
 
         In practice, the function giving the activity of the unit is set after the
@@ -375,13 +394,18 @@ class source(unit):
 
         Args:
             ID, params, network : same as in the parent class (unit).
-            funct : Reference to a Python function that gives the activity of the unit.
+            In addition, the params dictionary must include:
+            REQUIRED PARAMETERS
+            'function' : Reference to a Python function that gives the activity of the unit.
+
+            Notice that 'init_val' is still required because it is used to initialize any
+            low-pass filtered values the unit might be keeping.
 
         Raises:
             AssertionError.
         """
         super(source, self).__init__(ID, params, network)
-        self.get_act = funct  # the function which returns activation given the time
+        self.get_act = params['function'] # the function which returns activation given the time
         assert self.type is unit_types.source, ['Unit ' + str(self.ID) + 
                                                 ' instantiated with the wrong type']
 
@@ -407,7 +431,6 @@ class source(unit):
                 for idx, syn in enumerate(syn_list):
                     if syn.preID == self.ID:
                         inp_list[idx] = self.get_act
-                        
                         
 
     def update(self, time):
@@ -460,11 +483,11 @@ class sigmoidal(unit):
                                                             ' instantiated with the wrong type']
         
     def f(self, arg):
-        ''' This is the sigmoidal function. Could roughly think of it as an f-I curve. '''
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
         return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
     
     def derivatives(self, y, t):
-        ''' This function returns the derivatives of the state variables at a given point in time. '''
+        """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
         scaled_inputs = sum([inp*w for inp,w in zip(self.get_inputs(t), self.get_weights(t))])
         return ( self.f(scaled_inputs) - y[0] ) * self.rtau
@@ -531,6 +554,48 @@ class mp_linear(unit):
         return (self.get_mp_input_sum(t) - y[0]) * self.rtau
  
 
+class custom_fi(unit): 
+    """
+    A unit where the f-I curve is provided to the constructor. 
+    
+    If the sum of inputs times their weights is called inp, the output of this unit is
+    f( inp ), where f is the custom f-I curve given to the constructor, or set with
+    the set_fi() method.
 
+    Because this unit operates in real time, it updates its value gradualy, with
+    a 'tau' time constant.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                'tau' : Time constant of the update dynamics.
+                'function' : Reference to a Python function providing the f-I curve
+
+        Raises:
+            AssertionError.
+
+        """
+        super(custom_fi, self).__init__(ID, params, network)
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.f = params['function'] # the f-I curve
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        assert self.type is unit_types.custom_fi, ['Unit ' + str(self.ID) + 
+                                                            ' instantiated with the wrong type']
+        
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        scaled_inputs = sum([inp*w for inp,w in zip(self.get_inputs(t), self.get_weights(t))])
+        return ( self.f(scaled_inputs) - y[0] ) * self.rtau
+ 
+
+    def set_fi(self, fun):
+        """ Set the f-I curve with the given function. """
+        self.f = fun
 
 

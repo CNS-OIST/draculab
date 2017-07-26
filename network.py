@@ -117,7 +117,7 @@ class network():
             params: a dictionary with the parameters used to initialize the units.
                 REQUIRED PARAMETERS
                 'type': a unit model form the unit_types enum.
-                'init_val': initial activation value (ignored for the source units).
+                'init_val': initial activation value (not required for source units).
                 For other required and optional parameters, consult the specific unit models.
 
         Returns: a list with the ID's of the created units.
@@ -129,9 +129,9 @@ class network():
         assert (type(n) == int) and (n > 0), 'Number of units must be a positive integer'
         assert self.sim_time == 0., 'Units are being created when the simulation time is not zero'
 
-        # Any entry in 'params' other than 'coordinates' and 'type' 
-        # should either be a scalar, a list of length 'n', or a numpy array of length 'n'
-        # 'coordinates' should be either a list (with 'n' tuples) or a (1|2|3)-tuple
+        # Any entry in 'params' other than 'coordinates', 'type', or 'function'
+        # should either be a scalar, a list of length 'n', or a numpy array of length 'n'.
+        # 'coordinates' should be either a list (with 'n' tuples) or a (1|2|3)-tuple.
         listed = [] # the entries in 'params' specified with a list
         for par in params:
             if par != 'type':
@@ -141,31 +141,24 @@ class network():
                     else:
                         raise ValueError('Found parameter list of incorrect size during unit creation')
                 elif (type(params[par]) != float) and (type(params[par]) != int):
-                    if not (par == 'coordinates' and type(params[par]) is tuple):
+                    if ( not (par == 'coordinates' and type(params[par]) is tuple) and
+                         not (par == 'function' and callable(params[par])) ):
                         raise TypeError('Found a parameter of the wrong type during unit creation')
                     
         params_copy = params.copy() # The 'params' dictionary that a unit receives in its constructor
                                     # should only contain scalar values. params_copy won't have lists
         # Creating the units
         unit_list = list(range(self.n_units, self.n_units + n))
-        if params['type'] == unit_types.source:
-            default_fun = lambda x: None  # source units start with a null function
-            for ID in unit_list:
-                for par in listed:
-                    params_copy[par] = params[par][ID-self.n_units]
-                self.units.append(source(ID, params_copy, default_fun, self))
-        else:
-            try: 
-                unit_class = params['type'].get_class()
-            except NotImplementedError:
-                raise NotImplementedError('Attempting to create a unit with an unknown type')
+        try: 
+            unit_class = params['type'].get_class()
+        except NotImplementedError:
+            raise NotImplementedError('Attempting to create a unit with an unknown type')
 
-            for ID in unit_list:
-                for par in listed:
-                    params_copy[par] = params[par][ID-self.n_units]
-                self.units.append(unit_class(ID, params_copy, self))
+        for ID in unit_list:
+            for par in listed:
+                params_copy[par] = params[par][ID-self.n_units]
+            self.units.append(unit_class(ID, params_copy, self))
 
-         
         self.n_units += n
         # putting n new slots in the delays, act, and syns lists
         self.delays += [[] for i in range(n)]

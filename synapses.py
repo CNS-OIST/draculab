@@ -237,8 +237,14 @@ class hebb_subsnorm_synapse(synapse):
 
         This is the rule: dw = (pre * post) - (post) * (average of inputs).
         This rule keeps the sum of the synaptic weights constant.
+
+        If a weight becomes negative, this implementation sets it to zero, and ignores it
+        when calculating the input average.
+
         Notice that this rule will ignore any inputs with other type of synapses 
         when it obtains the average input value (see unit.upd_inp_avg and unit.init_pre_syn_update).
+
+        The equation used is 8.14 from Dayan and Abbott "Theoretical Neuroscience" (MIT Press 2001)
     """
     def __init__(self, params, network):
         """ The  class constructor.
@@ -266,6 +272,9 @@ class hebb_subsnorm_synapse(synapse):
         
             If the network is correctly initialized, the pre-synaptic unit updates lpf_fast, 
             and the post-synaptic unit updates lpf_fast and its input average.
+
+            Notice the average input currently comes from pos_inp_avg, which only considers
+            the inputs whose synapses have positive values.
         """
         inp_avg = self.net.units[self.postID].pos_inp_avg
         post = self.net.units[self.postID].lpf_fast
@@ -274,6 +283,55 @@ class hebb_subsnorm_synapse(synapse):
         # A forward Euler step with the normalized Hebbian learning rule 
         self.w = self.w + self.alpha *  post * (pre - inp_avg)
         if self.w < 0: self.w = 0
+
+
+class sq_hebb_subsnorm_synapse(synapse):
+    """ This class implements a version of the Hebbian rule with substractive normalization.
+
+        This is the rule: dw = omega * (pre*post) - w * (post) * (scaled sum of inputs).
+        This rule keeps the sum of the squared synaptic weights asymptotically approaching omega.
+        Notice that this rule will ignore any inputs with other type of synapses 
+        when it obtains the average input value (see unit.upd_sc_inp_sum and unit.init_pre_syn_update).
+
+        The equation used is taken from:
+        Moldakarimov, MacClelland and Ermentrout 2006, "A homeostatic rule for inhibitory synapses 
+        promotes temporal sharpening and cortical reorganization" PNAS 103(44):16526-16531.
+    """
+    def __init__(self, params, network):
+        """ The  class constructor.
+
+        Args: 
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            'omega' : Desired value of the sum of squared weights.
+        Raises:
+            AssertionError.
+
+        """
+        super(sq_hebb_subsnorm_synapse, self).__init__(params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.omega = params['omega'] # the sum of squared weights will approach this
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        # The Hebbian rule requires the current pre- and post-synaptic activity.
+        # Substractive normalization requires the scaled input sum, obtained from lpf_fast values.
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.sc_inp_sum])
+        assert self.type is synapse_types.sq_hebbsnorm, ['Synapse from ' + str(self.preID) + ' to ' +
+                                                          str(self.postID) + ' instantiated with the wrong type']
+    
+    def update(self, time):
+        """ Update the weight using the Hebbian rule with substractive normalization. 
+        
+            If the network is correctly initialized, the pre-synaptic unit updates lpf_fast, 
+            and the post-synaptic unit updates lpf_fast and its scaled sum of lpf'd inputs.
+        """
+        sc_inp_sum = self.net.units[self.postID].sc_inp_sum
+        post = self.net.units[self.postID].lpf_fast
+        pre = self.net.units[self.preID].lpf_fast
+        
+        # A forward Euler step with the normalized Hebbian learning rule 
+        self.w = self.w + self.alpha *  post * ( self.omega * pre - self.w * sc_inp_sum )
+
 
 
 class input_correlation_synapse(synapse):

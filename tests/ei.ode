@@ -1,0 +1,18 @@
+# This program tests a simple network with one excitatory and one
+# inhibitory units. It is meant to reproduce fig. 2 in 
+# Moldakarimov, McClelland, and Ermentrout 2006.
+
+par te=1, ti=20, epse=0.2, epsi=0.2, the=1, thi=2, Iamp=5,
+par t_init=10, t_end=20, alpha=3, beta=1.2, gamma=1
+
+fe(x) = sqrt(epse * ln(1 + exp( (x-the)/epse )))
+fi(x) = epsi * ln(1 + exp( (x-thi)/epsi))
+inp(t) = Iamp*heav(t - t_init)*heav(t_end-t)
+
+e' = (-e + fe(inp(t) + alpha*e - beta*i))/te
+i' = (-i + fi(inp(t) + gamma*e))/ti
+
+init e=0,i=0
+@ total=50
+
+done
