@@ -17,6 +17,7 @@ class unit_types(Enum):
     linear = 3
     mp_linear  = 4
     custom_fi = 5
+    custom_sc_fi = 6
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -39,6 +40,8 @@ class unit_types(Enum):
             unit_class = mp_linear
         elif self == unit_types.custom_fi:
             unit_class = custom_fi
+        elif self == unit_types.custom_sc_fi:
+            unit_class = custom_scaled_fi
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?
@@ -56,6 +59,7 @@ class synapse_types(Enum):
     inp_corr = 7 # Input correlation
     bcm = 8 # Bienenstock, Cooper, and Munro learning rule
     sq_hebbsnorm = 9 # Hebbian rule with substractive normalization, second version
+    homeo_inh = 10 # Homeostatic inhibition
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
     def get_class(self):
@@ -87,6 +91,8 @@ class synapse_types(Enum):
             syn_class = input_correlation_synapse
         elif self == synapse_types.bcm:
             syn_class = bcm_synapse
+        elif self == synapse_types.homeo_inh:
+            syn_class = homeo_inhib_synapse
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -129,10 +135,11 @@ class syn_reqs(Enum):
     pre_lpf_fast = 4  # presynaptic activity low-pass filtered with a fast time constant
     pre_lpf_mid = 5   # presynaptic activity low-pass filtered with a medium time constant
     pre_lpf_slow = 6  # presynaptic activity low-pass filtered with a slow time constant
-    inp_avg = 7   # Sum of fast-LPF'd hebbsnorm inputs, divided by number of hebbsnorm inputs 
-    pos_inp_avg = 8 # as inp_avg, but only considers inputs with positive synaptic weights
-    err_diff = 9 # The approximate derivative of the error signal used in input correlation
-    sc_inp_sum = 10 # Scaled input sum. This is the sum of presynaptic inputs, each multiplied 
+    sq_lpf_slow = 7 # squared postsynaptic activity lpf'd with a slow time constant
+    inp_avg = 8   # Sum of fast-LPF'd hebbsnorm inputs, divided by number of hebbsnorm inputs 
+    pos_inp_avg = 9 # as inp_avg, but only considers inputs with positive synaptic weights
+    err_diff = 10 # The approximate derivative of the error signal used in input correlation
+    sc_inp_sum = 11 # Scaled input sum. This is the sum of presynaptic inputs, each multiplied 
                     # by its synaptic weight, or also the steady-state output of a linear unit. 
     '''
     sum_w = x     # The sum of the weights of all the synapses of the unit  << NOT IMPLEMENTED

@@ -129,7 +129,19 @@ class unit():
         """
         return sum([ syn.w * fun(time-dely, syn.plant_out) for syn,fun,dely in zip(self.net.syns[self.ID], 
                         self.net.act[self.ID], self.net.delays[self.ID]) ])
-    
+
+    def get_sc_input_sum(self, time):
+        """ 
+        Returns the sum of inputs, each scaled by its synaptic weight and by a gain constant. 
+        
+        The sum accounts for transmission delays. Input ports are ignored. 
+
+        The extra scaling factor is the 'gain' attribute of the synapses. This is useful when
+        different types of inputs have different gains applied to them. You then need a unit
+        model that calls get_sc_input_sum instead of get_input_sum. 
+        """
+        return sum([ syn.gain * syn.w * fun(time-dely) for syn,fun,dely in zip(self.net.syns[self.ID], 
+                        self.net.act[self.ID], self.net.delays[self.ID]) ])
 
     def get_weights(self, time):
         """ Returns a list with the weights corresponding to the input list obtained with get_inputs.
@@ -247,6 +259,11 @@ class unit():
                     raise NameError( 'Synaptic plasticity requires unit parameter tau_slow, not yet set' )
                 self.lpf_slow = self.init_val
                 self.functions.add(self.upd_lpf_slow)
+            elif req is syn_reqs.sq_lpf_slow:  # <----------------------------------
+                if not hasattr(self,'tau_slow'): 
+                    raise NameError( 'Synaptic plasticity requires unit parameter tau_slow, not yet set' )
+                self.sq_lpf_slow = self.init_val
+                self.functions.add(self.upd_sq_lpf_slow)
             elif req is syn_reqs.inp_avg:  # <----------------------------------
                 self.snorm_list = []  # a list with all the presynaptic neurons 
                                       # providing hebbsnorm synapses
@@ -309,6 +326,7 @@ class unit():
         self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_fast ) )
 
+
     def upd_lpf_mid(self,time):
         """ Update the lpf_mid variable. """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
@@ -321,6 +339,7 @@ class unit():
         self.lpf_mid = cur_act + ( (self.lpf_mid - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_mid) )
 
+
     def upd_lpf_slow(self,time):
         """ Update the lpf_slow variable. """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
@@ -332,6 +351,20 @@ class unit():
         # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
         self.lpf_slow = cur_act + ( (self.lpf_slow - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_slow ) )
+
+
+    def upd_sq_lpf_slow(self,time):
+        """ Update the sq_lpf_slow variable. """
+        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+                                        ' sq_lpf_slow updated backwards in time']
+        cur_sq_act = self.get_act(time)**2 # square of current activity
+        # This updating rule comes from analytically solving 
+        # lpf_x' = ( x - lpf_x ) / tau
+        # and assuming x didn't change much between self.last_time and time.
+        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
+        self.sq_lpf_slow = cur_sq_act + ( (self.sq_lpf_slow - cur_sq_act) * 
+                                  np.exp( (self.last_time-time)/self.tau_slow ) )
+
 
     def upd_inp_avg(self, time):
         """ Update the average of the inputs with hebbsnorm synapses. 
@@ -489,8 +522,7 @@ class sigmoidal(unit):
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
-        scaled_inputs = sum([inp*w for inp,w in zip(self.get_inputs(t), self.get_weights(t))])
-        return ( self.f(scaled_inputs) - y[0] ) * self.rtau
+        return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
     
 
 class linear(unit): 
@@ -558,9 +590,9 @@ class custom_fi(unit):
     """
     A unit where the f-I curve is provided to the constructor. 
     
-    If the sum of inputs times their weights is called inp, the output of this unit is
-    f( inp ), where f is the custom f-I curve given to the constructor, or set with
-    the set_fi() method.
+    The output of this unit is f( inp ), where f is the custom gain curve given to 
+    the constructor (or set with the set_fi method), and inp is the sum of inputs 
+    times their weights. 
 
     Because this unit operates in real time, it updates its value gradualy, with
     a 'tau' time constant.
@@ -590,12 +622,55 @@ class custom_fi(unit):
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
-        scaled_inputs = sum([inp*w for inp,w in zip(self.get_inputs(t), self.get_weights(t))])
-        return ( self.f(scaled_inputs) - y[0] ) * self.rtau
+        return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
  
 
     def set_fi(self, fun):
         """ Set the f-I curve with the given function. """
         self.f = fun
 
+
+class custom_scaled_fi(unit): 
+    """
+    A unit where the f-I curve is provided to the constructor, and each synapse has an extra gain.
+    
+    The output of this unit is f( inp ), where f is the custom f-I curve given to 
+    the constructor (or set with the set_fi method), and inp is the sum of each input 
+    times its weight, times the synapse's gain factor. The gain factor must be initialized for
+    all the synapses in the unit.
+
+    Because this unit operates in real time, it updates its value gradualy, with
+    a 'tau' time constant.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                'tau' : Time constant of the update dynamics.
+                'function' : Reference to a Python function providing the f-I curve
+
+        Raises:
+            AssertionError.
+
+        """
+        super(custom_scaled_fi, self).__init__(ID, params, network)
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.f = params['function'] # the f-I curve
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        assert self.type is unit_types.custom_sc_fi, ['Unit ' + str(self.ID) + 
+                                                   ' instantiated with the wrong type']
+        
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        return ( self.f(self.get_sc_input_sum(t)) - y[0] ) * self.rtau
+ 
+
+    def set_fi(self, fun):
+        """ Set the f-I curve with the given function. """
+        self.f = fun
 

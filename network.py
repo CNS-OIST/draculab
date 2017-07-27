@@ -556,9 +556,11 @@ class network():
 
         This method takes steps of 'min_delay' length, in which the units, synapses 
         and plants use their own methods to advance their state variables.
-        The method returns a 3-tuple with numpy arrays containing the simulation
-        times when the update functions were called, and the unit activities and 
-        plant states corresponding to those times.
+        
+        The method returns a 3-tuple with numpy arrays containing:
+        1) the simulation times when the update functions were called, 
+        2) the unit activities at those times, 
+        3) the plant states at those times.
 
         After run(T) is finished, calling run(T) again continues the simulation
         starting at the last state of the previous simulation.
