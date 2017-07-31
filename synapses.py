@@ -95,8 +95,15 @@ class static_synapse(synapse):
 class oja_synapse(synapse):
     """ This class implements a continuous version of the Oja learning rule. 
 
+        The equation is: 
+        w' = lrate * post * (pre - w * post)
+        Taken from:
+        Foldiak (1989) "Adaptive network for optimal linear feature extraction"
+        Proc IEEE/INNS IJCNN 1:401-405
+
         Since there are no discrete inputs, the presynaptic activity is tracked with a low-pass filter,
         and used to adapt the weight everytime the "update" function is called.
+        Pre and postsynaptic units need to include a 'tau_fast' parameter.
     """
     def __init__(self, params, network):
         """ The  class constructor.
@@ -132,7 +139,11 @@ class oja_synapse(synapse):
 class anti_hebbian_synapse(synapse):
     """ This class implements a simple version of the anti-Hebbian rule.
     
-        Units that fire together learn to inhibit each other.
+        Units that fire together learn to inhibit each other:
+        w' = - lrate * pre * post
+
+        Presynaptic and postsynaptic activity is tracked with a fast low-pass filter, so
+        pre and postsynaptic units need to include a 'tau_fast' parameter.
     """
 
     def __init__(self, params, network):
@@ -168,7 +179,13 @@ class anti_hebbian_synapse(synapse):
 class covariance_synapse(synapse):
     """ This class implements a version of the covariance rule.
 
-        No tests are made to see if the synapse becomes negative.
+        The equation is: w' = lrate * (post - theta) * pre, 
+        where theta is a low-pass filtered version of post with a slow time constant.
+        This correspond to equation 8.8 in Dayan and Abbott's "Theoretical Neuroscience"
+        (MIT Press 2001). No tests are made to see if the synapse becomes negative.
+
+        Presynaptic units require the 'tau_fast' parameter.
+        Postsynaptic units require 'tau_fast' and 'tau_slow'.
     """
     def __init__(self, params, network):
         """ The  class constructor.
@@ -203,7 +220,17 @@ class covariance_synapse(synapse):
 
 
 class anti_covariance_synapse(synapse):
-    """ This class implements a version of the covariance rule, with the sign of plasticity reversed."""
+    """ This class implements a version of the covariance rule, with the sign of plasticity reversed.
+    
+        w' = - lrate * (post - theta) * pre,
+        where theta is a low-pass filtered version of post with a slow time constant.
+        This correspond to equation 8.8 in Dayan and Abbott's "Theoretical Neuroscience"
+        (MIT Press 2001), with the sign reversed.
+        With this rule, the synaptic weight may go from positive to negative.
+    
+        Presynaptic units require the 'tau_fast' parameter.
+        Postsynaptic units require 'tau_fast' and 'tau_slow'.
+    """
 
     def __init__(self, params, network):
         """ The  class constructor.
@@ -239,7 +266,7 @@ class anti_covariance_synapse(synapse):
 class hebb_subsnorm_synapse(synapse):
     """ This class implements a version of the Hebbian rule with substractive normalization.
 
-        This is the rule: dw = (pre * post) - (post) * (average of inputs).
+        This is the rule: w' = lrate * [ (pre * post) - (post) * (average of inputs) ] .
         This rule keeps the sum of the synaptic weights constant.
 
         If a weight becomes negative, this implementation sets it to zero, and ignores it
@@ -249,6 +276,8 @@ class hebb_subsnorm_synapse(synapse):
         when it obtains the average input value (see unit.upd_inp_avg and unit.init_pre_syn_update).
 
         The equation used is 8.14 from Dayan and Abbott "Theoretical Neuroscience" (MIT Press 2001)
+
+        Presynaptic and postsynaptic units require the 'tau_fast' parameter.
     """
     def __init__(self, params, network):
         """ The  class constructor.
@@ -292,7 +321,7 @@ class hebb_subsnorm_synapse(synapse):
 class sq_hebb_subsnorm_synapse(synapse):
     """ This class implements a version of the Hebbian rule with substractive normalization.
 
-        This is the rule: dw = omega * (pre*post) - w * (post) * (scaled sum of inputs).
+        This is the rule: w' = lrate * [ omega * (pre*post) - w * (post) * (scaled sum of inputs) ] .
         This rule keeps the sum of the squared synaptic weights asymptotically approaching omega.
         Notice that this rule will ignore any inputs with other type of synapses 
         when it obtains the average input value (see unit.upd_sc_inp_sum and unit.init_pre_syn_update).
@@ -300,6 +329,8 @@ class sq_hebb_subsnorm_synapse(synapse):
         The equation used is taken from:
         Moldakarimov, MacClelland and Ermentrout 2006, "A homeostatic rule for inhibitory synapses 
         promotes temporal sharpening and cortical reorganization" PNAS 103(44):16526-16531.
+
+        Presynaptic and postsynaptic units require the 'tau_fast' parameter.
     """
     def __init__(self, params, network):
         """ The  class constructor.
@@ -346,9 +377,18 @@ class input_correlation_synapse(synapse):
         but we have no constrain on the number of different types of predictive inputs, or on the
         number of error signals, whose sum acts as the \'error\' signal.
 
+        Learning happens only on predictive inputs. The equation is: 
+        w' = lrate * pre * err_diff,
+        where err_diff is an approximation to the derivative of the sum of all 'error' inputs.
+        To obtain err_diff, the fast-lpf'd version of the error sum is substracted the
+        medium-lpf'd version (see unit.upd_err_diff) .
+
         The learning rule for this synapse may fail when combined with a learning rule for
         selecting the error signals, because the combined error signal used here is
         not scaled by the synaptic weights.
+
+        'error' presynaptic units require the 'tau_fast' and 'tau_mid' parameters.
+        'pred' presynaptic units require the 'tau_fast' parameter.
     """
 
     def __init__(self, params, network):
@@ -399,6 +439,13 @@ class bcm_synapse(synapse):
 
         In particular, the Law and Cooper 1994 version, where the rule is divided by the
         average squared postsynaptic activity in order to enhance stability.
+
+        The equation is: w' = lrate * pre * post * (post - theta) / theta, 
+        where theta is the average of the squared postsynaptic activity, obtained by
+        low-pass filtering this squared activity using the tau_slow time constant.
+
+        Presynaptic units require the 'tau_fast' parameter.
+        Postsynaptic units require 'tau_fast' and 'tau_slow'.
     """
 
     def __init__(self, params, network):
@@ -443,10 +490,12 @@ class homeo_inhib_synapse(synapse):
         of the rule, the desired activity is adjusted according to a very slow
         average of the activity.
 
-        This synapse "knows" that it is inhibitory; its w value is kept always negative.
+        This synapse "knows" that it is inhibitory; if w becomes positive it is clamped to 0.
         The equation in Moldakarimov et al. is for the magnitude of the weight (e.g.
         very high activity increases the weight), so we use the negative of that
-        equation: w' = (des_act - act)/tau
+        equation: w' = lrate * (des_act - post) = - lrate * (post - des_act)
+
+        Postsynaptic units require the 'tau_fast' parameter.
     """
     def __init__(self, params, network):
         """ The class constructor.

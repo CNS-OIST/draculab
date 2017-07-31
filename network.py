@@ -181,12 +181,12 @@ class network():
                 REQUIRED PARAMETERS
                 'rule' : a string specifying a rule on how to create the connections. 
                         Currently implemented: 
-                        'fixed_outdegree' - an 'outdegree' integer entry must also be in conn_spec,
-                        'fixed_indegree', - an 'indegree' integer entry must also be in conn_spec,
-                        'one_to_one',
+                        'fixed_outdegree' - an 'outdegree' integer entry must also be in conn_spec.
+                        'fixed_indegree' - an 'indegree' integer entry must also be in conn_spec.
+                        'one_to_one' - from_list and to_list should have the same length.
                         'all_to_all'.
                 'delay' : either a dictionary specifying a distribution, or a scalar delay value that
-                        will be applied to all connections. Implemented dsitributions:
+                        will be applied to all connections. Implemented distributions:
                         'uniform' - the delay dictionary must also include 'low' and 'high' values.
                         Delays should be multiples of the network minimum delay.
                 OPTIONAL PARAMETERS
@@ -197,6 +197,7 @@ class network():
                 'init_w' : Initial weight values. Either a dictionary specifying a distribution, or a
                         scalar value to be applied for all created synapses. Distributions:
                         'uniform' - the delay dictionary must also include 'low' and 'high' values.
+                        Example: {..., 'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.} }
                 OPTIONAL PARAMETERS
                 'inp_ports' : input ports of the connections. Either a single integer, or a list.
                             If using a list, its length must match the number of connections being
@@ -311,7 +312,7 @@ class network():
             # specify that 'target' neuron has the 'source' input
             self.act[target].append(self.units[source].get_act)
             # add a new synapse object for our connection
-            syn_params = syn_spec # a copy of syn_spec just for this connection
+            syn_params = syn_spec.copy() # a copy of syn_spec just for this connection
             syn_params['preID'] = source
             syn_params['postID'] = target
             syn_params['init_w'] = weights[idx]
@@ -421,6 +422,7 @@ class network():
                            will be applied to all connections, or a list of values. 
                            Implemented dsitributions:
                            'uniform' - the delay dictionary must also include 'low' and 'high' values.
+                                Example:  'delays':{'distribution':'uniform', 'low':0.1, 'high':1.} 
                             Delays should be multiples of the network minimum delay.
             syn_spec: a dictionary with the synapse specifications.
                 REQUIRED ENTRIES
@@ -525,7 +527,7 @@ class network():
                 # bug when the plant outputs are connected twice, with larger delays on the second time.
                 self.act[target].append(self.plants[plantID].get_state_var_fun(output))
             # add a new synapse object for our connection
-            syn_params = syn_spec # a copy of syn_spec just for this connection
+            syn_params = syn_spec.copy() # a copy of syn_spec just for this connection
             syn_params['preID'] = plantID
             syn_params['postID'] = target
             syn_params['init_w'] = weights[idx]
