@@ -45,6 +45,7 @@ class unit():
         self.rtol = self.net.rtol # local copies of the rtol and atol tolerances
         self.atol = self.net.atol 
         self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
+        self.min_buff_size = network.min_buff_size # a local copy just to avoid the extra reference
         # The delay of a unit is the maximum delay among the projections it sends. 
         # Its final value of 'delay' should be set by network.connect(), after the unit is created.
         if 'delay' in params: 
@@ -80,23 +81,34 @@ class unit():
         This method (re)initializes the buffer variables according to the current parameters.
 
         It is useful because new connections may increase self.delay, and thus the size of the buffers.
+
         """
     
         assert self.net.sim_time == 0., 'Buffers are being reset when the simulation time is not zero'
-        
-        # 'source' units don't use buffers, so for them the method ends here
+
+        min_del = self.net.min_delay  # just to have shorter lines below
+        self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
+
+        # The following buffers are for the low-pass filterd variables required by synaptic plasticity.
+        # They only store one value per update. Updated by upd_lpf_X
+        if syn_reqs.lpf_fast in self.syn_needs:
+            self.lpf_fast_buff = np.array( [self.init_val]*self.steps )
+        if syn_reqs.lpf_mid in self.syn_needs:
+            self.lpf_mid_buff = np.array( [self.init_val]*self.steps )
+        if syn_reqs.lpf_slow in self.syn_needs:
+            self.lpf_slow_buff = np.array( [self.init_val]*self.steps )
+
+        # 'source' units don't use activity buffers, so for them the method ends here
         if self.type == unit_types.source:
             return
         
-        min_del = self.net.min_delay  # just to have shorter lines below
-        min_buff = self.net.min_buff_size
-        self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
+        min_buff = self.min_buff_size
         self.offset = (self.steps-1)*min_buff # an index used in the update function of derived classes
         self.buff_size = int(round(self.steps*min_buff)) # number of activation values to store
         self.buffer = np.array( [self.init_val]*self.buff_size ) # numpy array with previous activation values
         self.times = np.linspace(-self.delay, 0., self.buff_size) # the corresponding times for the buffer values
         self.times_grid = np.linspace(0, min_del, min_buff+1) # used to create values for 'times'
-
+        
         
     def get_inputs(self, time):
         """ 
@@ -165,13 +177,13 @@ class unit():
         assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
 
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.net.min_buff_size)
+        self.times = np.roll(self.times, -self.min_buff_size)
         self.times[self.offset:] = new_times[1:] 
         
         # odeint also returns the initial condition, so to produce min_buff_size new values
         # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
         new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times, rtol=self.rtol, atol=self.atol)
-        self.buffer = np.roll(self.buffer, -self.net.min_buff_size)
+        self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:,0] 
 
         self.pre_syn_update(time) # update any variables needed for the synapse to update
@@ -212,6 +224,9 @@ class unit():
         For each requirement, the unit class should already have the function to calculate it,
         so all init_pre_syn_update needs to do is to ensure that a call to pre_syn_update
         executes all the right functions.
+
+        In addition, for each one of the unit's synapses, init_pre_syn_update will initialize 
+        its delay value.
 
         init_pre_syn_update is called for a unit everytime network.connect() connects it, 
         which may be more than once.
@@ -267,9 +282,11 @@ class unit():
             elif req is syn_reqs.inp_avg:  # <----------------------------------
                 self.snorm_list = []  # a list with all the presynaptic neurons 
                                       # providing hebbsnorm synapses
+                self.snorm_dels = []  # a list with the delay steps for each connection from snorm_list
                 for syn in self.net.syns[self.ID]:
                     if syn.type is synapse_types.hebbsnorm:
                         self.snorm_list.append(self.net.units[syn.preID])
+                        self.snorm_dels.append(syn.delay_steps)
                 self.n_hebbsnorm = len(self.snorm_list) # number of hebbsnorm synapses received
                 self.inp_avg = 0.2  # an arbitrary initialization of the average input value
                 self.functions.add(self.upd_inp_avg)
@@ -277,10 +294,12 @@ class unit():
                 self.snorm_units = []  # a list with all the presynaptic neurons 
                                       # providing hebbsnorm synapses
                 self.snorm_syns = []  # a list with the synapses for the list above
+                self.snorm_delys = []  # a list with the delay steps for these synapses
                 for syn in self.net.syns[self.ID]:
                     if syn.type is synapse_types.hebbsnorm:
                         self.snorm_syns.append(syn)
                         self.snorm_units.append(self.net.units[syn.preID])
+                        self.snorm_delys.append(syn.delay_steps)
                 self.pos_inp_avg = 0.2  # an arbitrary initialization of the average input value
                 self.n_vec = np.ones(len(self.snorm_units)) # the 'n' vector from Pg.290 of Dayan&Abbott
                 self.functions.add(self.upd_pos_inp_avg)
@@ -313,6 +332,10 @@ class unit():
 
         self.pre_syn_update = lambda time: [f(time) for f in self.functions]
 
+        # Each synapse should know the delay of its connection
+        for syn, delay in zip(self.net.syns[self.ID], self.net.delays[self.ID]):
+            syn.delay_steps = int(round(delay/self.net.min_delay))
+
 
     def upd_lpf_fast(self,time):
         """ Update the lpf_fast variable. """
@@ -325,6 +348,14 @@ class unit():
         # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
         self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_fast ) )
+        # update the buffer
+        self.lpf_fast_buff = np.roll(self.lpf_fast_buff, -1)
+        self.lpf_fast_buff[-1] = self.lpf_fast
+
+
+    def get_lpf_fast(self, steps):
+        """ Get the fast low-pass filtered activity, as it was 'step' simulation steps before. """
+        return self.lpf_fast_buff[-1-steps]
 
 
     def upd_lpf_mid(self,time):
@@ -338,6 +369,14 @@ class unit():
         # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
         self.lpf_mid = cur_act + ( (self.lpf_mid - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_mid) )
+        # update the buffer
+        self.lpf_mid_buff = np.roll(self.lpf_mid_buff, -1)
+        self.lpf_mid_buff[-1] = self.lpf_mid
+
+
+    def get_lpf_mid(self, steps):
+        """ Get the mid-speed low-pass filtered activity, as it was 'step' simulation steps before. """
+        return self.lpf_mid_buff[-1-steps]
 
 
     def upd_lpf_slow(self,time):
@@ -351,6 +390,14 @@ class unit():
         # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
         self.lpf_slow = cur_act + ( (self.lpf_slow - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_slow ) )
+        # update the buffer
+        self.lpf_slow_buff = np.roll(self.lpf_slow_buff, -1)
+        self.lpf_slow_buff[-1] = self.lpf_slow
+
+
+    def get_lpf_slow(self, steps):
+        """ Get the slow low-pass filtered activity, as it was 'step' simulation steps before. """
+        return self.lpf_slow_buff[-1-steps]
 
 
     def upd_sq_lpf_slow(self,time):
@@ -373,7 +420,7 @@ class unit():
         """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' inp_avg updated backwards in time']
-        self.inp_avg = sum([u.lpf_fast for u in self.snorm_list]) / self.n_hebbsnorm
+        self.inp_avg = sum([u.get_lpf_fast(s) for u,s in zip(self.snorm_list,self.snorm_dels)]) / self.n_hebbsnorm
         
 
     def upd_pos_inp_avg(self, time):
@@ -388,7 +435,8 @@ class unit():
         # first, update the n vector from Eq. 8.14, pg. 290 in Dayan & Abbott
         self.n_vec = [ 1. if syn.w>0. else 0. for syn in self.snorm_syns ]
         
-        self.pos_inp_avg = sum([n*(u.lpf_fast) for n,u in zip(self.n_vec, self.snorm_units)]) / sum(self.n_vec)
+        self.pos_inp_avg = sum([n*(u.get_lpf_fast(s)) for n,u,s in 
+                                zip(self.n_vec, self.snorm_units, self.snorm_delys)]) / sum(self.n_vec)
 
 
     def upd_err_diff(self, time):

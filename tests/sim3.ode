@@ -11,7 +11,7 @@ par tau=0.02, tau_pre=1, tau_post=1, lrate=0.5
 # Each sigmoidal receives one input, and is fully connected 
 # with the other sigmoidals. All synaptic weights are static,
 # with the exception of some of those received by unit 5, which 
-# evolveaccording to a continuous version of the Oja rule.
+# evolve according to a continuous version of the Oja rule.
 # Projections to unit X hav a delay delX.
 # Synaptic weights from unit X have a weight 2*0.X .
 
@@ -34,10 +34,10 @@ pre2' = (x2-pre2)/tau_pre
 pre3' = (x3-pre3)/tau_pre
 pre4' = (x4-pre4)/tau_pre
 post' = (x5-post)/tau_post
-w1' = lrate*post*(pre1 - post*w1)
-w2' = lrate*post*(pre2 - post*w2)
-w3' = lrate*post*(pre3 - post*w3)
-w4' = lrate*post*(pre4 - post*w4)
+w1' = lrate*post*(delay(pre1,del5) - post*w1)
+w2' = lrate*post*(delay(pre2,del5) - post*w2)
+w3' = lrate*post*(delay(pre3,del5) - post*w3)
+w4' = lrate*post*(delay(pre4,del5) - post*w4)
 
 x1(0)=0.5
 x2(0)=0.5

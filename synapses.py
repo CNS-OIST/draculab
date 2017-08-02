@@ -45,6 +45,7 @@ class synapse():
         if 'plant_out' in params: self.plant_out = params['plant_out']
         # Some unit models call the method get_sc_input_sum, which requires the gain parameter
         if 'gain' in params: self.gain = params['gain'] 
+        self.delay_steps = None # Delay, in simulation steps units. Initialized in unit.init_pre_syn_update.
         # TODO: these tests assume unit-to-unit connections, and if there are more plants than units, 
         # the tests may fail. There should be something to indicate whether the synapse is on a plant
         assert self.net.n_units >= self.preID, 'Synapse connected from non existing unit ' + str(self.preID)  
@@ -99,7 +100,9 @@ class oja_synapse(synapse):
         w' = lrate * post * (pre - w * post)
         Taken from:
         Foldiak (1989) "Adaptive network for optimal linear feature extraction"
-        Proc IEEE/INNS IJCNN 1:401-405
+        Proc IEEE/INNS IJCNN 1:401-405 .
+        A possibly significant difference is that the presynaptic activity (pre) is delayed,
+        according to the transmission delay corresponding to this synapse.
 
         Since there are no discrete inputs, the presynaptic activity is tracked with a low-pass filter,
         and used to adapt the weight everytime the "update" function is called.
@@ -129,8 +132,8 @@ class oja_synapse(synapse):
         """ Update the weight according to the Oja learning rule."""
         # If the network is correctly initialized, the pre- and post-synaptic units
         # are updating their lpf_fast variables at each update() call
-        lpf_post = self.net.units[self.postID].lpf_fast
-        lpf_pre = self.net.units[self.preID].lpf_fast
+        lpf_post = self.net.units[self.postID].lpf_fast  # no delays to get the postsynaptic rate
+        lpf_pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the Oja learning rule 
         self.w = self.w + self.alpha * lpf_post * ( lpf_pre - lpf_post*self.w )
@@ -141,6 +144,7 @@ class anti_hebbian_synapse(synapse):
     
         Units that fire together learn to inhibit each other:
         w' = - lrate * pre * post
+        The presynaptic activity includes its corresponding transmission delay.
 
         Presynaptic and postsynaptic activity is tracked with a fast low-pass filter, so
         pre and postsynaptic units need to include a 'tau_fast' parameter.
@@ -170,7 +174,7 @@ class anti_hebbian_synapse(synapse):
         # If the network is correctly initialized, the pre- and post-synaptic units
         # are updating their lpf_fast variables at each update() call
         lpf_post = self.net.units[self.postID].lpf_fast
-        lpf_pre = self.net.units[self.preID].lpf_fast
+        lpf_pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the anti-Hebbian learning rule 
         self.w = self.w - self.alpha * lpf_post * lpf_pre 
@@ -183,6 +187,7 @@ class covariance_synapse(synapse):
         where theta is a low-pass filtered version of post with a slow time constant.
         This correspond to equation 8.8 in Dayan and Abbott's "Theoretical Neuroscience"
         (MIT Press 2001). No tests are made to see if the synapse becomes negative.
+        The presynaptic activity includes its corresponding transmission delay.
 
         Presynaptic units require the 'tau_fast' parameter.
         Postsynaptic units require 'tau_fast' and 'tau_slow'.
@@ -213,7 +218,7 @@ class covariance_synapse(synapse):
         # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
         avg_post = self.net.units[self.postID].lpf_slow
         post = self.net.units[self.postID].lpf_fast
-        pre = self.net.units[self.preID].lpf_fast
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the covariance learning rule 
         self.w = self.w + self.alpha * (post - avg_post) * pre 
@@ -226,7 +231,8 @@ class anti_covariance_synapse(synapse):
         where theta is a low-pass filtered version of post with a slow time constant.
         This correspond to equation 8.8 in Dayan and Abbott's "Theoretical Neuroscience"
         (MIT Press 2001), with the sign reversed.
-        With this rule, the synaptic weight may go from positive to negative.
+        The presynaptic activity includes its corresponding transmission delay.
+        In this implementation, the synaptic weight may go from positive to negative.
     
         Presynaptic units require the 'tau_fast' parameter.
         Postsynaptic units require 'tau_fast' and 'tau_slow'.
@@ -258,7 +264,7 @@ class anti_covariance_synapse(synapse):
         # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
         avg_post = self.net.units[self.postID].lpf_slow
         post = self.net.units[self.postID].lpf_fast
-        pre = self.net.units[self.preID].lpf_fast
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the anti-covariance learning rule 
         self.w = self.w - self.alpha * (post - avg_post) * pre 
@@ -276,6 +282,8 @@ class hebb_subsnorm_synapse(synapse):
         when it obtains the average input value (see unit.upd_inp_avg and unit.init_pre_syn_update).
 
         The equation used is 8.14 from Dayan and Abbott "Theoretical Neuroscience" (MIT Press 2001)
+        Presynaptic inputs include their delays; this includes all the inputs used to
+        obtain the input average.
 
         Presynaptic and postsynaptic units require the 'tau_fast' parameter.
     """
@@ -311,7 +319,7 @@ class hebb_subsnorm_synapse(synapse):
         """
         inp_avg = self.net.units[self.postID].pos_inp_avg
         post = self.net.units[self.postID].lpf_fast
-        pre = self.net.units[self.preID].lpf_fast
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the normalized Hebbian learning rule 
         self.w = self.w + self.alpha *  post * (pre - inp_avg)
@@ -322,13 +330,16 @@ class sq_hebb_subsnorm_synapse(synapse):
     """ This class implements a version of the Hebbian rule with substractive normalization.
 
         This is the rule: w' = lrate * [ omega * (pre*post) - w * (post) * (scaled sum of inputs) ] .
-        This rule keeps the sum of the squared synaptic weights asymptotically approaching omega.
-        Notice that this rule will ignore any inputs with other type of synapses 
-        when it obtains the average input value (see unit.upd_sc_inp_sum and unit.init_pre_syn_update).
+        This rule keeps the sum of the squared synaptic weights asymptotically approaching omega,
+        and w will not go from positive to negative.
+        This implementation will ignore any inputs with other type of synapses when it obtains 
+        the average input value (see unit.upd_sc_inp_sum and unit.init_pre_syn_update).
 
         The equation used is taken from:
         Moldakarimov, MacClelland and Ermentrout 2006, "A homeostatic rule for inhibitory synapses 
         promotes temporal sharpening and cortical reorganization" PNAS 103(44):16526-16531.
+        Presynaptic inputs include their delays; this includes all the inputs used to
+        obtain the scaled input sum.
 
         Presynaptic and postsynaptic units require the 'tau_fast' parameter.
     """

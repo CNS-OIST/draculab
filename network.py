@@ -323,12 +323,13 @@ class network():
             if self.units[source].delay <= delayz[idx]: # this is the longest delay for this source
                 self.units[source].delay = delayz[idx]+self.min_delay
                 # added self.min_delay because the ODE solver may ask for values a bit out of range
-                self.units[source].init_buffers()
+                # After changing the delay we need to init_buffers again. Done below.
 
-        # After connecting, run init_pre_syn_update for all the units connected 
+        # After connecting, run init_pre_syn_update and init_buffers for all the units connected 
         connected = [x for x,y in connections] + [y for x,y in connections]
         for u in set(connected):
             self.units[u].init_pre_syn_update()
+            self.units[u].init_buffers() # this should go second, so it uses the new syn_needs
 
 
     def set_plant_inputs(self, unitIDs, plantID, conn_spec, syn_spec):
@@ -392,10 +393,15 @@ class network():
         self.plants[plantID].append_inputs(inp_funcs, ports, delys, synaps)
 
         # You may need to update the delay of some sending units
-        for dely, unit in zip(delys, [self.units[id] for id in unitIDs]):
+        for dely, unit in zip(delys, [self.units[ID] for ID in unitIDs]):
             if dely >= unit.delay: # This is the longest delay for the sending unit
                 unit.delay = dely + self.min_delay
                 unit.init_buffers()
+
+        # For good measure, run init_pre_syn_update and init_buffers for all the units connected 
+        for u in unitIDs:
+            self.units[u].init_pre_syn_update()
+            self.units[u].init_buffers() # this should go second, so it uses the new syn_needs
 
    
     def set_plant_outputs(self, plantID, unitIDs, conn_spec, syn_spec):
@@ -426,7 +432,9 @@ class network():
                             Delays should be multiples of the network minimum delay.
             syn_spec: a dictionary with the synapse specifications.
                 REQUIRED ENTRIES
-                'type' : one of the synapse_types. 
+                'type' : one of the synapse_types. The plant parent class does not currently store
+                         and update values used for synaptic plasticity, so synapse models that
+                         require presynaptic values (e.g. lpf_fast) will lead to errors.
                 'init_w': initial synaptic weight. A scalar, or a list of length len(unitIDs)
 
         Raises:
@@ -543,12 +551,12 @@ class network():
             if self.plants[plantID].delay <= delayz[idx]: # this is the longest delay for this source
                 # added self.min_delay because the ODE solver may ask for values a bit out of range
                 self.plants[plantID].delay = delayz[idx]+self.min_delay
-                self.plants[plantID].init_buffers()
                 
-        # After connecting, run init_pre_syn_update for all the units connected 
+        # After connecting, run init_pre_syn_update and init_buffers for all the units connected 
         connected = [y for x,y,z in connections] 
         for u in set(connected):
             self.units[u].init_pre_syn_update()
+            self.units[u].init_buffers() # this should go second, so it uses the new syn_needs
 
 
 

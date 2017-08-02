@@ -26,7 +26,7 @@ class plant():
                 'type' : an enum identifying the type of plant being instantiated.
                 'inp_dim' : input dimensionality; number of qualitatively different input types.
             OPTIONAL PARAMETERS
-                'delay' : maximum delay among the outputs sent by the plant. Set by network.connect
+                'delay' : maximum delay in the outputs sent by the plant. Set by network.set_plant_outputs.
 
         """
         self.ID = ID # An integer identifying the plant
@@ -42,7 +42,7 @@ class plant():
         self.type = params['type'] # an enum identifying the type of plant being instantiated
         self.dim = params['dimension'] # dimensionality of the state vector
         # The delay of a plant is the maximum delay among the projections it sends. 
-        # Its final value of 'delay' should be set by network.connect(), after the plant is created.
+        # Its final value should be set by network.set_plant_outputs(), after the plant is created.
         if 'delay' in params: 
             self.delay = params['delay']
             # delay must be a multiple of net.min_delay. Next line checks that.
