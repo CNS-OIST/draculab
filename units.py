@@ -236,6 +236,11 @@ class unit():
         """ 
         assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
                                          str(self.ID) + ' when simulation time is not zero']
+
+        # Each synapse should know the delay of its connection
+        for syn, delay in zip(self.net.syns[self.ID], self.net.delays[self.ID]):
+            syn.delay_steps = int(round(delay/self.net.min_delay))
+
         # For each synapse you receive, add its requirements
         for syn in self.net.syns[self.ID]:
             self.syn_needs.update(syn.upd_requirements)
@@ -289,6 +294,7 @@ class unit():
                         self.snorm_dels.append(syn.delay_steps)
                 self.n_hebbsnorm = len(self.snorm_list) # number of hebbsnorm synapses received
                 self.inp_avg = 0.2  # an arbitrary initialization of the average input value
+                self.snorm_list_dels = list(zip(self.snorm_list, self.snorm_dels)) # both lists zipped
                 self.functions.add(self.upd_inp_avg)
             elif req is syn_reqs.pos_inp_avg:  # <----------------------------------
                 self.snorm_units = []  # a list with all the presynaptic neurons 
@@ -306,25 +312,30 @@ class unit():
             elif req is syn_reqs.err_diff:  # <----------------------------------
                 self.err_idx = [] # a list with the indexes of the units that provide errors
                 self.pred_idx = [] # a list with the indexes of the units that provide predictors 
+                self.err_dels = [] # a list with the delays for each unit in err_idx
                 self.err_diff = 0. # approximation of error derivative, updated by upd_err_diff
                 for syn in self.net.syns[self.ID]:
                     if syn.type is synapse_types.inp_corr:
                         if syn.input_type == 'error':
                             self.err_idx.append(syn.preID)
+                            self.err_dels.append(syn.delay_steps)
                         elif syn.input_type == 'pred': 
                             self.pred_idx.append(syn.preID) # not currently using this list
                         else:
                             raise ValueError('Incorrect input_type ' + str(syn.input_type) + ' found in synapse')
+                self.err_idx_dels = list(zip(self.err_idx, self.err_dels)) # both lists zipped
                 self.functions.add(self.upd_err_diff)
             elif req is syn_reqs.sc_inp_sum: # <----------------------------------
                 sq_snorm_units = [] # a list with all the presynaptic neurons providing
                                         # sq_hebbsnorm synapses
                 sq_snorm_syns = []  # a list with all the sq_hebbsnorm synapses
+                sq_snorm_dels = []  # a list with the delay steps for the sq_hebbsnorm synapses
                 for syn in self.net.syns[self.ID]:
                     if syn.type is synapse_types.sq_hebbsnorm:
                         sq_snorm_syns.append(syn)
                         sq_snorm_units.append(self.net.units[syn.preID])
-                self.u_syn = list(zip(sq_snorm_units, sq_snorm_syns)) # both lists zipped
+                        sq_snorm_dels.append(syn.delay_steps)
+                self.u_d_syn = list(zip(sq_snorm_units, sq_snorm_dels, sq_snorm_syns)) # all lists zipped
                 self.sc_inp_sum = 0.2  # an arbitrary initialization of the scaled input value
                 self.functions.add(self.upd_sc_inp_sum)
             else:  # <----------------------------------------------------------------------
@@ -332,9 +343,6 @@ class unit():
 
         self.pre_syn_update = lambda time: [f(time) for f in self.functions]
 
-        # Each synapse should know the delay of its connection
-        for syn, delay in zip(self.net.syns[self.ID], self.net.delays[self.ID]):
-            syn.delay_steps = int(round(delay/self.net.min_delay))
 
 
     def upd_lpf_fast(self,time):
@@ -420,7 +428,7 @@ class unit():
         """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' inp_avg updated backwards in time']
-        self.inp_avg = sum([u.get_lpf_fast(s) for u,s in zip(self.snorm_list,self.snorm_dels)]) / self.n_hebbsnorm
+        self.inp_avg = sum([u.get_lpf_fast(s) for u,s in self.snorm_list_dels]) / self.n_hebbsnorm
         
 
     def upd_pos_inp_avg(self, time):
@@ -443,10 +451,11 @@ class unit():
         """ Update an approximate derivative of the error inputs used for input correlation learning. 
 
             A very simple approach is taken, where the derivative is approximated as the difference
-            between the fast and medium low-pass filtered inputs. 
+            between the fast and medium low-pass filtered inputs. Each input arrives with its
+            corresponding transmission delay.
         """
-        self.err_diff = ( sum([ self.net.units[i].lpf_fast for i in self.err_idx ]) -
-                          sum([ self.net.units[i].lpf_mid for i in self.err_idx ]) )
+        self.err_diff = ( sum([ self.net.units[i].get_lpf_fast(s) for i,s in self.err_idx_dels ]) -
+                          sum([ self.net.units[i].get_lpf_mid(s) for i,s in self.err_idx_dels ]) )
        
 
     def upd_sc_inp_sum(self, time):
@@ -456,7 +465,7 @@ class unit():
         """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' sc_inp_sum updated backwards in time']
-        self.sc_inp_sum = sum([u.lpf_fast * syn.w for u,syn in self.u_syn])
+        self.sc_inp_sum = sum([u.get_lpf_fast(d) * syn.w for u,d,syn in self.u_d_syn])
         
         
 class source(unit):

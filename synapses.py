@@ -374,7 +374,7 @@ class sq_hebb_subsnorm_synapse(synapse):
         """
         sc_inp_sum = self.net.units[self.postID].sc_inp_sum
         post = self.net.units[self.postID].lpf_fast
-        pre = self.net.units[self.preID].lpf_fast
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the normalized Hebbian learning rule 
         self.w = self.w + self.alpha *  post * ( self.omega * pre - self.w * sc_inp_sum )
@@ -393,6 +393,7 @@ class input_correlation_synapse(synapse):
         where err_diff is an approximation to the derivative of the sum of all 'error' inputs.
         To obtain err_diff, the fast-lpf'd version of the error sum is substracted the
         medium-lpf'd version (see unit.upd_err_diff) .
+        Both predictive and error inputs arrive with their respective transmission delays.
 
         The learning rule for this synapse may fail when combined with a learning rule for
         selecting the error signals, because the combined error signal used here is
@@ -438,7 +439,7 @@ class input_correlation_synapse(synapse):
     def update(self, time):
         """ Update the weight using input correlation learning. """
         if self.input_type == 'pred':
-            pre = self.net.units[self.preID].lpf_fast  
+            pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
             err_diff = self.net.units[self.postID].err_diff
             self.w = self.w + self.alpha * pre * err_diff
         # In this version of the rule, the error signals don't alter their weights, and we don't
@@ -454,6 +455,7 @@ class bcm_synapse(synapse):
         The equation is: w' = lrate * pre * post * (post - theta) / theta, 
         where theta is the average of the squared postsynaptic activity, obtained by
         low-pass filtering this squared activity using the tau_slow time constant.
+        The pre value used considers the transmission delay of its connection.
 
         Presynaptic units require the 'tau_fast' parameter.
         Postsynaptic units require 'tau_fast' and 'tau_slow'.
@@ -484,7 +486,7 @@ class bcm_synapse(synapse):
         """ Update the weight using the BCM rule. """
         post = self.net.units[self.postID].lpf_fast
         avg_sq = self.net.units[self.postID].sq_lpf_slow
-        pre = self.net.units[self.preID].lpf_fast
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
         self.w = self.w + self.alpha * post * (post - avg_sq) * pre / avg_sq
 

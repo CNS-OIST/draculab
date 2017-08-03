@@ -551,6 +551,7 @@ class network():
             if self.plants[plantID].delay <= delayz[idx]: # this is the longest delay for this source
                 # added self.min_delay because the ODE solver may ask for values a bit out of range
                 self.plants[plantID].delay = delayz[idx]+self.min_delay
+                self.plants[plantID].init_buffers() # update plant buffers
                 
         # After connecting, run init_pre_syn_update and init_buffers for all the units connected 
         connected = [y for x,y,z in connections] 
