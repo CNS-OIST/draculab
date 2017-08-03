@@ -26,7 +26,7 @@ class plant():
                 'type' : an enum identifying the type of plant being instantiated.
                 'inp_dim' : input dimensionality; number of qualitatively different input types.
             OPTIONAL PARAMETERS
-                'delay' : maximum delay among the outputs sent by the plant. Set by network.connect
+                'delay' : maximum delay in the outputs sent by the plant. Set by network.set_plant_outputs.
 
         """
         self.ID = ID # An integer identifying the plant
@@ -42,7 +42,7 @@ class plant():
         self.type = params['type'] # an enum identifying the type of plant being instantiated
         self.dim = params['dimension'] # dimensionality of the state vector
         # The delay of a plant is the maximum delay among the projections it sends. 
-        # Its final value of 'delay' should be set by network.connect(), after the plant is created.
+        # Its final value should be set by network.set_plant_outputs(), after the plant is created.
         if 'delay' in params: 
             self.delay = params['delay']
             # delay must be a multiple of net.min_delay. Next line checks that.
@@ -172,12 +172,23 @@ class pendulum(plant):
     The simplest model of an arm is a rigid rod with one end attached to a rotational
     joint with 1 degree of freedom. Like a rigid pendulum, but the gravity vector is
     optional. 
+    There is no extra mass at the end of the rod; the center of mass is at length/2 .
     
     On the XY plane the joint is at the origin, the positive X direction
     aligns with zero degrees, and gravity points in the negative Y direction.
-    Counterclockwise rotation and torques are positive.
+    Counterclockwise rotation and torques are positive. Angles are in radians, time is
+    in seconds.
 
-    The inputs to the model are all torques applied at the joint.
+    Inputs to the model at port 0 are torques applied at the joint. Other ports are ignored.
+
+    The get_state(time) function returns the two state variables of the model in a numpy 
+    array. Angle has index 0, and angular velocity has index 1. The \'time\' argument
+    should be in the interval [sim_time - del, sim_time], where sim_time is the current
+    simualation time (time of last simulation step), and del is the \'delay\' value
+    of the plant.
+
+    Alternatively, the state variables can be retrieved with the get_angle(t) and
+    get_ang_vel(t) functions.
     """
 
     def __init__(self, ID, params, network):
@@ -234,12 +245,14 @@ class pendulum(plant):
 
 
     def derivatives(self, y, t):
-        ''' This function returns the derivatives of the state variables at a given point in time. '''
-        # y[0] = angle
-        # y[1] = angular velocity
-        # 'inputs' should contain functions providing input torques
+        """ This function returns the derivatives of the state variables at a given point in time. 
+
+            y[0] = angle
+            y[1] = angular velocity
+            The 'inputs' list should contain functions providing input torques
+        """
         torque = self.inp_gain * self.get_input_sum(t,0)
-        # torque may come from gravity and friction
+        # torque may also come from gravity and friction
         torque -= ( np.cos(y[0]) * self.glo2 ) + ( self.mu * y[1] ) 
         # angular acceleration = torque / (inertia moment)
         ang_accel = torque / self.I
@@ -248,10 +261,12 @@ class pendulum(plant):
 
     
     def get_angle(self,time):
-        return self.get_state_var(time,0) 
+        """ Returns the angle in radians, modulo 2*pi. """
+        return self.get_state_var(time,0) % (2*np.pi)
               
 
     def get_ang_vel(self,time):
+        """ Returns the angular velocity in rads per second. """
         return self.get_state_var(time,1) 
 
         
@@ -287,16 +302,5 @@ class conn_tester(plant):
         return np.array([-y[1]*self.get_input_sum(t,0),
                           y[0]*self.get_input_sum(t,1),
                          -y[2]*self.get_input_sum(t,2)])
-
-
-
-
-
-
-
-
-
-
-
 
 

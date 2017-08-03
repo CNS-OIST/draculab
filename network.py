@@ -57,8 +57,8 @@ class network():
         """
         This method is just a front to find out whether we're creating units or a plant.
 
-        If we're creating units, it will call create_units().
-        If we're creating a plant, it will call create_plant().
+        If we're creating units, it will call create_units(n, params).
+        If we're creating a plant, it will call create_plant(n, params).
 
         Raises:
             TypeError.
@@ -117,7 +117,7 @@ class network():
             params: a dictionary with the parameters used to initialize the units.
                 REQUIRED PARAMETERS
                 'type': a unit model form the unit_types enum.
-                'init_val': initial activation value (ignored for the source units).
+                'init_val': initial activation value (not required for source units).
                 For other required and optional parameters, consult the specific unit models.
 
         Returns: a list with the ID's of the created units.
@@ -129,9 +129,9 @@ class network():
         assert (type(n) == int) and (n > 0), 'Number of units must be a positive integer'
         assert self.sim_time == 0., 'Units are being created when the simulation time is not zero'
 
-        # Any entry in 'params' other than 'coordinates' and 'type' 
-        # should either be a scalar, a list of length 'n', or a numpy array of length 'n'
-        # 'coordinates' should be either a list (with 'n' tuples) or a (1|2|3)-tuple
+        # Any entry in 'params' other than 'coordinates', 'type', or 'function'
+        # should either be a scalar, a list of length 'n', or a numpy array of length 'n'.
+        # 'coordinates' should be either a list (with 'n' tuples) or a (1|2|3)-tuple.
         listed = [] # the entries in 'params' specified with a list
         for par in params:
             if par != 'type':
@@ -141,31 +141,24 @@ class network():
                     else:
                         raise ValueError('Found parameter list of incorrect size during unit creation')
                 elif (type(params[par]) != float) and (type(params[par]) != int):
-                    if not (par == 'coordinates' and type(params[par]) is tuple):
+                    if ( not (par == 'coordinates' and type(params[par]) is tuple) and
+                         not (par == 'function' and callable(params[par])) ):
                         raise TypeError('Found a parameter of the wrong type during unit creation')
                     
         params_copy = params.copy() # The 'params' dictionary that a unit receives in its constructor
                                     # should only contain scalar values. params_copy won't have lists
         # Creating the units
         unit_list = list(range(self.n_units, self.n_units + n))
-        if params['type'] == unit_types.source:
-            default_fun = lambda x: None  # source units start with a null function
-            for ID in unit_list:
-                for par in listed:
-                    params_copy[par] = params[par][ID-self.n_units]
-                self.units.append(source(ID, params_copy, default_fun, self))
-        else:
-            try: 
-                unit_class = params['type'].get_class()
-            except NotImplementedError:
-                raise NotImplementedError('Attempting to create a unit with an unknown type')
+        try: 
+            unit_class = params['type'].get_class()
+        except NotImplementedError:
+            raise NotImplementedError('Attempting to create a unit with an unknown type')
 
-            for ID in unit_list:
-                for par in listed:
-                    params_copy[par] = params[par][ID-self.n_units]
-                self.units.append(unit_class(ID, params_copy, self))
+        for ID in unit_list:
+            for par in listed:
+                params_copy[par] = params[par][ID-self.n_units]
+            self.units.append(unit_class(ID, params_copy, self))
 
-         
         self.n_units += n
         # putting n new slots in the delays, act, and syns lists
         self.delays += [[] for i in range(n)]
@@ -181,32 +174,35 @@ class network():
         synapse specfications in the 'syn_spec' dictionary.
         The current version always allows multapses.
 
-        from_list: A list with the IDs of the units sending the connections
-        to_list: A list the IDs of the units receiving the connections
-        conn_spec: A dictionary specifying a connection rule, and delays.
-            REQUIRED PARAMETERS
-            'rule' : a string specifying a rule on how to create the connections. 
-                     Currently implemented: 
-                     'fixed_outdegree' - an 'outdegree' integer entry must also be in conn_spec,
-                     'fixed_indegree', - an 'indegree' integer entry must also be in conn_spec,
-                     'one_to_one',
-                     'all_to_all'.
-            'allow_autapses' : True or False. Can units connect to themselves?
-            'delay' : either a dictionary specifying a distribution, or a scalar delay value that
-                      will be applied to all connections. Implemented dsitributions:
-                      'uniform' - the delay dictionary must also include 'low' and 'high' values.
-                      Delays should be multiples of the network minimum delay.
-        syn_spec: A dictionary used to initialize the synapses in the connections.
-            REQUIRED PARAMETERS
-            'type' : a synapse type from the synapse_types enum.
-            'init_w' : Initial weight values. Either a dictionary specifying a distribution, or a
-                       scalar value to be applied for all created synapses. Distributions:
-                      'uniform' - the delay dictionary must also include 'low' and 'high' values.
-            OPTIONAL PARAMETERS
-            'inp_ports' : input ports of the connections. Either a single integer, or a list.
-                          If using a list, its length must match the number of connections being
-                          created, which depends on the conection rule.
-                
+        Args:
+            from_list: A list with the IDs of the units sending the connections
+            to_list: A list the IDs of the units receiving the connections
+            conn_spec: A dictionary specifying a connection rule, and delays.
+                REQUIRED PARAMETERS
+                'rule' : a string specifying a rule on how to create the connections. 
+                        Currently implemented: 
+                        'fixed_outdegree' - an 'outdegree' integer entry must also be in conn_spec.
+                        'fixed_indegree' - an 'indegree' integer entry must also be in conn_spec.
+                        'one_to_one' - from_list and to_list should have the same length.
+                        'all_to_all'.
+                'delay' : either a dictionary specifying a distribution, or a scalar delay value that
+                        will be applied to all connections. Implemented distributions:
+                        'uniform' - the delay dictionary must also include 'low' and 'high' values.
+                        Delays should be multiples of the network minimum delay.
+                OPTIONAL PARAMETERS
+                'allow_autapses' : True or False. Can units connect to themselves? Default is True.
+            syn_spec: A dictionary used to initialize the synapses in the connections.
+                REQUIRED PARAMETERS
+                'type' : a synapse type from the synapse_types enum.
+                'init_w' : Initial weight values. Either a dictionary specifying a distribution, or a
+                        scalar value to be applied for all created synapses. Distributions:
+                        'uniform' - the delay dictionary must also include 'low' and 'high' values.
+                        Example: {..., 'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.} }
+                OPTIONAL PARAMETERS
+                'inp_ports' : input ports of the connections. Either a single integer, or a list.
+                            If using a list, its length must match the number of connections being
+                            created, which depends on the conection rule.
+                    
         Raises:
             ValueError, TypeError, NotImplementedError.
         """
@@ -217,6 +213,9 @@ class network():
 
         # Retrieve the synapse class from its type object
         syn_class = syn_spec['type'].get_class()
+
+        # If 'allow_autapses' not in dictionary, set default value
+        if not ('allow_autapses' in conn_spec): conn_spec['allow_autapses'] = True
        
         # The units connected depend on the connectivity rule in conn_spec
         # We'll specify  connectivity by creating a list of 2-tuples with all the
@@ -313,7 +312,7 @@ class network():
             # specify that 'target' neuron has the 'source' input
             self.act[target].append(self.units[source].get_act)
             # add a new synapse object for our connection
-            syn_params = syn_spec # a copy of syn_spec just for this connection
+            syn_params = syn_spec.copy() # a copy of syn_spec just for this connection
             syn_params['preID'] = source
             syn_params['postID'] = target
             syn_params['init_w'] = weights[idx]
@@ -324,12 +323,13 @@ class network():
             if self.units[source].delay <= delayz[idx]: # this is the longest delay for this source
                 self.units[source].delay = delayz[idx]+self.min_delay
                 # added self.min_delay because the ODE solver may ask for values a bit out of range
-                self.units[source].init_buffers()
+                # After changing the delay we need to init_buffers again. Done below.
 
-        # After connecting, run init_pre_syn_update for all the units connected 
+        # After connecting, run init_pre_syn_update and init_buffers for all the units connected 
         connected = [x for x,y in connections] + [y for x,y in connections]
         for u in set(connected):
             self.units[u].init_pre_syn_update()
+            self.units[u].init_buffers() # this should go second, so it uses the new syn_needs
 
 
     def set_plant_inputs(self, unitIDs, plantID, conn_spec, syn_spec):
@@ -363,7 +363,7 @@ class network():
         # Then connect them to the plant...
         # Have to create a list with the delays (if one is not given in the conn_spec)
         if type(conn_spec['delays']) is float:
-            delys = [conn_spec['delays'] for _ in inp_funcs]
+            delys = [conn_spec['delays'] for _ in unitIDs]
         elif (type(conn_spec['delays']) is list) or (type(conn_spec['delays']) is np.ndarray):
             delys = conn_spec['delays']
         else:
@@ -393,10 +393,15 @@ class network():
         self.plants[plantID].append_inputs(inp_funcs, ports, delys, synaps)
 
         # You may need to update the delay of some sending units
-        for dely, unit in zip(delys, [self.units[id] for id in unitIDs]):
+        for dely, unit in zip(delys, [self.units[ID] for ID in unitIDs]):
             if dely >= unit.delay: # This is the longest delay for the sending unit
                 unit.delay = dely + self.min_delay
                 unit.init_buffers()
+
+        # For good measure, run init_pre_syn_update and init_buffers for all the units connected 
+        for u in unitIDs:
+            self.units[u].init_pre_syn_update()
+            self.units[u].init_buffers() # this should go second, so it uses the new syn_needs
 
    
     def set_plant_outputs(self, plantID, unitIDs, conn_spec, syn_spec):
@@ -423,10 +428,13 @@ class network():
                            will be applied to all connections, or a list of values. 
                            Implemented dsitributions:
                            'uniform' - the delay dictionary must also include 'low' and 'high' values.
+                                Example:  'delays':{'distribution':'uniform', 'low':0.1, 'high':1.} 
                             Delays should be multiples of the network minimum delay.
             syn_spec: a dictionary with the synapse specifications.
                 REQUIRED ENTRIES
-                'type' : one of the synapse_types. 
+                'type' : one of the synapse_types. The plant parent class does not currently store
+                         and update values used for synaptic plasticity, so synapse models that
+                         require presynaptic values (e.g. lpf_fast) will lead to errors.
                 'init_w': initial synaptic weight. A scalar, or a list of length len(unitIDs)
 
         Raises:
@@ -496,7 +504,7 @@ class network():
         # Initialize the delays. We'll create a list 'delayz' that
         # has a delay value for each entry in 'connections'
         if type(conn_spec['delays']) is dict: 
-            d_dict = conn_spec['delay']
+            d_dict = conn_spec['delays']
             if d_dict['distribution'] == 'uniform':  #<----------------------
                 # delays must be multiples of the minimum delay
                 low_int = max(1, round(d_dict['low']/self.min_delay))
@@ -506,7 +514,7 @@ class network():
             else:
                 raise NotImplementedError('Initializing delays with an unknown distribution')
         elif type(conn_spec['delays']) is float or type(conn_spec['delays']) is int:
-            delayz = [float(conn_spec['delay'])] * n_conns
+            delayz = [float(conn_spec['delays'])] * n_conns
         elif type(conn_spec['delays']) is list and T_if_scal(conn_spec['delays']):
             if len(conn_spec['delays']) == n_conns:
                 delayz = conn_spec['delays']
@@ -527,7 +535,7 @@ class network():
                 # bug when the plant outputs are connected twice, with larger delays on the second time.
                 self.act[target].append(self.plants[plantID].get_state_var_fun(output))
             # add a new synapse object for our connection
-            syn_params = syn_spec # a copy of syn_spec just for this connection
+            syn_params = syn_spec.copy() # a copy of syn_spec just for this connection
             syn_params['preID'] = plantID
             syn_params['postID'] = target
             syn_params['init_w'] = weights[idx]
@@ -543,12 +551,13 @@ class network():
             if self.plants[plantID].delay <= delayz[idx]: # this is the longest delay for this source
                 # added self.min_delay because the ODE solver may ask for values a bit out of range
                 self.plants[plantID].delay = delayz[idx]+self.min_delay
-                self.plants[plantID].init_buffers()
+                self.plants[plantID].init_buffers() # update plant buffers
                 
-        # After connecting, run init_pre_syn_update for all the units connected 
+        # After connecting, run init_pre_syn_update and init_buffers for all the units connected 
         connected = [y for x,y,z in connections] 
         for u in set(connected):
             self.units[u].init_pre_syn_update()
+            self.units[u].init_buffers() # this should go second, so it uses the new syn_needs
 
 
 
@@ -558,9 +567,12 @@ class network():
 
         This method takes steps of 'min_delay' length, in which the units, synapses 
         and plants use their own methods to advance their state variables.
-        The method returns a 3-tuple with numpy arrays containing the simulation
-        times when the update functions were called, and the unit activities and 
-        plant states corresponding to those times.
+        
+        The method returns a 3-tuple with numpy arrays containing:
+        1) the simulation times when the update functions were called, 
+        2) the unit activities at those times, 
+        3) the plant states at those times.
+
         After run(T) is finished, calling run(T) again continues the simulation
         starting at the last state of the previous simulation.
         """

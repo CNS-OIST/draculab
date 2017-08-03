@@ -23,7 +23,7 @@ class unit():
             params: A dictionary with parameters to initialize the unit.
                 REQUIRED PARAMETERS
                 'type' : A unit type from the unit_types enum.
-                'init_val' : initial value for the activation (not used for source units).
+                'init_val' : initial value for the activation 
                 OPTIONAL PARAMETERS
                 'delay': maximum delay among the projections sent by the unit.
                 'coordinates' : a tuple specifying the spatial location of the unit.
@@ -41,10 +41,11 @@ class unit():
         # Copying parameters from dictionary
         # Inside the class there are no dictionaries to avoid their retrieval operations
         self.type = params['type'] # an enum identifying the type of unit being instantiated
-        self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
         self.net = network # the network where the unit lives
         self.rtol = self.net.rtol # local copies of the rtol and atol tolerances
         self.atol = self.net.atol 
+        self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
+        self.min_buff_size = network.min_buff_size # a local copy just to avoid the extra reference
         # The delay of a unit is the maximum delay among the projections it sends. 
         # Its final value of 'delay' should be set by network.connect(), after the unit is created.
         if 'delay' in params: 
@@ -69,7 +70,7 @@ class unit():
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
         self.last_time = 0  # time of last call to the update function
-        
+                            # Used by the upd_lpf_X functions
         self.init_buffers() # This will create the buffers that store states and times
         
         self.pre_syn_update = lambda time : None # See init_pre_syn_update below
@@ -80,23 +81,34 @@ class unit():
         This method (re)initializes the buffer variables according to the current parameters.
 
         It is useful because new connections may increase self.delay, and thus the size of the buffers.
+
         """
     
         assert self.net.sim_time == 0., 'Buffers are being reset when the simulation time is not zero'
-        
-        # 'source' units don't use buffers, so for them the method ends here
+
+        min_del = self.net.min_delay  # just to have shorter lines below
+        self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
+
+        # The following buffers are for the low-pass filterd variables required by synaptic plasticity.
+        # They only store one value per update. Updated by upd_lpf_X
+        if syn_reqs.lpf_fast in self.syn_needs:
+            self.lpf_fast_buff = np.array( [self.init_val]*self.steps )
+        if syn_reqs.lpf_mid in self.syn_needs:
+            self.lpf_mid_buff = np.array( [self.init_val]*self.steps )
+        if syn_reqs.lpf_slow in self.syn_needs:
+            self.lpf_slow_buff = np.array( [self.init_val]*self.steps )
+
+        # 'source' units don't use activity buffers, so for them the method ends here
         if self.type == unit_types.source:
             return
         
-        min_del = self.net.min_delay  # just to have shorter lines below
-        min_buff = self.net.min_buff_size
-        self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
+        min_buff = self.min_buff_size
         self.offset = (self.steps-1)*min_buff # an index used in the update function of derived classes
         self.buff_size = int(round(self.steps*min_buff)) # number of activation values to store
         self.buffer = np.array( [self.init_val]*self.buff_size ) # numpy array with previous activation values
         self.times = np.linspace(-self.delay, 0., self.buff_size) # the corresponding times for the buffer values
         self.times_grid = np.linspace(0, min_del, min_buff+1) # used to create values for 'times'
-
+        
         
     def get_inputs(self, time):
         """ 
@@ -129,12 +141,24 @@ class unit():
         """
         return sum([ syn.w * fun(time-dely, syn.plant_out) for syn,fun,dely in zip(self.net.syns[self.ID], 
                         self.net.act[self.ID], self.net.delays[self.ID]) ])
-    
+
+    def get_sc_input_sum(self, time):
+        """ 
+        Returns the sum of inputs, each scaled by its synaptic weight and by a gain constant. 
+        
+        The sum accounts for transmission delays. Input ports are ignored. 
+
+        The extra scaling factor is the 'gain' attribute of the synapses. This is useful when
+        different types of inputs have different gains applied to them. You then need a unit
+        model that calls get_sc_input_sum instead of get_input_sum. 
+        """
+        return sum([ syn.gain * syn.w * fun(time-dely) for syn,fun,dely in zip(self.net.syns[self.ID], 
+                        self.net.act[self.ID], self.net.delays[self.ID]) ])
 
     def get_weights(self, time):
         """ Returns a list with the weights corresponding to the input list obtained with get_inputs.
         """
-        # once you include axo-axonic connections you have to modify the list below
+        # if you include axo-axonic connections you have to modify the list below
         return [ synapse.get_w(time) for synapse in self.net.syns[self.ID] ]
 
 
@@ -153,13 +177,13 @@ class unit():
         assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
 
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.net.min_buff_size)
+        self.times = np.roll(self.times, -self.min_buff_size)
         self.times[self.offset:] = new_times[1:] 
         
         # odeint also returns the initial condition, so to produce min_buff_size new values
         # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
         new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times, rtol=self.rtol, atol=self.atol)
-        self.buffer = np.roll(self.buffer, -self.net.min_buff_size)
+        self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:,0] 
 
         self.pre_syn_update(time) # update any variables needed for the synapse to update
@@ -201,14 +225,22 @@ class unit():
         so all init_pre_syn_update needs to do is to ensure that a call to pre_syn_update
         executes all the right functions.
 
+        In addition, for each one of the unit's synapses, init_pre_syn_update will initialize 
+        its delay value.
+
         init_pre_syn_update is called for a unit everytime network.connect() connects it, 
         which may be more than once.
 
         Raises:
-            NameError, NotImplementedError.
+            NameError, NotImplementedError, ValueError.
         """ 
         assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
                                          str(self.ID) + ' when simulation time is not zero']
+
+        # Each synapse should know the delay of its connection
+        for syn, delay in zip(self.net.syns[self.ID], self.net.delays[self.ID]):
+            syn.delay_steps = int(round(delay/self.net.min_delay))
+
         # For each synapse you receive, add its requirements
         for syn in self.net.syns[self.ID]:
             self.syn_needs.update(syn.upd_requirements)
@@ -232,40 +264,85 @@ class unit():
             self.functions = set() 
 
         for req in self.syn_needs:
-            if req is syn_reqs.lpf_fast:
+            if req is syn_reqs.lpf_fast:  # <----------------------------------
                 if not hasattr(self,'tau_fast'): 
-                    raise NameError( 'Synaptic plasticity required unit parameter tau_fast, not yet set' )
+                    raise NameError( 'Synaptic plasticity requires unit parameter tau_fast, not yet set' )
                 self.lpf_fast = self.init_val
                 self.functions.add(self.upd_lpf_fast)
-            elif req is syn_reqs.lpf_slow:
+            elif req is syn_reqs.lpf_mid:  # <----------------------------------
+                if not hasattr(self,'tau_mid'): 
+                    raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
+                self.lpf_mid = self.init_val
+                self.functions.add(self.upd_lpf_mid)
+            elif req is syn_reqs.lpf_slow:  # <----------------------------------
                 if not hasattr(self,'tau_slow'): 
-                    raise NameError( 'Synaptic plasticity required unit parameter tau_slow, not yet set' )
+                    raise NameError( 'Synaptic plasticity requires unit parameter tau_slow, not yet set' )
                 self.lpf_slow = self.init_val
                 self.functions.add(self.upd_lpf_slow)
-            elif req is syn_reqs.inp_avg:
+            elif req is syn_reqs.sq_lpf_slow:  # <----------------------------------
+                if not hasattr(self,'tau_slow'): 
+                    raise NameError( 'Synaptic plasticity requires unit parameter tau_slow, not yet set' )
+                self.sq_lpf_slow = self.init_val
+                self.functions.add(self.upd_sq_lpf_slow)
+            elif req is syn_reqs.inp_avg:  # <----------------------------------
                 self.snorm_list = []  # a list with all the presynaptic neurons 
                                       # providing hebbsnorm synapses
+                self.snorm_dels = []  # a list with the delay steps for each connection from snorm_list
                 for syn in self.net.syns[self.ID]:
                     if syn.type is synapse_types.hebbsnorm:
                         self.snorm_list.append(self.net.units[syn.preID])
+                        self.snorm_dels.append(syn.delay_steps)
                 self.n_hebbsnorm = len(self.snorm_list) # number of hebbsnorm synapses received
                 self.inp_avg = 0.2  # an arbitrary initialization of the average input value
+                self.snorm_list_dels = list(zip(self.snorm_list, self.snorm_dels)) # both lists zipped
                 self.functions.add(self.upd_inp_avg)
-            elif req is syn_reqs.pos_inp_avg:
+            elif req is syn_reqs.pos_inp_avg:  # <----------------------------------
                 self.snorm_units = []  # a list with all the presynaptic neurons 
                                       # providing hebbsnorm synapses
                 self.snorm_syns = []  # a list with the synapses for the list above
+                self.snorm_delys = []  # a list with the delay steps for these synapses
                 for syn in self.net.syns[self.ID]:
                     if syn.type is synapse_types.hebbsnorm:
                         self.snorm_syns.append(syn)
                         self.snorm_units.append(self.net.units[syn.preID])
+                        self.snorm_delys.append(syn.delay_steps)
                 self.pos_inp_avg = 0.2  # an arbitrary initialization of the average input value
                 self.n_vec = np.ones(len(self.snorm_units)) # the 'n' vector from Pg.290 of Dayan&Abbott
                 self.functions.add(self.upd_pos_inp_avg)
-            else:
-                raise NotImplementedError('Asking for a requirement not implemented')
+            elif req is syn_reqs.err_diff:  # <----------------------------------
+                self.err_idx = [] # a list with the indexes of the units that provide errors
+                self.pred_idx = [] # a list with the indexes of the units that provide predictors 
+                self.err_dels = [] # a list with the delays for each unit in err_idx
+                self.err_diff = 0. # approximation of error derivative, updated by upd_err_diff
+                for syn in self.net.syns[self.ID]:
+                    if syn.type is synapse_types.inp_corr:
+                        if syn.input_type == 'error':
+                            self.err_idx.append(syn.preID)
+                            self.err_dels.append(syn.delay_steps)
+                        elif syn.input_type == 'pred': 
+                            self.pred_idx.append(syn.preID) # not currently using this list
+                        else:
+                            raise ValueError('Incorrect input_type ' + str(syn.input_type) + ' found in synapse')
+                self.err_idx_dels = list(zip(self.err_idx, self.err_dels)) # both lists zipped
+                self.functions.add(self.upd_err_diff)
+            elif req is syn_reqs.sc_inp_sum: # <----------------------------------
+                sq_snorm_units = [] # a list with all the presynaptic neurons providing
+                                        # sq_hebbsnorm synapses
+                sq_snorm_syns = []  # a list with all the sq_hebbsnorm synapses
+                sq_snorm_dels = []  # a list with the delay steps for the sq_hebbsnorm synapses
+                for syn in self.net.syns[self.ID]:
+                    if syn.type is synapse_types.sq_hebbsnorm:
+                        sq_snorm_syns.append(syn)
+                        sq_snorm_units.append(self.net.units[syn.preID])
+                        sq_snorm_dels.append(syn.delay_steps)
+                self.u_d_syn = list(zip(sq_snorm_units, sq_snorm_dels, sq_snorm_syns)) # all lists zipped
+                self.sc_inp_sum = 0.2  # an arbitrary initialization of the scaled input value
+                self.functions.add(self.upd_sc_inp_sum)
+            else:  # <----------------------------------------------------------------------
+                raise NotImplementedError('Asking for a requirement that is not implemented')
 
         self.pre_syn_update = lambda time: [f(time) for f in self.functions]
+
 
 
     def upd_lpf_fast(self,time):
@@ -279,6 +356,36 @@ class unit():
         # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
         self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_fast ) )
+        # update the buffer
+        self.lpf_fast_buff = np.roll(self.lpf_fast_buff, -1)
+        self.lpf_fast_buff[-1] = self.lpf_fast
+
+
+    def get_lpf_fast(self, steps):
+        """ Get the fast low-pass filtered activity, as it was 'step' simulation steps before. """
+        return self.lpf_fast_buff[-1-steps]
+
+
+    def upd_lpf_mid(self,time):
+        """ Update the lpf_mid variable. """
+        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+                                        ' lpf_mid updated backwards in time']
+        cur_act = self.get_act(time) # current activity
+        # This updating rule comes from analytically solving 
+        # lpf_x' = ( x - lpf_x ) / tau
+        # and assuming x didn't change much between self.last_time and time.
+        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
+        self.lpf_mid = cur_act + ( (self.lpf_mid - cur_act) * 
+                                   np.exp( (self.last_time-time)/self.tau_mid) )
+        # update the buffer
+        self.lpf_mid_buff = np.roll(self.lpf_mid_buff, -1)
+        self.lpf_mid_buff[-1] = self.lpf_mid
+
+
+    def get_lpf_mid(self, steps):
+        """ Get the mid-speed low-pass filtered activity, as it was 'step' simulation steps before. """
+        return self.lpf_mid_buff[-1-steps]
+
 
     def upd_lpf_slow(self,time):
         """ Update the lpf_slow variable. """
@@ -291,6 +398,28 @@ class unit():
         # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
         self.lpf_slow = cur_act + ( (self.lpf_slow - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_slow ) )
+        # update the buffer
+        self.lpf_slow_buff = np.roll(self.lpf_slow_buff, -1)
+        self.lpf_slow_buff[-1] = self.lpf_slow
+
+
+    def get_lpf_slow(self, steps):
+        """ Get the slow low-pass filtered activity, as it was 'step' simulation steps before. """
+        return self.lpf_slow_buff[-1-steps]
+
+
+    def upd_sq_lpf_slow(self,time):
+        """ Update the sq_lpf_slow variable. """
+        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+                                        ' sq_lpf_slow updated backwards in time']
+        cur_sq_act = self.get_act(time)**2 # square of current activity
+        # This updating rule comes from analytically solving 
+        # lpf_x' = ( x - lpf_x ) / tau
+        # and assuming x didn't change much between self.last_time and time.
+        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
+        self.sq_lpf_slow = cur_sq_act + ( (self.sq_lpf_slow - cur_sq_act) * 
+                                  np.exp( (self.last_time-time)/self.tau_slow ) )
+
 
     def upd_inp_avg(self, time):
         """ Update the average of the inputs with hebbsnorm synapses. 
@@ -299,7 +428,7 @@ class unit():
         """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' inp_avg updated backwards in time']
-        self.inp_avg = sum([u.lpf_fast for u in self.snorm_list]) / self.n_hebbsnorm
+        self.inp_avg = sum([u.get_lpf_fast(s) for u,s in self.snorm_list_dels]) / self.n_hebbsnorm
         
 
     def upd_pos_inp_avg(self, time):
@@ -311,22 +440,43 @@ class unit():
         """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' pos_inp_avg updated backwards in time']
-
         # first, update the n vector from Eq. 8.14, pg. 290 in Dayan & Abbott
         self.n_vec = [ 1. if syn.w>0. else 0. for syn in self.snorm_syns ]
         
-        self.pos_inp_avg = sum([n*(u.lpf_fast) for n,u in zip(self.n_vec, self.snorm_units)]) / sum(self.n_vec)
+        self.pos_inp_avg = sum([n*(u.get_lpf_fast(s)) for n,u,s in 
+                                zip(self.n_vec, self.snorm_units, self.snorm_delys)]) / sum(self.n_vec)
+
+
+    def upd_err_diff(self, time):
+        """ Update an approximate derivative of the error inputs used for input correlation learning. 
+
+            A very simple approach is taken, where the derivative is approximated as the difference
+            between the fast and medium low-pass filtered inputs. Each input arrives with its
+            corresponding transmission delay.
+        """
+        self.err_diff = ( sum([ self.net.units[i].get_lpf_fast(s) for i,s in self.err_idx_dels ]) -
+                          sum([ self.net.units[i].get_lpf_mid(s) for i,s in self.err_idx_dels ]) )
+       
+
+    def upd_sc_inp_sum(self, time):
+        """ Update the sum of the inputs multiplied by their synaptic weights.
+        
+            The actual value being summed is lpf_fast of the presynaptic units.
+        """
+        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+                                        ' sc_inp_sum updated backwards in time']
+        self.sc_inp_sum = sum([u.get_lpf_fast(d) * syn.w for u,d,syn in self.u_d_syn])
         
         
 class source(unit):
     """ The class of units whose activity comes from some Python function.
     
         source units serve provide inputs to the network. They can be conceived as units
-        whose activity at time 't' comes from a function specified with the set_function
-        method.
+        whose activity at time 't' comes from a function f(t). This function is passed to
+        the constructor as a parameter, or later specified with the set_function method.
     """
     
-    def __init__(self, ID, params, funct, network):
+    def __init__(self, ID, params, network):
         """ The class constructor.
 
         In practice, the function giving the activity of the unit is set after the
@@ -334,13 +484,18 @@ class source(unit):
 
         Args:
             ID, params, network : same as in the parent class (unit).
-            funct : Reference to a Python function that gives the activity of the unit.
+            In addition, the params dictionary must include:
+            REQUIRED PARAMETERS
+            'function' : Reference to a Python function that gives the activity of the unit.
+
+            Notice that 'init_val' is still required because it is used to initialize any
+            low-pass filtered values the unit might be keeping.
 
         Raises:
             AssertionError.
         """
         super(source, self).__init__(ID, params, network)
-        self.get_act = funct  # the function which returns activation given the time
+        self.get_act = params['function'] # the function which returns activation given the time
         assert self.type is unit_types.source, ['Unit ' + str(self.ID) + 
                                                 ' instantiated with the wrong type']
 
@@ -367,7 +522,6 @@ class source(unit):
                     if syn.preID == self.ID:
                         inp_list[idx] = self.get_act
                         
-                        
 
     def update(self, time):
         """ 
@@ -384,10 +538,13 @@ class source(unit):
     
 class sigmoidal(unit): 
     """
-    An implementation of a typical sigmoidal unit. Its output is produced by linearly
-    suming the inputs (times the synaptic weights), and feeding the sum to a sigmoidal
-    function, which constraints the output to values beween zero and one.
-    Because this unit operates in real time, it updates its value gradually, with
+    An implementation of a typical sigmoidal unit. 
+    
+    Its output is produced by linearly suming the inputs (times the synaptic weights), 
+    and feeding the sum to a sigmoidal function, which constraints the output to values 
+    beween zero and one.
+
+    Because this unit operates in real time, it updates its value gradualy, with
     a 'tau' time constant.
     """
 
@@ -416,14 +573,13 @@ class sigmoidal(unit):
                                                             ' instantiated with the wrong type']
         
     def f(self, arg):
-        ''' This is the sigmoidal function. Could roughly think of it as an f-I curve. '''
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
         return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
     
     def derivatives(self, y, t):
-        ''' This function returns the derivatives of the state variables at a given point in time. '''
+        """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
-        scaled_inputs = sum([inp*w for inp,w in zip(self.get_inputs(t), self.get_weights(t))])
-        return ( self.f(scaled_inputs) - y[0] ) * self.rtau
+        return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
     
 
 class linear(unit): 
@@ -487,9 +643,91 @@ class mp_linear(unit):
         return (self.get_mp_input_sum(t) - y[0]) * self.rtau
  
 
+class custom_fi(unit): 
+    """
+    A unit where the f-I curve is provided to the constructor. 
+    
+    The output of this unit is f( inp ), where f is the custom gain curve given to 
+    the constructor (or set with the set_fi method), and inp is the sum of inputs 
+    times their weights. 
+
+    Because this unit operates in real time, it updates its value gradualy, with
+    a 'tau' time constant.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                'tau' : Time constant of the update dynamics.
+                'function' : Reference to a Python function providing the f-I curve
+
+        Raises:
+            AssertionError.
+
+        """
+        super(custom_fi, self).__init__(ID, params, network)
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.f = params['function'] # the f-I curve
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        assert self.type is unit_types.custom_fi, ['Unit ' + str(self.ID) + 
+                                                            ' instantiated with the wrong type']
+        
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
+ 
+
+    def set_fi(self, fun):
+        """ Set the f-I curve with the given function. """
+        self.f = fun
 
 
+class custom_scaled_fi(unit): 
+    """
+    A unit where the f-I curve is provided to the constructor, and each synapse has an extra gain.
+    
+    The output of this unit is f( inp ), where f is the custom f-I curve given to 
+    the constructor (or set with the set_fi method), and inp is the sum of each input 
+    times its weight, times the synapse's gain factor. The gain factor must be initialized for
+    all the synapses in the unit.
 
+    Because this unit operates in real time, it updates its value gradualy, with
+    a 'tau' time constant.
+    """
 
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
 
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                'tau' : Time constant of the update dynamics.
+                'function' : Reference to a Python function providing the f-I curve
+
+        Raises:
+            AssertionError.
+
+        """
+        super(custom_scaled_fi, self).__init__(ID, params, network)
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.f = params['function'] # the f-I curve
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        assert self.type is unit_types.custom_sc_fi, ['Unit ' + str(self.ID) + 
+                                                   ' instantiated with the wrong type']
+        
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        return ( self.f(self.get_sc_input_sum(t)) - y[0] ) * self.rtau
+ 
+
+    def set_fi(self, fun):
+        """ Set the f-I curve with the given function. """
+        self.f = fun
 
