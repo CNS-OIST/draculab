@@ -471,7 +471,7 @@ class unit():
 class source(unit):
     """ The class of units whose activity comes from some Python function.
     
-        source units serve provide inputs to the network. They can be conceived as units
+        source units provide inputs to the network. They can be conceived as units
         whose activity at time 't' comes from a function f(t). This function is passed to
         the constructor as a parameter, or later specified with the set_function method.
     """
