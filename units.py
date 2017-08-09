@@ -200,9 +200,18 @@ class unit():
         This version works for units that store their previous activity values in a buffer.
         Units without buffers (e.g. source units) have their own get_act function.
         """
+        # Commented out is the more general interpolation using interp1d
         # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
-        return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
-                        fill_value="extrapolate", assume_sorted=True)(time)
+        #return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
+        #                fill_value="extrapolate", assume_sorted=True)(time)
+        
+        # This linear interpolation takes advantage of the ordered, regularly-spaced buffer
+        time = min( max(time,self.times[0]), self.times[-1] ) # clipping 'time'
+        frac = (time-self.times[0])/(self.times[-1]-self.times[0])
+        base = int(np.floor(frac*(self.buff_size-1))) # biggest index s.t. times[index] <= time
+        frac2 = ( time-self.times[base] ) / ( self.times[min(base+1,self.buff_size-1)] - self.times[base] + 1e-8 )
+        return self.buffer[base] + frac2 * ( self.buffer[min(base+1,self.buff_size-1)] -
+                                             self.buffer[base] )
 
   
     def init_pre_syn_update(self):
