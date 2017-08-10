@@ -112,12 +112,20 @@ class network():
         If you want one of the parameters to have different values for each unit, you can have a list
         (or numpy array) of length 'n' in the corresponding 'params' entry
 
+        In addition, this function can give a particular spatial arrangement to the 
+        created units by appropriately setting their 'coordinates' attribute.
+
         Args:
             n: an integer indicating how many units to create.
             params: a dictionary with the parameters used to initialize the units.
                 REQUIRED PARAMETERS
-                'type': a unit model form the unit_types enum.
-                'init_val': initial activation value (not required for source units).
+                'type' : a unit model form the unit_types enum.
+                'init_val' : initial activation value (also required for source units).
+                OPTIONAL PARAMETERS
+                'coordinates' : The spatial location of the units can be specified in 2 ways:
+                                * One numpy array (a single point). All units will have this location.
+                                * A list of n arrays. Each unit will be assigned one array.
+                                          
                 For other required and optional parameters, consult the specific unit models.
 
         Returns: a list with the ID's of the created units.
@@ -131,19 +139,32 @@ class network():
 
         # Any entry in 'params' other than 'coordinates', 'type', or 'function'
         # should either be a scalar, a list of length 'n', or a numpy array of length 'n'.
-        # 'coordinates' should be either a list (with 'n' tuples) or a (1|2|3)-tuple.
+        # 'coordinates' should be either a list (with 'n' arrays) or a (1|2|3) array.
         listed = [] # the entries in 'params' specified with a list
         for par in params:
-            if par != 'type':
-                if (type(params[par]) is list) or (type(params[par]) is np.ndarray):
+            if par == 'type':
+                if not issubclass(type(params[par]), unit_types):
+                    raise TypeError('Incorrect unit type')
+            elif par == 'coordinates':
+                if type(params[par]) is np.ndarray:
+                    pass
+                elif type(params[par]) is list:
                     if len(params[par]) == n:
                         listed.append(par)
                     else:
-                        raise ValueError('Found parameter list of incorrect size during unit creation')
-                elif (type(params[par]) != float) and (type(params[par]) != int):
-                    if ( not (par == 'coordinates' and type(params[par]) is tuple) and
-                         not (par == 'function' and callable(params[par])) ):
-                        raise TypeError('Found a parameter of the wrong type during unit creation')
+                        raise ValueError('coordinates list has incorrect size')
+                else:
+                    raise TypeError('Incorrect type for the coordinates parameter')
+            elif par == 'function':
+                if not callable(params[par]):
+                    raise TypeError('Incorrect function initialization in create_units')
+            elif (type(params[par]) is list) or (type(params[par]) is np.ndarray):
+                if len(params[par]) == n:
+                    listed.append(par)
+                else:
+                    raise ValueError('Found parameter list of incorrect size during unit creation')
+            elif (type(params[par]) != float) and (type(params[par]) != int):
+                raise TypeError('Found a parameter of the wrong type during unit creation')
                     
         params_copy = params.copy() # The 'params' dictionary that a unit receives in its constructor
                                     # should only contain scalar values. params_copy won't have lists
@@ -166,7 +187,79 @@ class network():
         self.syns += [[] for i in range(n)]
         # note:  [[]]*n causes all empty lists to be the same object 
         return unit_list
-    
+
+
+    def create_group(self, geometry, params):
+        """ 
+        Create a group of units with a particular spatial arrangement.
+
+        This method uses the specifications given in the 'geometry' argument to decide
+        how many units to create, and assign them coordinates. It then calls create_units.
+        The units of measurement (e.g. millimeters) are unspecified; the implementer is
+        responsible for their consistency.
+        
+        The current implementation can only do one thing: create flat 2D layers with a given
+        number of rows and columns.
+
+        Args:
+            geometry : A dictionary specifying the spatial location of the units.
+                REQUIRED ENTRIES
+                'shape': a string with the geometrical shape of the space where the units will be placed. 
+                         Currently accepted values: 
+                         'sheet': a flat 2D rectangular surface. The geometry dictionary should
+                                  also include an 'extent' property, which is a 2D list
+                                  with the size of this sheet. If 'center' is 3D, its first 2
+                                  coordinates will be used as the center of the sheet; other
+                                  coordinates are currently ignored.
+                'arrangement':  A string specifying how the units will fill the shape.
+                                Valid values:
+                                'grid': Grid arrangement. The geometry dictionary must also contain the integer
+                                    entries 'rows' and 'columns'. The first coordinates (e.g. x coordinate) of
+                                    all units will come from putting 'columns' points inside an interval of 
+                                    length equal to the first 'extent' value; the distance between 
+                                    contiguous points is twice the distance of the first and last points
+                                    to the edge of the interval. The second coordinates of all units will be
+                                    created similarly using 'rows'.
+                'center': a list or array with the coordinates for the geometrical center of the space where
+                          the units will be placed.
+                CONTINGENT ENTRIES
+                'extent' : see 'shape'>'sheet'.
+                'rows','columns': see 'arrangement'>'grid'.
+
+            params: a dictionary with the parameters used to initialize the units.
+                REQUIRED PARAMETERS
+                'type' : a unit model form the unit_types enum.
+                'init_val' : initial activation value (also required for source units).
+                Other required entries depend on the specific unit model being created.
+                                        
+        Returns: a list with the ID's of the created units.
+
+        Raises:
+            ValueError, TypeError, NotImplementedError, KeyError
+        """
+        if geometry['shape'] == 'sheet':
+            if geometry['arrangement'] == 'grid':
+                # generate a list with the coodinates for each point of the grid
+                xbit = geometry['extent'][0]/geometry['columns'] # size of intervals on x-axis
+                ybit = geometry['extent'][1]/geometry['rows']    # size of intervals on y-axis
+                x_vals = np.linspace(xbit/2., geometry['extent'][0]-(xbit/2), geometry['columns'])
+                y_vals = np.linspace(ybit/2., geometry['extent'][1]-(ybit/2), geometry['rows'])
+                x_vals = [ x + geometry['center'][0] - geometry['extent'][0]/2. for x in x_vals ]
+                y_vals = [ y + geometry['center'][1] - geometry['extent'][1]/2. for y in y_vals ]
+                
+                coord_list = []
+                for x in x_vals:
+                    for y in y_vals:
+                        coord_list.append(np.array([x,y]))
+            else:
+                raise NotImplementedError('Unknown geometry arrangement in create_group')
+        else:
+            raise NotImplementedError('Unknown shape specification in create_group')
+
+        params['coordinates'] = coord_list
+        return self.create_units(len(coord_list), params)
+
+                                   
     def connect(self, from_list, to_list, conn_spec, syn_spec):
         """
         connect the units in the 'from_list' to the units in the 'to_list' using the

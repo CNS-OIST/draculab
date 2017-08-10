@@ -26,7 +26,7 @@ class unit():
                 'init_val' : initial value for the activation 
                 OPTIONAL PARAMETERS
                 'delay': maximum delay among the projections sent by the unit.
-                'coordinates' : a tuple specifying the spatial location of the unit.
+                'coordinates' : a numpy array specifying the spatial location of the unit.
                 'tau_fast' : time constant for the fast low-pass filter.
                 'tau_mid' : time constant for the medium-speed low-pass filter.
                 'tau_slow' : time constant for the slow low-pass filter.
@@ -205,13 +205,13 @@ class unit():
         #return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
         #                fill_value="extrapolate", assume_sorted=True)(time)
         
-        # This linear interpolation takes advantage of the ordered, regularly-spaced buffer
+        # This linear interpolation takes advantage of the ordered, regularly-spaced buffer.
+        # time values outside the buffer range receive the buffer endpoints.
         time = min( max(time,self.times[0]), self.times[-1] ) # clipping 'time'
         frac = (time-self.times[0])/(self.times[-1]-self.times[0])
         base = int(np.floor(frac*(self.buff_size-1))) # biggest index s.t. times[index] <= time
         frac2 = ( time-self.times[base] ) / ( self.times[min(base+1,self.buff_size-1)] - self.times[base] + 1e-8 )
-        return self.buffer[base] + frac2 * ( self.buffer[min(base+1,self.buff_size-1)] -
-                                             self.buffer[base] )
+        return self.buffer[base] + frac2 * ( self.buffer[min(base+1,self.buff_size-1)] - self.buffer[base] )
 
   
     def init_pre_syn_update(self):
