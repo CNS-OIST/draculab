@@ -156,7 +156,10 @@ class network():
                 else:
                     raise TypeError('Incorrect type for the coordinates parameter')
             elif par == 'function':
-                if not callable(params[par]):
+                if type(params[par]) is list:
+                    if len(params[par]) == n:
+                        listed.append(par)
+                elif not callable(params[par]):
                     raise TypeError('Incorrect function initialization in create_units')
             elif (type(params[par]) is list) or (type(params[par]) is np.ndarray):
                 if len(params[par]) == n:
@@ -262,6 +265,8 @@ class network():
                                    
     def connect(self, from_list, to_list, conn_spec, syn_spec):
         """
+        Connect units using delayed transmission lines and synaptic connections.
+
         connect the units in the 'from_list' to the units in the 'to_list' using the
         connection specifications in the 'conn_spec' dictionary, and the
         synapse specfications in the 'syn_spec' dictionary.
@@ -269,7 +274,9 @@ class network():
 
         Args:
             from_list: A list with the IDs of the units sending the connections
+
             to_list: A list the IDs of the units receiving the connections
+            
             conn_spec: A dictionary specifying a connection rule, and delays.
                 REQUIRED PARAMETERS
                 'rule' : a string specifying a rule on how to create the connections. 
@@ -278,17 +285,22 @@ class network():
                         'fixed_indegree' - an 'indegree' integer entry must also be in conn_spec.
                         'one_to_one' - from_list and to_list should have the same length.
                         'all_to_all'.
-                'delay' : either a dictionary specifying a distribution, or a scalar delay value that
-                        will be applied to all connections. Implemented distributions:
+                'delay' : either a dictionary specifying a distribution, a scalar delay value that
+                        will be applied to all connections, or a list with a delay value for each one
+                        of the connections to be made. Implemented distributions:
                         'uniform' - the delay dictionary must also include 'low' and 'high' values.
+                            Example:
+                            {...,'init_w':{'distribution':'uniform', 'low':0.1, 'high':0.3}, ...}
                         Delays should be multiples of the network minimum delay.
                 OPTIONAL PARAMETERS
                 'allow_autapses' : True or False. Can units connect to themselves? Default is True.
+
             syn_spec: A dictionary used to initialize the synapses in the connections.
                 REQUIRED PARAMETERS
                 'type' : a synapse type from the synapse_types enum.
-                'init_w' : Initial weight values. Either a dictionary specifying a distribution, or a
-                        scalar value to be applied for all created synapses. Distributions:
+                'init_w' : Initial weight values. Either a dictionary specifying a distribution, a
+                        scalar value to be applied for all created synapses, or a list with length equal
+                        to the number of connections to be made. Distributions:
                         'uniform' - the delay dictionary must also include 'low' and 'high' values.
                         Example: {..., 'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.} }
                 OPTIONAL PARAMETERS
@@ -362,6 +374,11 @@ class network():
                 raise NotImplementedError('Initializing weights with an unknown distribution')
         elif type(syn_spec['init_w']) is float or type(syn_spec['init_w']) is int:
             weights = [float(syn_spec['init_w'])] * n_conns
+        elif type(syn_spec['init_w']) is list:
+            if len(syn_spec['init_w']) == n_conns:
+                weights = syn_spec['init_w']
+            else:
+                raise ValueError('Received wrong number of weights to initialize connections')
         else:
             raise TypeError('The value given to the initial weights is of the wrong type')
 
@@ -382,6 +399,14 @@ class network():
                 delayz = [float(conn_spec['delay'])] * n_conns
             else:
                 raise ValueError('Delays should be multiples of the network minimum delay')
+        elif type(conn_spec['delay']) is list:
+            if len(conn_spec['delay']) == n_conns:
+                delayz = conn_spec['delay']
+                for dely in delayz:
+                    if (dely+1e-6)%self.min_delay > 2e-6:
+                        raise ValueError('Delays should be multiples of the network minimum delay')
+            else:
+                raise ValueError('Received wrong number of delays to initialize connections')
         else:
             raise TypeError('The value given to the delay is of the wrong type')
 
@@ -425,8 +450,192 @@ class network():
             self.units[u].init_buffers() # this should go second, so it uses the new syn_needs
 
 
+    def topo_connect(self, from_list, to_list, conn_spec, syn_spec):
+        """ 
+        Connect two groups of units based on their spatial locations.
+
+        This method is a version of connect() with two modifications:
+        1) All units involved must have a valid 'coordinates' attribute. One way to set the 
+           coordinates is by using the create_group() method instead of create().
+        2) The conn_spec dictionary has entries to specify the spatial connection profile.
+
+        topo_connect() works by first specifing which units to connect, with which weights,
+        and with which delays. Using this it calls the connect() method. The same syn_spec
+        dictionary is used when calling connect(), but the init_w values may be modified. 
+        
+        The conn_spec dictionary used by topo_connect mimics specifications used by PyNEST's 
+        topology module.
+
+        Args:
+            from_list: A list with the IDs of the units sending the connections
+
+            to_list: A list the IDs of the units receiving the connections
+
+            conn_spec: A dictionary specifying a connection profile.
+                REQUIRED ENTRIES
+                'connection_type' : A string that specifies in which group to apply the mask and kernel.
+                        Accepted values: 
+                        'convergent': When selecting units to connect, for each unit of the 'to_list'
+                            we will select input sources from the 'from_list' among those units allowed
+                            by the mask and the kernel. NOT IMPLEMENTED YET.
+                        'divergent': When selecting units to connect, for each unit of the 'from_list'
+                            we will select connection recipients from the 'to_list' among those units
+                            within the mask and the kernel.
+                'mask' : A dictionary that specifies a set of units that are eligile for receiving
+                         (when using the 'divergent' rule) or sending (when using the 'convergent'
+                         rule) connections. The regions specified in this dictionary are centered on the
+                         coordinates of each sending unit for divergent connections, and on those of
+                         each receving unit for convergent connections.
+                         Should have 1 of the following items:
+                         'circular': The value should be a dictionary with a 'radius' entry.
+                         'rectangular': The value should be a dictionary with 'lower_left' and
+                            'upper_right' entries. These two are lists with the coordinates of the
+                            lower left and upper right coordinates of the rectangular mask, with the
+                            origin at the coordinates of the sending (for divergent connections) or 
+                            receiving (for convergent connections) unit.
+                         'annular': The value should be a dictionary with 'inner_radius' and
+                            'outer_radius' entries.
+                'kernel' :  For each pair of units eligible for connection (e.g. one is within the mask), 
+                          the kernel rule assigns a probability for connecting them, based on some spatial
+                          criterion. The center of the kernel is at the sending unit for divergent connections,
+                          and at the receiving unit for convergent connections.
+                          Accepted values are either a scalar with the probability of connection for each
+                          eligible unit inside the mask, or one of the following dictionaries.
+                          >> {'gaussian' : {'p_center': p, "sigma": s}}. In this case each eligible
+                              unit that is a distance 'd' from the center of the kernel will connect with
+                              probability  p*exp(- (d/s)**2 ).
+                          >> {'linear' : {'c' : c, 'a' : a}}. Units at a distance 'd' from the center of the 
+                              kernel will connect with probability c*max( 1-a*d, 0 )
+                'delays' : A dictionary that specifies the delay of each connection as a function of
+                          the distance between the sending and the receiving unit. It should contain
+                          one of the following dictionaries:
+                          >> {'linear' :  'c' : c, 'a' : a}}. The connection between units with distance 'd'
+                              will have a delay equal to [c + a*d], where the square brackets indicate that 
+                              this value will be transformed to the nearest multiple of the minimum 
+                              transmission delay. Notice a=0 implies all delays will have value c.
+                OPTIONAL ENTRIES
+                'allow_autapses' : Can units connect to themselves? Default is True.
+                'weights' : A dictionary specifying a distribution for the initial weights of the connections.
+                            The accepted distributions are:
+                           >> {'uniform' : {'low': l, 'high' : h}}. Here l and h are scalar values.
+                           >> {'linear' : {'c' : c, 'a' : a}}. Units with distance d will connect with
+                              synaptic weight c - max( 1 - a*d, 0) .
+                           >> {'gaussian' : {'p_center' : w, 'sigma' : s}}. Units with distance d will
+                              connect with synaptic weight w * exp( - (d/s)**2 ) . 
+
+                'edge_wrap' : Assume that all units are inside a rectangle with periodic boundaries (e.g. 
+                              toroidal topology). By default this is set to False, but if set to True the 
+                              size and location of that rectangle must be set with the 'boundary' dictionary.
+                'boundary' : Specifies a rectangle that contains all units. The value should be a
+                            dictionary of the form:
+                            >> {'center' : c, 'extent' : [x, y]}.
+                               In this case c represents a list or an array with the coordinates of the
+                               boundary rectangle. x and y are scalars that specify its width and length.
+                
+            syn_spec: A dictionary used to initialize the synapses in the connections.
+                REQUIRED PARAMETERS
+                'type' : a synapse type from the synapse_types enum.
+                'init_w' : Initial weight values. Either a dictionary specifying a distribution, or a
+                        scalar value to be applied for all created synapses. Distributions:
+                        'uniform' - the delay dictionary must also include 'low' and 'high' values.
+                        Example: {..., 'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.} }
+                        Notice that these values will be overwritten whenever there is a 'weights'
+                        entry in the conn_spec dictionary.
+                OPTIONAL PARAMETERS
+                'inp_ports' : input ports of the connections. Either a single integer, or a list.
+                            If using a list, its length must match the number of connections being
+                            created, which depends on the conection rule.
+                         
+
+
+        """
+        # TODO: it would be very easy to implement the 'targets' option by reducing the to_list to 
+        # those units of a particular type at this point. I don't need that feature now, though.
+
+        # TODO: depending on the 'edge_wrap' property you need to set a distance function that takes
+        #       the two pairs of coordinates and returns the distance. The simple case is the one
+        #       you're using below: d = np.sqrt( sum( (uc - to_c) * (uc - to_c) ) ). The case with
+        #       periodic boundaries needs to find the shortest horizontal and vertical distances
+        #       (so both are <= conn_spec[boundary][extent][0|1]/2) and return the sqrt of the sum
+        #       of the squared distances. Repalce the distance calculations below (also in kernel).
+
+        connections = []  # a list with all the connection pairs as (source,target)
+        distances = [] # the distance for the units in each entry of 'connections'
+        if conn_spec['connection_type'] == 'divergent':
+            for idx in from_list:
+                uc = self.units[idx].coordinates # center for the sending unit, mask, and kernel
+                # we will make a list with all the units in 'to_list' inside the mask
+                masked = []
+                if 'circular' in conn_spec['mask']: 
+                    for to_idx in to_list:
+                        to_c = self.units[to_idx].coordinates
+                        d = np.sqrt( sum( (uc - to_c) * (uc - to_c) ) )
+                        if d <= conn_spec['mask']['radius']
+                            masked.append[to_idx]
+                elif 'annular' in conn_spec['mask']: 
+                    for to_idx in to_list:
+                        to_c = self.units[to_idx].coordinates
+                        d = np.sqrt( sum( (uc - to_c) * (uc - to_c) ) )
+                        if ( d >= conn_spec['mask']['inner_radius'] and 
+                             d <= conn_spec['mask']['outer_radius'] )
+                            masked.append[to_idx]
+                elif 'rectangular' in conn_spec['mask']:
+                    for to_idx in to_list:
+                        to_c = self.units[to_idx].coordinates
+                        # center the coordinates of the rectangular mask on the sending unit
+                        ll0 = conn_spec['mask']['rectangular']['lower_left'][0] - uc[0]
+                        ll1 = conn_spec['mask']['rectangular']['lower_left'][1] - uc[1]
+                        ur0 = conn_spec['mask']['rectangular']['upper_right'][0] - uc[0]
+                        ur1 = conn_spec['mask']['rectangular']['upper_right'][1] - uc[1]
+                        # test if the receiving unit is inside the rectangle
+                        if ( to_c[0] >= ll0 and to_c[1] >= ll1 ):
+                            if ( to_c[0] <= ur0 and to_c[1] <= ur1 ):
+                                masked.append[to_idx]
+                else:
+                    raise ValueError("No valid dictionary was found for the mask parameter")
+                         
+        # TODO: If you use the 'number_of_connections' option, in here you can check whether the
+        # number of masked units is larger than the required number of connections. Then you need
+        # to modify the kernel selection so it continues until the number of connections is met,
+        # which should also consider whether autapses and multapses are allowed.
+                # now we use the kernel rule to select connections
+                if type(conn_spec['kernel']) is float or type(conn_spec['kernel']) is int:
+                    for to_idx in masked:
+                        if np.random.random() < conn_spec['kernel']:
+                            connections.append( (idx, to_idx) )
+                            to_c = self.units[to_idx].coordinates
+                            d = np.sqrt( sum( (uc - to_c) * (uc - to_c) ) )
+                            distances.append(d)
+                elif 'linear' in conn_spec['kernel']:
+                    for to_idx in masked:
+                        to_c = self.units[to_idx].coordinates
+                        d = np.sqrt( sum( (uc - to_c) * (uc - to_c) ) )
+                        a = conn_spec['kernel']['linear']['a']
+                        c = conn_spec['kernel']['linear']['c']
+                        if np.random.random() < c * (1. - a*d )
+                            connections.append( (idx, to_idx) )
+                            distances.append(d)
+                elif 'gaussian' in conn_spec['kernel']:
+                    for to_idx in masked:
+                        to_c = self.units[to_idx].coordinates
+                        d = np.sqrt( sum( (uc - to_c) * (uc - to_c) ) )
+                        p_c = conn_spec['kernel']['gaussian']['p_center']
+                        s = conn_spec['kernel']['gaussian']['sigma']
+                        if np.random.random() < p_c * np.exp( - (d/s)**2. )
+                            connections.append( (idx, to_idx) )
+                            distances.append(d)
+
+
+        # TODO: set the weights according to distributions here
+
+        # TODO: set the delays according to the distance in here
+
+            
+
+
+
     def set_plant_inputs(self, unitIDs, plantID, conn_spec, syn_spec):
-        """ Make the activity of some units provide inputs to a plant.
+        """ Set the activity of some units as the inputs to a plant.
 
             Args:
                 unitIDs: a list with the IDs of the input units
@@ -480,8 +689,7 @@ class network():
             raise NotImplementedError('Inputs to plants only use static synapses')
 
         inp_funcs = [self.units[uid].get_act for uid in unitIDs]
-        ports = conn_spec['inp_ports']
-        
+        ports = conn_spec['inp_ports'] 
         # Now just use this auxiliary function in the plant class
         self.plants[plantID].append_inputs(inp_funcs, ports, delys, synaps)
 
@@ -502,7 +710,9 @@ class network():
 
         Args:
             plantID: ID of the plant sending the outpus.
+
             unitIDs: a list with the IDs of the units receiving inputs from the plant.
+
             conn_spec: a dictionary with the connection specifications.
                 REQUIRED ENTRIES
                 'port_map': a list used to specify which output of the plant goes to which input
@@ -523,6 +733,7 @@ class network():
                            'uniform' - the delay dictionary must also include 'low' and 'high' values.
                                 Example:  'delays':{'distribution':'uniform', 'low':0.1, 'high':1.} 
                             Delays should be multiples of the network minimum delay.
+
             syn_spec: a dictionary with the synapse specifications.
                 REQUIRED ENTRIES
                 'type' : one of the synapse_types. The plant parent class does not currently store
