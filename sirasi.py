@@ -154,4 +154,5 @@ from network import *
 from units import *
 from synapses import *
 from plants import *
+from topology import *
 
