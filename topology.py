@@ -133,15 +133,16 @@ class topology():
                          rule) connections. The regions specified in this dictionary are centered on the
                          coordinates of each sending unit for divergent connections, and on those of
                          each receving unit for convergent connections.
-                         Should have 1 of the following items:
-                         'circular': The value should be a dictionary with a 'radius' entry.
-                         'rectangular': The value should be a dictionary with 'lower_left' and
-                            'upper_right' entries. These two are lists with the coordinates of the
-                            lower left and upper right coordinates of the rectangular mask, with the
-                            origin at the coordinates of the sending (for divergent connections) or 
-                            receiving (for convergent connections) unit.
-                         'annular': The value should be a dictionary with 'inner_radius' and
-                            'outer_radius' entries.
+                         The value should be one of the following dictionaries:
+                         >> {'circular': {'radius': r}}. Here r is a scalar value. Units at a distance
+                            smaller than r will be inside the mask.
+                         >> {'rectangular': {'lower_left': ll, 'upper_right': ur}}. ll and ur are
+                            lists with the coordinates of the lower left and upper right coordinates of 
+                            the rectangular mask, with the origin at the coordinates of the sending 
+                            (for divergent connections) or receiving (for convergent connections) unit.
+                         >> {'annular': {'inner_radius': ir, 'outer_radius': or}}. Here ir and or are
+                            scalars. Units with distance d to the center of the mask will be inside 
+                            when ir <= d <= or.
                 'kernel' :  For each pair of units eligible for connection (e.g. one is within the mask), 
                           the kernel rule assigns a probability for connecting them, based on some spatial
                           criterion. The center of the kernel is at the sending unit for divergent connections,
@@ -152,7 +153,8 @@ class topology():
                               unit that is a distance 'd' from the center of the kernel will connect with
                               probability  p*exp(- (d/s)**2 ).
                           >> {'linear' : {'c' : c, 'a' : a}}. Units at a distance 'd' from the center of the 
-                              kernel will connect with probability c*max( 1-a*d, 0 )
+                              kernel will connect with probability max( c - a*d, 0 )
+                          Notice that the 'number_of_connections' option below can  affect these probabilities.
                 'delays' : A dictionary that specifies the delay of each connection as a function of
                           the distance between the sending and the receiving unit. It should contain
                           the following dictionary:
@@ -171,14 +173,17 @@ class topology():
                 'weights' : A dictionary specifying a distribution for the initial weights of the connections.
                             The accepted distributions are:
                            >> {'uniform' : {'low': l, 'high' : h}}. Here l and h are scalar values.
+                              Same as setting a uniform distribution in 'init_w' of syn_spec, but
+                              with different syntax in the dictionary.
                            >> {'linear' : {'c' : c, 'a' : a}}. Units with distance d will connect with
-                              synaptic weight c - max( 1 - a*d, 0) .
+                              synaptic weight max( c  - a*d, 0 ) .
                            >> {'gaussian' : {'p_center' : w, 'sigma' : s}}. Units with distance d will
                               connect with synaptic weight w * exp( - (d/s)**2 ) . 
 
                 'edge_wrap' : Assume that all units are inside a rectangle with periodic boundaries (e.g. 
                               toroidal topology). By default this is set to False, but if set to True the 
                               size and location of that rectangle must be set with the 'boundary' dictionary.
+                              NOT IMPLEMENTED YET
                 'boundary' : Specifies a rectangle that contains all units. The value should be a
                             dictionary of the form:
                             >> {'center' : c, 'extent' : [x, y]}.
@@ -219,7 +224,6 @@ class topology():
         connections = []  # a list with all the connection pairs as (source,target)
         distances = [] # the distance for the units in each entry of 'connections'
         delays = [] # a list with the delay for each entry in 'connections'
-        weights = [] # a list with the weight for each entry in 'connections'
 
         # Utility function: Euclidean distance
         dist = lambda x,y: np.sqrt( sum( (x-y)*(x-y) ) )
@@ -233,7 +237,7 @@ class topology():
                 uc = net.units[idx].coordinates # center for the sending unit, mask, and kernel
 
                 #### First we make a list with all the units in 'to_list' inside the mask
-                masked = self.filter_ids(net, to_list, {'mask':conn_spec['mask']})
+                masked = self.filter_ids(net, to_list, uc, conn_spec['mask'])
                 
                 #### Next we modify 'masked' to account for autapses and multapses
                 if not conn_spec['allow_autapses']:  # autapses not allowed
@@ -247,78 +251,116 @@ class topology():
                             raise ValueError('number_of_connections larger than number of targets within mask')
                          
                 #### Now we use the kernel rule to select connections
+                # first, make sure the number of potential targets is larger than number_of_connections
+                if 'number_of_connections' in conn_spec:
+                    kerneled = self.filter_ids(net, masked, uc, conn_spec['kernel'])
+                    if len(kerneled) < conn_spec['number_of_connections']:
+                        raise ValueError('number_of_connections is larger than number of targets with significant connection probability')
+
+                # second, specify the kernel function
                 if type(conn_spec['kernel']) is float or type(conn_spec['kernel']) is int:
-                    if conn_spec['kernel'] < 0. or conn_spec['kernel'] > 1.:
-                        raise ValueError('kernel probability should be between 0 and 1')
-                    if 'number_of_connections' in conn_spec:
-                        targets = random.sample(masked, conn_spec['number_of_connections'])
-                        for target in targets:
-                            connections.append( (idx, target) )
-                            to_c = net.units[target].coordinates
-                            d = dist(uc, to_c)
-                            distances.append(d)
-                    else:
-                        for to_idx in masked:
-                            if np.random.random() < conn_spec['kernel']:
-                                connections.append( (idx, to_idx) )
-                                to_c = net.units[to_idx].coordinates
-                                d = dist(uc, to_c)
-                                distances.append(d)
+                    # distance-independent constant probability of connection
+                    kerfun = lambda d: conn_spec['kernel']
                 elif 'linear' in conn_spec['kernel']:
                     a = conn_spec['kernel']['linear']['a']
                     c = conn_spec['kernel']['linear']['c']
-                    if 'number_of_connections' in conn_spec:
-                        if not conn_spec['allow_multapses']:
-                            # we need to find out whether there are enough possible connections
-                            max_d = 1./a if a > 0 else 1e20 # distance where connections become impossible
-                        for to_idx in masked:
-                            to_c = net.units[to_idx].coordinates
-                            d = dist(uc, to_c)
-                            if c*(1. - a*d) < 1e-6: # this connection is too unlikely
-                                pass
-                            
-                    for to_idx in masked:
-                        to_c = net.units[to_idx].coordinates
-                        d = dist(uc, to_c)
-                        if np.random.random() < c * (1. - a*d ):
-                            connections.append( (idx, to_idx) )
-                            distances.append(d)
+                    kerfun = lambda d: c  - a*d
                 elif 'gaussian' in conn_spec['kernel']:
+                    p_c = conn_spec['kernel']['gaussian']['p_center']
+                    s = conn_spec['kernel']['gaussian']['sigma']
+                    kerfun = lambda d: p_c * np.exp( - ((d/s)**2.)) 
+                else:
+                    raise NotImplementedError('Invalid kernel specification')
+                # third, do the sampling
+                if 'number_of_connections' in conn_spec:
+                    n_of_c = conn_spec['number_of_connections']
+                    random.shuffle(masked) # to reduce dependency on order in masked
+                else:
+                    n_of_c = len(masked) + 1 # this value controls a 'break' below
+                connected = 0 # to keep track of how many targets we've selected
+                while connected < n_of_c:
                     for to_idx in masked:
                         to_c = net.units[to_idx].coordinates
                         d = dist(uc, to_c)
-                        p_c = conn_spec['kernel']['gaussian']['p_center']
-                        s = conn_spec['kernel']['gaussian']['sigma']
-                        if np.random.random() < p_c * np.exp( - (d/s)**2. ):
+                        if random.random() < kerfun(d):
                             connections.append( (idx, to_idx) )
                             distances.append(d)
+                            connected += 1
+                            if not conn_spec['allow_multapses']:
+                                masked.remove(to_idx)
+                        if connected >= n_of_c:
+                            break
+                    if  not ('number_of_connections' in conn_spec):
+                        break 
 
-         
-        # TODO: set the delays according to the distance in here
-
-        # TODO: set the weights according to distributions here
         elif conn_spec['connection_type'] == 'convergent':
             raise NotImplementedError('Convergent connections are not implemented')
         else:
             raise TypeError("Invalid connection_type")
+
+        # setting the delays
+        if 'linear' in conn_spec['delays']:
+            c = conn_spec['delays']['linear']['c']
+            a = conn_spec['delays']['linear']['a']
+            for d in distances:
+                # delays must be multiples of net.min_delay
+                dely = c + a*d + 1e-7  # 1e-7 deals with a quirk of the % operator
+                mod = dely % net.min_delay
+                dely = dely - mod
+                if mod > net.min_delay/2.:  # rounding to nearest multiple above
+                    dely += net.min_delay
+                dely = max(net.min_delay, dely)
+                delays.append(dely)
+        else:
+            raise ValueError('Unknown delay specification')
+        print('len delays = %f' % len(delays))
+        print('len conns = %f' % len(connections))
+        print('len dists = %f' % len(distances))
+
+        # optional setting of weights
+        if 'weights' in conn_spec:
+            max_w = 100. # maximum weight value we'll tolerate
+            weights = [] # a list with the weight for each entry in 'connections'
+            if 'uniform' in conn_spec['weights']:
+                l = conn_spec['weights']['uniform']['low']
+                h = conn_spec['weights']['uniform']['high']
+                weights = np.random.uniform[l, h, len(connections)]
+            elif 'linear' in conn_spec['weights']:
+                c = conn_spec['weights']['linear']['c']
+                a = conn_spec['weights']['linear']['a']
+                weights = list(map(lambda d: max(c - a*d, 0.), distances))
+            elif 'gaussian' in conn_spec['weights']:
+                w = conn_spec['weights']['gaussian']['p_center']
+                s = conn_spec['weights']['gaussian']['sigma']
+                weights = [ w*np.exp(-((d/s)**2.)) for d in distances]
+            if max(weights) > max_w:
+                raise ValueError('Received weights distribution produces values larger than ' + str(max_w))
+
+            syn_spec['init_w'] = weights
+
+        # creating the connections
+        senders = [c[0] for c in connections]
+        receivers = [c[1] for c in connections]
+        conn_dict = {'rule' : 'one_to_one', 'delay' : delays}
+        net.connect(senders, receivers, conn_dict, syn_spec)
 
 
  
     def filter_ids(self, net, id_list, center, spec):
         """ Returns the IDs of the units in id_list that satisfy a criterion set in spec.
 
-            This is a utility function for topo_connect()
+            This is a utility function for topo_connect(). The criterion in spec is either
+            the 'mask' or the 'kernel' value from the conn_spec in topo_connect. When
+            using the mask criteria, filter_ids will return a list with all the units in
+            id_list inside the mask. When using the kernel criteria, filter_ids will return
+            all the units that have a probability of connection larger than 1e-7.
 
         Args:
             net : the network where the units in id_list live.
             id_list: a list with IDs of units in the 'net' network.
-            center: coordinates of the center of the mask or kernel used for filtering
-            spec: a dictionary with the filtering criterion.
-                POSSIBLE ENTRIES
-                'mask' : the value will be the mask dictionary passed to topo_connect
-                'kernel' : the value will be the kernel dictonary from topo_connect
-                           Also, include a 'min_p' value, with the smallest probability
-                           that will be acceptable. Default 1e-6.
+            center: coordinates of the center of the mask or kernel used for filtering.
+            spec: a dictionary with the filtering criterion. Its value is either
+                  conn_spec['mask'] or conn_spec['kernel'] from topo_connect.
 
         Returns:
             A list with the IDs from id_list that satisfy the criterion in spec.
@@ -330,35 +372,66 @@ class topology():
         dist = lambda x,y: np.sqrt( sum( (x-y)*(x-y) ) )
 
         filtered = [] # this list will have the filtered unit IDs
+        min_prob = 1e-7 # minimum probability for kernel filtering
 
-        if 'mask' in spec: # we're filtering according to mask criteria
-            if 'circular' in spec['mask']: 
-                for idx in id_list:
-                    to_c = net.units[idx].coordinates
+        #------------------ kernel criteria ------------------
+        if type(spec) is float or type(spec) is int: # distance-independent, constant value
+                if spec < 0. or spec > 1.:
+                    raise ValueError('kernel probability should be between 0 and 1')
+                elif spec >= min_prob: # if spec < min_prob, then filtered = []
+                    filtered = id_list
+        elif 'linear' in spec:
+            a = spec['linear']['a']
+            c = spec['linear']['c']
+            if a > 0:
+                max_dist = (c - min_prob)/a 
+                for to_idx in id_list:
+                    to_c = net.units[to_idx].coordinates
                     d = dist(center, to_c)
-                    if d <= spec['mask']['radius']:
-                        filtered.append[idx]
-            elif 'annular' in spec['mask']: 
-                for idx in id_list:
-                    to_c = net.units[idx].coordinates
-                    d = dist(center, to_c)
-                    if ( d >= conn_spec['mask']['inner_radius'] and 
-                         d <= conn_spec['mask']['outer_radius'] ):
-                        filtered.append[idx]
-            elif 'rectangular' in spec['mask']: # periodic boundary will be tricky in here
-                for idx in id_list:
-                    to_c = net.units[idx].coordinates
-                    # center the coordinates of the rectangular mask 
-                    ll0 = conn_spec['mask']['rectangular']['lower_left'][0] - center[0]
-                    ll1 = conn_spec['mask']['rectangular']['lower_left'][1] - center[1]
-                    ur0 = conn_spec['mask']['rectangular']['upper_right'][0] - center[0]
-                    ur1 = conn_spec['mask']['rectangular']['upper_right'][1] - center[1]
-                    # test if the receiving unit is inside the rectangle
-                    if ( to_c[0] >= ll0 and to_c[1] >= ll1 ):
-                        if ( to_c[0] <= ur0 and to_c[1] <= ur1 ):
-                            filtered.append[idx]
+                    if d < max_dist:
+                        filtered.append(to_idx)
             else:
-                raise ValueError("No valid dictionary was found for the mask parameter")
+                if c > min_prob:
+                    filtered = id_list
+        elif 'gaussian' in spec:
+            p_c = spec['gaussian']['p_center']
+            s = spec['gaussian']['sigma']
+            if p_c > min_prob:
+                max_dist = s * np.sqrt(np.log(p_c/min_prob))
+                for to_idx in id_list:
+                    to_c = net.units[to_idx].coordinates
+                    d = dist(center, to_c)
+                    if d < max_dist:
+                        filtered.append(to_idx)
+
+        #------------------ mask criteria ------------------
+        elif 'circular' in spec:
+            for idx in id_list:
+                to_c = net.units[idx].coordinates
+                d = dist(center, to_c)
+                if d <= spec['circular']['radius']:
+                    filtered.append(idx)
+        elif 'annular' in spec:
+            for idx in id_list:
+                to_c = net.units[idx].coordinates
+                d = dist(center, to_c)
+                if ( d >= conn_spec['annular']['inner_radius'] and 
+                     d <= conn_spec['annular']['outer_radius'] ):
+                    filtered.append[idx]
+        elif 'rectangular' in spec: # periodic boundary will be tricky in here
+            # center the coordinates of the rectangular mask 
+            ll0 = conn_spec['rectangular']['lower_left'][0] - center[0]
+            ll1 = conn_spec['rectangular']['lower_left'][1] - center[1]
+            ur0 = conn_spec['rectangular']['upper_right'][0] - center[0]
+            ur1 = conn_spec['rectangular']['upper_right'][1] - center[1]
+            for idx in id_list:
+                to_c = net.units[idx].coordinates
+                # test if the receiving unit is inside the rectangle
+                if ( to_c[0] >= ll0 and to_c[1] >= ll1 ):
+                    if ( to_c[0] <= ur0 and to_c[1] <= ur1 ):
+                        filtered.append[idx]
+        else:
+            raise ValueError("No valid dictionary was found for the mask parameter")
 
         return filtered
 
