@@ -124,7 +124,7 @@ class topology():
                         Accepted values: 
                         'convergent': When selecting units to connect, for each unit of the 'to_list'
                             we will select input sources from the 'from_list' among those units allowed
-                            by the mask and the kernel. NOT IMPLEMENTED YET.
+                            by the mask and the kernel. 
                         'divergent': When selecting units to connect, for each unit of the 'from_list'
                             we will select connection recipients from the 'to_list' among those units
                             within the mask and the kernel.
@@ -167,8 +167,9 @@ class topology():
                 'allow_multapses' : Can a unit have more than one connection to the same target?
                                     Default is False.
                 'number_of_connections' : Fixes how many connections each neuron will send (divergent
-                                          connections) or receive (convergent connections).
-                                          Notice that using this option will distort the probabilities
+                                          connections) or receive (convergent connections), ensuring
+                                          fixed outdegree or indegree respectively.
+                                          Notice that using this option can distort the probabilities
                                           of connection set in the 'kernel' entry.
                 'weights' : A dictionary specifying a distribution for the initial weights of the connections.
                             The accepted distributions are:
@@ -213,10 +214,10 @@ class topology():
 
         # TODO: depending on the 'edge_wrap' property you need to set a distance function that takes
         #       the two pairs of coordinates and returns the distance. The simple case is the one
-        #       you're using below: d = np.sqrt( sum( (uc - to_c) * (uc - to_c) ) ). The case with
+        #       you're using below, e.g. dist() provides Euclidean distance.  The case with
         #       periodic boundaries needs to find the shortest horizontal and vertical distances
         #       (so both are <= conn_spec[boundary][extent][0|1]/2) and return the sqrt of the sum
-        #       of the squared distances. Replace the distance calculations below (also in kernel).
+        #       of the squared distances. 
         if 'edge_wrap' in conn_spec:
             if conn_spec['edge_wrap'] == True:
                 raise NotImplementedError('Periodic boundaries not implemented yet')
@@ -232,71 +233,81 @@ class topology():
         if not 'allow_autapses' in conn_spec: conn_spec['allow_autapses'] = True
         if not 'allow_multapses' in conn_spec: conn_spec['allow_multapses'] = False
 
+        # arranging the way we select connections based on connection_type
         if conn_spec['connection_type'] == 'divergent':
-            for idx in from_list:
-                uc = net.units[idx].coordinates # center for the sending unit, mask, and kernel
-
-                #### First we make a list with all the units in 'to_list' inside the mask
-                masked = self.filter_ids(net, to_list, uc, conn_spec['mask'])
-                
-                #### Next we modify 'masked' to account for autapses and multapses
-                if not conn_spec['allow_autapses']:  # autapses not allowed
-                    if idx in masked:
-                        masked = [ e for e in masked if e != idx ]
-                if not conn_spec['allow_multapses']: # multapses not allowed
-                    masked = list(set(masked))  # removing duplicates
-                    # This tests if enough connections can be made without duplicates
-                    if 'number_of_connections' in conn_spec:
-                        if len(masked) < conn_spec['number_of_connections']:
-                            raise ValueError('number_of_connections larger than number of targets within mask')
-                         
-                #### Now we use the kernel rule to select connections
-                # first, make sure the number of potential targets is larger than number_of_connections
-                if 'number_of_connections' in conn_spec:
-                    kerneled = self.filter_ids(net, masked, uc, conn_spec['kernel'])
-                    if len(kerneled) < conn_spec['number_of_connections']:
-                        raise ValueError('number_of_connections is larger than number of targets with significant connection probability')
-
-                # second, specify the kernel function
-                if type(conn_spec['kernel']) is float or type(conn_spec['kernel']) is int:
-                    # distance-independent constant probability of connection
-                    kerfun = lambda d: conn_spec['kernel']
-                elif 'linear' in conn_spec['kernel']:
-                    a = conn_spec['kernel']['linear']['a']
-                    c = conn_spec['kernel']['linear']['c']
-                    kerfun = lambda d: c  - a*d
-                elif 'gaussian' in conn_spec['kernel']:
-                    p_c = conn_spec['kernel']['gaussian']['p_center']
-                    s = conn_spec['kernel']['gaussian']['sigma']
-                    kerfun = lambda d: p_c * np.exp( - ((d/s)**2.)) 
-                else:
-                    raise NotImplementedError('Invalid kernel specification')
-                # third, do the sampling
-                if 'number_of_connections' in conn_spec:
-                    n_of_c = conn_spec['number_of_connections']
-                    random.shuffle(masked) # to reduce dependency on order in masked
-                else:
-                    n_of_c = len(masked) + 1 # this value controls a 'break' below
-                connected = 0 # to keep track of how many targets we've selected
-                while connected < n_of_c:
-                    for to_idx in masked:
-                        to_c = net.units[to_idx].coordinates
-                        d = dist(uc, to_c)
-                        if random.random() < kerfun(d):
-                            connections.append( (idx, to_idx) )
-                            distances.append(d)
-                            connected += 1
-                            if not conn_spec['allow_multapses']:
-                                masked.remove(to_idx)
-                        if connected >= n_of_c:
-                            break
-                    if  not ('number_of_connections' in conn_spec):
-                        break 
-
+            base_list = from_list
+            filter_list = to_list
         elif conn_spec['connection_type'] == 'convergent':
-            raise NotImplementedError('Convergent connections are not implemented')
+            base_list = to_list
+            filter_list = from_list 
         else:
             raise TypeError("Invalid connection_type")
+        
+        # This loop fills the 'connections' and 'distances' lists
+        for idx in base_list:
+            uc = net.units[idx].coordinates # center for the sending unit, mask, and kernel
+
+            #### First we make a list with all the units in 'filter_list' inside the mask
+            masked = self.filter_ids(net, filter_list, uc, conn_spec['mask'])
+            
+            #### Next we modify 'masked' to account for autapses and multapses
+            if not conn_spec['allow_autapses']:  # autapses not allowed
+                if idx in masked:
+                    masked = [ e for e in masked if e != idx ]
+            if not conn_spec['allow_multapses']: # multapses not allowed
+                masked = list(set(masked))  # removing duplicates
+                # This tests if enough connections can be made without duplicates
+                if 'number_of_connections' in conn_spec:
+                    if len(masked) < conn_spec['number_of_connections']:
+                        raise ValueError('number_of_connections larger than number of targets within mask')
+                     
+            #### Now we use the kernel rule to select connections
+            # first, make sure the number of potential targets is larger than number_of_connections
+            if 'number_of_connections' in conn_spec:
+                kerneled = self.filter_ids(net, masked, uc, conn_spec['kernel'])
+                if len(kerneled) < conn_spec['number_of_connections']:
+                    raise ValueError('number_of_connections is larger than number of targets with significant connection probability')
+            # second, specify the kernel function
+            if type(conn_spec['kernel']) is float or type(conn_spec['kernel']) is int:
+                # distance-independent constant probability of connection
+                if conn_spec['kernel'] < 0. or conn_spec['kernel'] > 1.:
+                    raise ValueError('kernel probability should be between 0 and 1')
+                kerfun = lambda d: conn_spec['kernel']
+            elif 'linear' in conn_spec['kernel']:
+                a = conn_spec['kernel']['linear']['a']
+                c = conn_spec['kernel']['linear']['c']
+                kerfun = lambda d: c  - a*d
+            elif 'gaussian' in conn_spec['kernel']:
+                p_c = conn_spec['kernel']['gaussian']['p_center']
+                s = conn_spec['kernel']['gaussian']['sigma']
+                kerfun = lambda d: p_c * np.exp( - ((d/s)**2.)) 
+            else:
+                raise NotImplementedError('Invalid kernel specification')
+            # third, do the sampling
+            if 'number_of_connections' in conn_spec:
+                n_of_c = conn_spec['number_of_connections']
+                random.shuffle(masked) # to reduce dependency on order in masked
+            else:
+                n_of_c = len(masked) + 1 # this value controls a 'break' below
+            connected = 0 # to keep track of how many connections we've appended
+            while connected < n_of_c:
+                masked_copy = masked.copy() # otherwise masked.remove would alter things
+                for f_idx in masked_copy:
+                    f_c = net.units[f_idx].coordinates
+                    d = dist(uc, f_c)
+                    if random.random() < kerfun(d):
+                        if conn_spec['connection_type'] == 'divergent':
+                            connections.append( (idx, f_idx) )
+                        else:  # connection_type is 'convergent'
+                            connections.append( (f_idx, idx) )
+                        distances.append(d)
+                        connected += 1
+                        if not conn_spec['allow_multapses']:
+                            masked.remove(f_idx)
+                    if connected >= n_of_c:
+                        break
+                if  not ('number_of_connections' in conn_spec):
+                    break 
 
         # setting the delays
         if 'linear' in conn_spec['delays']:
@@ -313,9 +324,6 @@ class topology():
                 delays.append(dely)
         else:
             raise ValueError('Unknown delay specification')
-        print('len delays = %f' % len(delays))
-        print('len conns = %f' % len(connections))
-        print('len dists = %f' % len(distances))
 
         # optional setting of weights
         if 'weights' in conn_spec:
@@ -353,7 +361,7 @@ class topology():
             the 'mask' or the 'kernel' value from the conn_spec in topo_connect. When
             using the mask criteria, filter_ids will return a list with all the units in
             id_list inside the mask. When using the kernel criteria, filter_ids will return
-            all the units that have a probability of connection larger than 1e-7.
+            all the units that have a probability of connection larger than 'min_prob'.
 
         Args:
             net : the network where the units in id_list live.
@@ -376,10 +384,8 @@ class topology():
 
         #------------------ kernel criteria ------------------
         if type(spec) is float or type(spec) is int: # distance-independent, constant value
-                if spec < 0. or spec > 1.:
-                    raise ValueError('kernel probability should be between 0 and 1')
-                elif spec >= min_prob: # if spec < min_prob, then filtered = []
-                    filtered = id_list
+            if spec >= min_prob: # if spec < min_prob, then filtered = []
+                filtered = id_list
         elif 'linear' in spec:
             a = spec['linear']['a']
             c = spec['linear']['c']
@@ -415,21 +421,21 @@ class topology():
             for idx in id_list:
                 to_c = net.units[idx].coordinates
                 d = dist(center, to_c)
-                if ( d >= conn_spec['annular']['inner_radius'] and 
-                     d <= conn_spec['annular']['outer_radius'] ):
-                    filtered.append[idx]
+                if ( d >= spec['annular']['inner_radius'] and 
+                     d <= spec['annular']['outer_radius'] ):
+                    filtered.append(idx)
         elif 'rectangular' in spec: # periodic boundary will be tricky in here
             # center the coordinates of the rectangular mask 
-            ll0 = conn_spec['rectangular']['lower_left'][0] - center[0]
-            ll1 = conn_spec['rectangular']['lower_left'][1] - center[1]
-            ur0 = conn_spec['rectangular']['upper_right'][0] - center[0]
-            ur1 = conn_spec['rectangular']['upper_right'][1] - center[1]
+            ll0 = spec['rectangular']['lower_left'][0] - center[0]
+            ll1 = spec['rectangular']['lower_left'][1] - center[1]
+            ur0 = spec['rectangular']['upper_right'][0] - center[0]
+            ur1 = spec['rectangular']['upper_right'][1] - center[1]
             for idx in id_list:
                 to_c = net.units[idx].coordinates
                 # test if the receiving unit is inside the rectangle
                 if ( to_c[0] >= ll0 and to_c[1] >= ll1 ):
                     if ( to_c[0] <= ur0 and to_c[1] <= ur1 ):
-                        filtered.append[idx]
+                        filtered.append(idx)
         else:
             raise ValueError("No valid dictionary was found for the mask parameter")
 
