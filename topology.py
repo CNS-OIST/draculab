@@ -184,12 +184,11 @@ class topology():
                 'edge_wrap' : Assume that all units are inside a rectangle with periodic boundaries (e.g. 
                               toroidal topology). By default this is set to False, but if set to True the 
                               size and location of that rectangle must be set with the 'boundary' dictionary.
-                              NOT IMPLEMENTED YET
                 'boundary' : Specifies a rectangle that contains all units. The value should be a
                             dictionary of the form:
-                            >> {'center' : c, 'extent' : [x, y]}.
-                               In this case c represents a list or an array with the coordinates of the
-                               boundary rectangle. x and y are scalars that specify its width and length.
+                            >> {'center' : c, 'extent' : np.array([x, y])}.
+                               c is a numpy array with the coordinates of the boundary rectangle's center. 
+                               x and y are scalars that specify its width and length.
                 
             syn_spec: A dictionary used to initialize the synapses in the connections.
                 REQUIRED PARAMETERS
@@ -212,22 +211,45 @@ class topology():
         # TODO: it would be very easy to implement the 'targets' option by reducing the to_list to 
         # those units of a particular type at this point. I don't need that feature now, though.
 
-        # TODO: depending on the 'edge_wrap' property you need to set a distance function that takes
-        #       the two pairs of coordinates and returns the distance. The simple case is the one
-        #       you're using below, e.g. dist() provides Euclidean distance.  The case with
-        #       periodic boundaries needs to find the shortest horizontal and vertical distances
-        #       (so both are <= conn_spec[boundary][extent][0|1]/2) and return the sqrt of the sum
-        #       of the squared distances. 
-        if 'edge_wrap' in conn_spec:
-            if conn_spec['edge_wrap'] == True:
-                raise NotImplementedError('Periodic boundaries not implemented yet')
-
         connections = []  # a list with all the connection pairs as (source,target)
         distances = [] # the distance for the units in each entry of 'connections'
         delays = [] # a list with the delay for each entry in 'connections'
 
-        # Utility function: Euclidean distance
-        dist = lambda x,y: np.sqrt( sum( (x-y)*(x-y) ) )
+        # To handle boundary conditions, we choose an appropriate distance function, and
+        # unpack some info that is needed for the case of rectangular masks.
+        if 'edge_wrap' in conn_spec: # if we have periodic boundary conditions
+            if conn_spec['edge_wrap']:
+                if 'boundary' in conn_spec:
+                    ## Ensuring that all units are contained within the boundary rectangle
+                    # get the coordinates of all units
+                    all_c = [net.units[idx].coordinates for idx in set(from_list+to_list)]
+                    # set the origin at the lower left corner of the boundary rectangle
+                    shift = conn_spec['boundary']['extent']/2.
+                    llc_c = [ c - conn_spec['boundary']['p_center'] + shift for c in all_c ]
+                    # check if the largest coordinate is bigger than the extent
+                    for i in range(len(conn_spec['boundary']['p_center'])): # iterating over dimensions
+                        max_c = max([c[i] for c in llc_c])
+                        if max_c > conn_spec['boundary']['extent'][i]:
+                            raise ValueError('All units should be contained within the boundary rectangle')
+                    ## Assign a distance function with periodic boundary
+                    dist = lambda x,y: self.period_dist(x,y, conn_spec['boundary'])
+                    # creating a dictionary that will be used by filter_ids
+                    if 'rectangular' in conn_spec['mask']: # this case is special when edge_wrap==True
+                        # getting the lower-left and upper-right corners of the boundary rectangle
+                        bound = conn_spec['boundary'].copy()
+                        bound['lower_left'] = conn_spec['boundary']['p_center'] - conn_spec['boundary']['extent']/2.
+                        bound['upper_right'] = conn_spec['boundary']['p_center'] + conn_spec['boundary']['extent']/2.
+                        fids_dic = {'edge_wrap':True, 'boundary':bound, 'distance':dist}
+                else:
+                    raise KeyError('A boundary attribute is required when edge_wrap is True')
+            else:
+                # Euclidean distance
+                dist = lambda x,y: np.sqrt( sum( (x-y)*(x-y) ) )
+                fids_dic = {'edge_wrap':False, 'distance':dist}
+        else:
+            # Euclidean distance
+            dist = lambda x,y: np.sqrt( sum( (x-y)*(x-y) ) )
+            fids_dic = {'edge_wrap':False, 'distance':dist}
 
         # setting some default values in conn_spec
         if not 'allow_autapses' in conn_spec: conn_spec['allow_autapses'] = True
@@ -248,7 +270,7 @@ class topology():
             uc = net.units[idx].coordinates # center for the sending unit, mask, and kernel
 
             #### First we make a list with all the units in 'filter_list' inside the mask
-            masked = self.filter_ids(net, filter_list, uc, conn_spec['mask'])
+            masked = self.filter_ids(net, filter_list, uc, conn_spec['mask'], fids_dic)
             
             #### Next we modify 'masked' to account for autapses and multapses
             if not conn_spec['allow_autapses']:  # autapses not allowed
@@ -264,7 +286,7 @@ class topology():
             #### Now we use the kernel rule to select connections
             # first, make sure the number of potential targets is larger than number_of_connections
             if 'number_of_connections' in conn_spec:
-                kerneled = self.filter_ids(net, masked, uc, conn_spec['kernel'])
+                kerneled = self.filter_ids(net, masked, uc, conn_spec['kernel'], fids_dic)
                 if len(kerneled) < conn_spec['number_of_connections']:
                     raise ValueError('number_of_connections is larger than number of targets with significant connection probability')
             # second, specify the kernel function
@@ -354,7 +376,7 @@ class topology():
 
 
  
-    def filter_ids(self, net, id_list, center, spec):
+    def filter_ids(self, net, id_list, center, spec, fids_dic):
         """ Returns the IDs of the units in id_list that satisfy a criterion set in spec.
 
             This is a utility function for topo_connect(). The criterion in spec is either
@@ -369,6 +391,13 @@ class topology():
             center: coordinates of the center of the mask or kernel used for filtering.
             spec: a dictionary with the filtering criterion. Its value is either
                   conn_spec['mask'] or conn_spec['kernel'] from topo_connect.
+            fids_dic : a dictionary with:
+                'distance' : the distance function used in topo_connect.
+                'edge_wrap' : whether we have periodic boundary conditions.
+                              If True, then you must also have 'boundary'.
+                'boundary' : the conn_spec['boundary'] dictionary from topo_connect, with two
+                             extra entries: 'lower_left' and 'upper_right', yielding the
+                             coordinates of the respective corners of the boundary rectangle.
 
         Returns:
             A list with the IDs from id_list that satisfy the criterion in spec.
@@ -376,11 +405,9 @@ class topology():
         Raises:
             ValueError
         """
-        # Utility function: Euclidean distance
-        dist = lambda x,y: np.sqrt( sum( (x-y)*(x-y) ) )
-
         filtered = [] # this list will have the filtered unit IDs
         min_prob = 1e-7 # minimum probability for kernel filtering
+        dist = fids_dic['distance']
 
         #------------------ kernel criteria ------------------
         if type(spec) is float or type(spec) is int: # distance-independent, constant value
@@ -424,23 +451,76 @@ class topology():
                 if ( d >= spec['annular']['inner_radius'] and 
                      d <= spec['annular']['outer_radius'] ):
                     filtered.append(idx)
-        elif 'rectangular' in spec: # periodic boundary will be tricky in here
-            # center the coordinates of the rectangular mask 
-            ll0 = spec['rectangular']['lower_left'][0] - center[0]
-            ll1 = spec['rectangular']['lower_left'][1] - center[1]
-            ur0 = spec['rectangular']['upper_right'][0] - center[0]
-            ur1 = spec['rectangular']['upper_right'][1] - center[1]
-            for idx in id_list:
-                to_c = net.units[idx].coordinates
-                # test if the receiving unit is inside the rectangle
-                if ( to_c[0] >= ll0 and to_c[1] >= ll1 ):
-                    if ( to_c[0] <= ur0 and to_c[1] <= ur1 ):
-                        filtered.append(idx)
+        elif 'rectangular' in spec: 
+            mask_ll = np.array(spec['rectangular']['lower_left'])
+            mask_ur = np.array(spec['rectangular']['upper_right'])
+            if not fids_dic['edge_wrap']: # no periodic boundary conditions
+                for idx in id_list:
+                    to_c = net.units[idx].coordinates - center
+                    # to_c is now a vector, from 'center' to the location of unit idx.
+                    # This vector must be inside the rectangle.
+                    if ( to_c[0] >= mask_ll[0] and to_c[1] >= mask_ll[1] ):
+                        if ( to_c[0] <= mask_ur[0] and to_c[1] <= mask_ur[1] ):
+                            filtered.append(idx)
+            else:  # periodic boundary conditions
+                # If the rectangular mask crosses a boundary, it splits into two valid 
+                # intervals for each crossed dimension. Extra masks can account for this.
+                all_masks = [(mask_ll,mask_ur)] # a list with all masks we'll use
+                mask_ll_abs = mask_ll + center # absolute coordinates for the mask's corners 
+                mask_ur_abs = mask_ur + center # so we can compare with the boundary's corners
+                bound_ll = fids_dic['boundary']['lower_left']
+                bound_ur = fids_dic['boundary']['upper_right']
+                mask_ll2 = mask_ll.copy() # if the masks are identical, using two masks
+                mask_ur2 = mask_ur.copy() # yields the same results
+                # We check at each dimension whether the boundary is crossed, and adjust
+                # the extra mask accordingly.
+                for dim in range(len(mask_ll)):
+                    if mask_ll_abs[dim] < bound_ll[dim]: # crossing through left or below
+                        diff = bound_ll[dim] - mask_ll_abs[dim]
+                        mask_ll2[dim] = bound_ur[dim] - diff - center[dim]
+                        mask_ur2[dim] = bound_ur[dim] - center[dim]
+                        all_masks.append((mask_ll2, mask_ur2))
+                    if mask_ur_abs[dim] > bound_ur[dim]: # crossing through right or above
+                        diff = mask_ur_abs[dim] - bound_ur[dim] 
+                        mask_ur2[dim] = bound_ll[dim] + diff - center[dim]
+                        mask_ll2[dim] = bound_ll[dim] - center[dim]
+                        all_masks.append((mask_ll2, mask_ur2))
+
+                # Now we can proceed as before, but using any extra masks
+                for idx in id_list:
+                    to_c =  net.units[idx].coordinates - center
+                    for mask in all_masks:
+                        if ( to_c[0] >= mask[0][0] and to_c[1] >= mask[0][1] ):
+                            if ( to_c[0] <= mask[1][0] and to_c[1] <= mask[1][1] ):
+                                filtered.append(idx)
+                                continue
+
         else:
             raise ValueError("No valid dictionary was found for the mask parameter")
 
         return filtered
 
+
+
+    def period_dist(self, c1, c2, boundary):
+        """ Returns the minimum distance between p1 and p2 assuming a periodic boundary.
+
+            This is a utility function for topo_connect(). 
+
+        Args:
+            c1 : coordinates of the first point (numpy array).
+            c2 : coordinates of the second point (numpy array).
+            boundary : The 'boundary' entry of the conn_spec passed to topo_connect.
+                       It should be a dictionary of the form:
+                        >> {'center' : c, 'extent' : np.array([x, y])}.
+                           c is a numpy array with the coordinates of the boundary rectangle's center. 
+                           x and y are scalars that specify its width and length.
+                           We can safely assume the rectangle contains c1 and c2.
+                           
+        """
+        l_inside = abs(c1-c2) # distances along each dim going inside the rectangle
+        l_outside = boundary['extent'] - l_inside # distances going outside the rectangle
+        return np.linalg.norm(np.minimum(l_inside, l_outside))
 
 
 
