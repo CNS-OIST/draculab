@@ -140,6 +140,7 @@ class topology():
                             lists with the coordinates of the lower left and upper right coordinates of 
                             the rectangular mask, with the origin at the coordinates of the sending 
                             (for divergent connections) or receiving (for convergent connections) unit.
+                            Unlike NEST, there is no 'anchor' property.
                          >> {'annular': {'inner_radius': ir, 'outer_radius': or}}. Here ir and or are
                             scalars. Units with distance d to the center of the mask will be inside 
                             when ir <= d <= or.
@@ -205,7 +206,7 @@ class topology():
                             created, which depends on the conection rule.
                          
         Raises:
-            ValueError, NotImplementedError, TypeError
+            ValueError, NotImplementedError, TypeError, KeyError
 
         """
         # TODO: it would be very easy to implement the 'targets' option by reducing the to_list to 
@@ -240,6 +241,8 @@ class topology():
                         bound['lower_left'] = conn_spec['boundary']['p_center'] - conn_spec['boundary']['extent']/2.
                         bound['upper_right'] = conn_spec['boundary']['p_center'] + conn_spec['boundary']['extent']/2.
                         fids_dic = {'edge_wrap':True, 'boundary':bound, 'distance':dist}
+                    else:
+                        fids_dic = {'edge_wrap':True, 'distance':dist}
                 else:
                     raise KeyError('A boundary attribute is required when edge_wrap is True')
             else:
@@ -398,6 +401,8 @@ class topology():
                 'boundary' : the conn_spec['boundary'] dictionary from topo_connect, with two
                              extra entries: 'lower_left' and 'upper_right', yielding the
                              coordinates of the respective corners of the boundary rectangle.
+                             'boundary' is only included when using a rectangular mask with
+                             periodic boundary conditions.
 
         Returns:
             A list with the IDs from id_list that satisfy the criterion in spec.
@@ -407,7 +412,7 @@ class topology():
         """
         filtered = [] # this list will have the filtered unit IDs
         min_prob = 1e-7 # minimum probability for kernel filtering
-        dist = fids_dic['distance']
+        dist = fids_dic['distance'] # this handles edge_wrap, except for rectangular masks 
 
         #------------------ kernel criteria ------------------
         if type(spec) is float or type(spec) is int: # distance-independent, constant value
@@ -463,38 +468,42 @@ class topology():
                         if ( to_c[0] <= mask_ur[0] and to_c[1] <= mask_ur[1] ):
                             filtered.append(idx)
             else:  # periodic boundary conditions
-                # If the rectangular mask crosses a boundary, it splits into two valid 
-                # intervals for each crossed dimension. Extra masks can account for this.
-                all_masks = [(mask_ll,mask_ur)] # a list with all masks we'll use
-                mask_ll_abs = mask_ll + center # absolute coordinates for the mask's corners 
-                mask_ur_abs = mask_ur + center # so we can compare with the boundary's corners
-                bound_ll = fids_dic['boundary']['lower_left']
-                bound_ur = fids_dic['boundary']['upper_right']
-                mask_ll2 = mask_ll.copy() # if the masks are identical, using two masks
-                mask_ur2 = mask_ur.copy() # yields the same results
-                # We check at each dimension whether the boundary is crossed, and adjust
-                # the extra mask accordingly.
-                for dim in range(len(mask_ll)):
-                    if mask_ll_abs[dim] < bound_ll[dim]: # crossing through left or below
-                        diff = bound_ll[dim] - mask_ll_abs[dim]
-                        mask_ll2[dim] = bound_ur[dim] - diff - center[dim]
-                        mask_ur2[dim] = bound_ur[dim] - center[dim]
-                        all_masks.append((mask_ll2, mask_ur2))
-                    if mask_ur_abs[dim] > bound_ur[dim]: # crossing through right or above
-                        diff = mask_ur_abs[dim] - bound_ur[dim] 
-                        mask_ur2[dim] = bound_ll[dim] + diff - center[dim]
-                        mask_ll2[dim] = bound_ll[dim] - center[dim]
-                        all_masks.append((mask_ll2, mask_ur2))
+                # The algorithm to handle this case is as follows:
+                # 1) Obtain 'm', the global coordinates of the mask's center.
+                # 2) Ensure 'm' is inside the boundary region by using periodic conditions.
+                # 3) For each candidate unit, get the vector 'absdiff' that indicates for each
+                #    dimension the shortest distance from the unit to 'm'.
+                # 4) For each unit, test if the entries in 'absdiff' are smaller than the 
+                #    corresponding extent of the rectangular mask.
 
-                # Now we can proceed as before, but using any extra masks
+                # 1) Obtain m
+                m = center + (mask_ll + mask_ur)/2.
+                # 2) Ensure m inside boundary
+                # 2.1) Put the origin in the lower left corner of the boundary rectangle
+                m = m - fids_dic['boundary']['lower_left']
+                # 2.2) Express each component of m modulo the boundary's extent
+                for dim in range(len(m)):
+                    m[dim] = m[dim] % fids_dic['boundary']['extent'][dim]
+                # 2.3) Put m in the original coordinate frame
+                m = m + fids_dic['boundary']['lower_left']
+                # getting an auxiliary variable for step 4
+                half_mask_ext = (mask_ur - mask_ll)/2.
+                # 3),4)
                 for idx in id_list:
-                    to_c =  net.units[idx].coordinates - center
-                    for mask in all_masks:
-                        if ( to_c[0] >= mask[0][0] and to_c[1] >= mask[0][1] ):
-                            if ( to_c[0] <= mask[1][0] and to_c[1] <= mask[1][1] ):
-                                filtered.append(idx)
-                                continue
-
+                    to_c = net.units[idx].coordinates
+                    # 3) get absdiff
+                    absdiff = abs(to_c - m)
+                    for dim in range(len(m)):
+                        if absdiff[dim] > fids_dic['boundary']['extent'][dim]/2.:
+                            absdiff[dim] = fids_dic['boundary']['extent'][dim] - absdiff[dim]
+                    # 4) test if unit inside mask's rectangle
+                    inside = True
+                    for dim in range(len(absdiff)):
+                        if absdiff[dim] > half_mask_ext[dim]:
+                            inside = False
+                            break
+                    if inside:
+                        filtered.append(idx)
         else:
             raise ValueError("No valid dictionary was found for the mask parameter")
 
