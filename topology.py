@@ -61,6 +61,10 @@ class topology():
                 CONTINGENT ENTRIES
                 'extent' : see 'shape'>'sheet'.
                 'rows','columns': see 'arrangement'>'grid'.
+                
+                Example:
+                exc_geom = {'shape' : 'sheet', 'extent' : [-2., 2.], 'arrangement' : 'grid', 
+                            'rows' : N, 'columns' : N, 'center' : [0., 0.]}
 
             params: a dictionary with the parameters used to initialize the units.
                 REQUIRED PARAMETERS
@@ -187,7 +191,7 @@ class topology():
                               size and location of that rectangle must be set with the 'boundary' dictionary.
                 'boundary' : Specifies a rectangle that contains all units. The value should be a
                             dictionary of the form:
-                            >> {'center' : c, 'extent' : np.array([x, y])}.
+                            >> {'center' : c, 'extent' : [x, y]}.
                                c is a numpy array with the coordinates of the boundary rectangle's center. 
                                x and y are scalars that specify its width and length.
                 
@@ -199,7 +203,8 @@ class topology():
                         'uniform' - the delay dictionary must also include 'low' and 'high' values.
                         Example: {..., 'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.} }
                         Notice that these values will be overwritten whenever there is a 'weights'
-                        entry in the conn_spec dictionary.
+                        entry in the conn_spec dictionary. When 'weights' is in conn_spec, 'init_w'
+                        is not a required parameter.
                 OPTIONAL PARAMETERS
                 'inp_ports' : input ports of the connections. Either a single integer, or a list.
                             If using a list, its length must match the number of connections being
@@ -221,14 +226,17 @@ class topology():
         if 'edge_wrap' in conn_spec: # if we have periodic boundary conditions
             if conn_spec['edge_wrap']:
                 if 'boundary' in conn_spec:
+                    ## Ensuring the right type for the boundary arrays
+                    conn_spec['boundary']['extent'] = np.array(conn_spec['boundary']['extent'])
+                    conn_spec['boundary']['center'] = np.array(conn_spec['boundary']['center'])
                     ## Ensuring that all units are contained within the boundary rectangle
                     # get the coordinates of all units
                     all_c = [net.units[idx].coordinates for idx in set(from_list+to_list)]
                     # set the origin at the lower left corner of the boundary rectangle
                     shift = conn_spec['boundary']['extent']/2.
-                    llc_c = [ c - conn_spec['boundary']['p_center'] + shift for c in all_c ]
+                    llc_c = [ c - conn_spec['boundary']['center'] + shift for c in all_c ]
                     # check if the largest coordinate is bigger than the extent
-                    for i in range(len(conn_spec['boundary']['p_center'])): # iterating over dimensions
+                    for i in range(len(conn_spec['boundary']['center'])): # iterating over dimensions
                         max_c = max([c[i] for c in llc_c])
                         if max_c > conn_spec['boundary']['extent'][i]:
                             raise ValueError('All units should be contained within the boundary rectangle')
@@ -238,8 +246,8 @@ class topology():
                     if 'rectangular' in conn_spec['mask']: # this case is special when edge_wrap==True
                         # getting the lower-left and upper-right corners of the boundary rectangle
                         bound = conn_spec['boundary'].copy()
-                        bound['lower_left'] = conn_spec['boundary']['p_center'] - conn_spec['boundary']['extent']/2.
-                        bound['upper_right'] = conn_spec['boundary']['p_center'] + conn_spec['boundary']['extent']/2.
+                        bound['lower_left'] = conn_spec['boundary']['center'] - conn_spec['boundary']['extent']/2.
+                        bound['upper_right'] = conn_spec['boundary']['center'] + conn_spec['boundary']['extent']/2.
                         fids_dic = {'edge_wrap':True, 'boundary':bound, 'distance':dist}
                     else:
                         fids_dic = {'edge_wrap':True, 'distance':dist}
@@ -357,7 +365,7 @@ class topology():
             if 'uniform' in conn_spec['weights']:
                 l = conn_spec['weights']['uniform']['low']
                 h = conn_spec['weights']['uniform']['high']
-                weights = np.random.uniform[l, h, len(connections)]
+                weights = np.random.uniform(l, h, len(connections))
             elif 'linear' in conn_spec['weights']:
                 c = conn_spec['weights']['linear']['c']
                 a = conn_spec['weights']['linear']['a']

@@ -303,7 +303,7 @@ class network():
                 raise NotImplementedError('Initializing weights with an unknown distribution')
         elif type(syn_spec['init_w']) is float or type(syn_spec['init_w']) is int:
             weights = [float(syn_spec['init_w'])] * n_conns
-        elif type(syn_spec['init_w']) is list:
+        elif type(syn_spec['init_w']) is list or type(syn_spec['init_w']) is np.ndarray:
             if len(syn_spec['init_w']) == n_conns:
                 weights = syn_spec['init_w']
             else:
