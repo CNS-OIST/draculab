@@ -56,11 +56,22 @@ class topology():
                                     contiguous points is twice the distance of the first and last points
                                     to the edge of the interval. The second coordinates of all units will be
                                     created similarly using 'rows'.
+                                'random' : The coordinates of each unit are selected from a uniform random
+                                    distribution. The geometry dictionary must also include a 'n_units'
+                                    value specifying how many units to create.
                 'center': a list or array with the coordinates for the geometrical center of the space where
                           the units will be placed.
                 CONTINGENT ENTRIES
                 'extent' : see 'shape'>'sheet'.
                 'rows','columns': see 'arrangement'>'grid'.
+                'n_units' : see 'arrangemet'>'random'.
+                OPTIONAL ENTRIES
+                'jitter' : A floating point value. When included, each one of the generated coordinates will
+                           be added a random value (in each of its dimenstions) from a uniform distribution 
+                           with values between -'jitter' and 'jitter'. 
+                           WARNING: using jitter may put coordinates outside of the given shape. When using a
+                           grid inside a sheet shape, all units will be inside the sheet when
+                           jitter < min(extent[0]/columns, extent[1]/rows)/2 .
                 
                 Example:
                 exc_geom = {'shape' : 'sheet', 'extent' : [-2., 2.], 'arrangement' : 'grid', 
@@ -86,15 +97,29 @@ class topology():
                 y_vals = np.linspace(ybit/2., geometry['extent'][1]-(ybit/2), geometry['rows'])
                 x_vals = [ x + geometry['center'][0] - geometry['extent'][0]/2. for x in x_vals ]
                 y_vals = [ y + geometry['center'][1] - geometry['extent'][1]/2. for y in y_vals ]
-                
                 coord_list = []
                 for x in x_vals:
                     for y in y_vals:
                         coord_list.append(np.array([x,y]))
+            elif geometry['arrangement'] == 'random':
+                ext0 = geometry['extent'][0]
+                ext1 = geometry['extent'][1]
+                x_vals = np.random.uniform(-ext0/2., ext0/2., geometry['n_units'])
+                y_vals = np.random.uniform(-ext1/2., ext1/2., geometry['n_units'])
+                x_vals = [ x + geometry['center'][0] - geometry['extent'][0]/2. for x in x_vals ]
+                y_vals = [ y + geometry['center'][1] - geometry['extent'][1]/2. for y in y_vals ]
+                coord_list = []
+                for x,y in zip(x_vals, y_vals):
+                    coord_list.append(np.array([x,y]))
             else:
                 raise NotImplementedError('Unknown geometry arrangement in create_group')
         else:
             raise NotImplementedError('Unknown shape specification in create_group')
+
+        # Add optional jitter
+        if 'jitter' in geometry:
+            jit = geometry['jitter']
+            coord_list = [ coord + np.random.uniform(-jit, jit, 2) for coord in coord_list ]
 
         params['coordinates'] = coord_list
         return net.create_units(len(coord_list), params)
