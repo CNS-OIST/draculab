@@ -119,7 +119,7 @@ class topology():
         # Add optional jitter
         if 'jitter' in geometry:
             jit = geometry['jitter']
-            coord_list = [ coord + np.random.uniform(-jit, jit, 2) for coord in coord_list ]
+            coord_list = [ coord + np.random.uniform(-jit, jit, len(coord)) for coord in coord_list ]
 
         params['coordinates'] = coord_list
         return net.create_units(len(coord_list), params)
