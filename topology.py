@@ -410,7 +410,6 @@ class topology():
         conn_dict = {'rule' : 'one_to_one', 'delay' : delays}
         net.connect(senders, receivers, conn_dict, syn_spec)
 
-
  
     def filter_ids(self, net, id_list, center, spec, fids_dic):
         """ Returns the IDs of the units in id_list that satisfy a criterion set in spec.
