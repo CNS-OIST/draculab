@@ -67,7 +67,7 @@ class topology():
                 'n_units' : see 'arrangemet'>'random'.
                 OPTIONAL ENTRIES
                 'jitter' : A floating point value. When included, each one of the generated coordinates will
-                           be added a random value (in each of its dimenstions) from a uniform distribution 
+                           be added a random value (in each of its dimensions) from a uniform distribution 
                            with values between -'jitter' and 'jitter'. 
                            WARNING: using jitter may put coordinates outside of the given shape. When using a
                            grid inside a sheet shape, all units will be inside the sheet when
