@@ -1,13 +1,13 @@
 '''
 plants.py
-This file contains all the physical plant models used in the sirasi simulator.
+This file contains all the physical plant models used in the draculab simulator.
 A plant is very similar to a unit, but it has a vector output.
 '''
 
 import numpy as np
 from scipy.integrate import odeint
 from scipy.interpolate import interp1d 
-from sirasi import plant_models, synapse_types
+from draculab import plant_models, synapse_types
 
 class plant():
     """ The parent class of all physical plant models.

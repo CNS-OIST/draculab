@@ -1,4 +1,4 @@
-sirasy.py is a Python module containing classes to simulate
+draculab.py is a Python module containing classes to simulate
 networks of rate units with delayed connections.
 
 The purpose behind this simulator is to create neural networks
@@ -13,4 +13,4 @@ The simulator is expected to be simple and compact enough that
 any experienced Python user can understand its source code
 and make any required adjustments.
 
-A basic usage example is in the Jupyter notebook test2.ipynb .
+Usage examples are in the Jupyter notebooks testX.ipynb .

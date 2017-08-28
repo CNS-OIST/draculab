@@ -1,12 +1,12 @@
 """
 topology.py
 This files contains the class topology, which includes two methods that
-create spatially structured connections in Draculab networks.
+create spatially structured connections in draculab networks.
 
 It implements functionality similar to that in NEST's topology module.
 """
 
-from sirasi import unit_types, synapse_types, plant_models, syn_reqs  # names of models and requirements
+from draculab import unit_types, synapse_types, plant_models, syn_reqs  # names of models and requirements
 from units import *
 from synapses import *
 from network import *

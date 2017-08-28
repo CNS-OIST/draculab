@@ -1,9 +1,9 @@
 """ 
 network.py
-The network class used in the sirasi simulator.
+The network class used in the draculab simulator.
 """
 
-from sirasi import unit_types, synapse_types, plant_models, syn_reqs  # names of models and requirements
+from draculab import unit_types, synapse_types, plant_models, syn_reqs  # names of models and requirements
 from units import *
 from synapses import *
 from plants import *

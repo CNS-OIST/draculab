@@ -1,9 +1,9 @@
 """
 synapses.py
-This file contains all the synapse models used in the sirasi simulator
+This file contains all the synapse models used in the draculab simulator
 """
 
-from sirasi import unit_types, synapse_types, syn_reqs  # names of models and requirements
+from draculab import unit_types, synapse_types, syn_reqs  # names of models and requirements
 import numpy as np
 
 class synapse():
@@ -57,7 +57,7 @@ class synapse():
         # in the 'upd_requirements' set. Each entry in upd_requirements corresponds to
         # a different variable that the unit must maintain each time the unit's
         # update() function is called. The possible values are in the syn_reqs
-        # enumerator of the sirasi module.
+        # enumerator of the draculab module.
         self.upd_requirements = set() # start with an empty set
 
     def get_w(self, time): 

@@ -1,9 +1,9 @@
 """
 units.py
-This file contains all the unit models used in the sirasi simulator.
+This file contains all the unit models used in the draculab simulator.
 """
 
-from sirasi import unit_types, synapse_types, syn_reqs  # names of models and requirements
+from draculab import unit_types, synapse_types, syn_reqs  # names of models and requirements
 from synapses import *
 import numpy as np
 from scipy.interpolate import interp1d # to interpolate values
