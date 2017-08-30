@@ -141,6 +141,8 @@ class syn_reqs(Enum):
     err_diff = 10 # The approximate derivative of the error signal used in input correlation
     sc_inp_sum = 11 # Scaled input sum. This is the sum of presynaptic inputs, each multiplied 
                     # by its synaptic weight, or also the steady-state output of a linear unit. 
+    act_diff_sum = 12 # Sum of derivatives for all presynaptic units with delegate synapses.
+
     '''
     sum_w = x     # The sum of the weights of all the synapses of the unit  << NOT IMPLEMENTED
     w_list = x    # A list with the weights of all synapses of the unit   << NOT IMPLEMENTED
