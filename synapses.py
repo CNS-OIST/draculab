@@ -303,7 +303,7 @@ class hebb_subsnorm_synapse(synapse):
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The Hebbian rule requires the current pre- and post-synaptic activity.
         # Substractive normalization requires the average input value, obtained from lpf_fast values.
-        # The average input value obtained is only considers units with positive synaptic weights.
+        # The average input value obtained only considers units with positive synaptic weights.
         self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.pos_inp_avg])
         assert self.type is synapse_types.hebbsnorm, ['Synapse from ' + str(self.preID) + ' to ' +
                                                        str(self.postID) + ' instantiated with the wrong type']
@@ -540,6 +540,79 @@ class homeo_inhib_synapse(synapse):
         if self.w > 0.: self.w = 0.  
 
 
+class diff_hebb_subsnorm_synapse(synapse):
+    """ A differential Hebbian rule with substractive normalization.
+
+        "Delegate" synapses are meant to strengthen synapses from inputs which become stronger 
+        shortly after the unit is active. Moreover, there is competition among inputs.
+
+        To achieve this, the learning rule for the i-th synapse is of the form:
+        w_i' = lrate *  post' * ( pre_i' - avg(pre_k') )
+        where avg(pre_k') is the mean of the derivatives for all inputs with this synapse 
+        type. This is the same formula as Hebbian learning with substractive normalization 
+        (see hebb_subsnorm_synapse), where the unit activities have been replaced by their 
+        derivatives. As with the Hebbian rule, the differential version keeps the sum of 
+        synaptic weights invariant. 
         
+        Weights that become negative are clamped to zero and their corresponding inputs are
+        subsequently ignored when computing the average derivative, until the weight becomes
+        positive again. This can result in small variations in the sum of synaptic weights.
+        A slight modification of the update method can remove this feature and use 
+        a straightforward implementation of the rule.
+
+        Notice that the input delays can be relevant for this type of synapse, because the
+        correlation between the pre and post derivatives may change according to this delay.
+
+        NOTE: A second version with the same idea but using the Boltzmann distro is:
+        e_i = post' * ( 2*pre_i' - sum(pre_k') )
+        w_i' = lrate * [ { exp(e_i) / sum_k(exp(e_k)) } - w_i ]
+        I think this may approach the same rule with multiplicative scaling instead of 
+        substractive normalization. Temperature can be introduced too.
+
+        Presynaptic units have the lpf_fast and lpf_mid requirements.
+        Postsynaptic units have the lpf_fast, lpf_mid, and pos_diff_avg (diff_avg) requirements.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the parent class, with one addition.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+
+        Raises:
+            AssertionError.
+        """
+        super(diff_hebb_subsnorm_synapse, self).__init__(params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.lpf_fast,
+                                     syn_reqs.lpf_mid, syn_reqs.diff_avg]) # pos_diff_avg
+
+        assert self.type is synapse_types.diff_hebsnorm, ['Synapse from ' + str(self.preID) + ' to ' +
+                                                       str(self.postID) + ' instantiated with the wrong type']
+
+
+    def update(self, time):
+        """ Update the weight using the differential Hebbian rule with substractive normalization. 
+        
+            If the network is correctly initialized, the pre-synaptic unit updates lpf_fast, 
+            and lpf_mid, whereas the post-synaptic unit updates lpf_fast, lpf_mid and the 
+            average of approximate input derivatives.
+
+            Notice the average of input derivatives can come form upd_pos_diff_avg, which 
+            considers only the inputs whose synapses have positive values. To allow synapses
+            to potentially become negative, you need to change the synapse requirement in __init__
+            from pos_diff_avg to diff_avg, and the pos_diff_avg value used below to diff_avg.
+            Also, remove the line "if self.w < 0: self.w = 0"
+        """
+        diff_avg = self.net.units[self.postID].diff_avg
+        # pos_diff_avg = self.net.units[self.postID].pos_diff_avg
+        post = self.net.units[self.postID].lpf_fast
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+        
+        # A forward Euler step with the normalized Hebbian learning rule 
+        self.w = self.w + self.alpha *  post * (pre - inp_avg)
+        if self.w < 0: self.w = 0
 
 

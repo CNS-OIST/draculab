@@ -60,6 +60,7 @@ class synapse_types(Enum):
     bcm = 8 # Bienenstock, Cooper, and Munro learning rule
     sq_hebbsnorm = 9 # Hebbian rule with substractive normalization, second version
     homeo_inh = 10 # Homeostatic inhibition
+    diff_hebbsnorm = 11 # Differential Hebbian with substractive normalization
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
     def get_class(self):
@@ -93,6 +94,8 @@ class synapse_types(Enum):
             syn_class = bcm_synapse
         elif self == synapse_types.homeo_inh:
             syn_class = homeo_inhib_synapse
+        elif self == synapse_types.diff_hebbsnorm:
+            syn_class = diff_hebb_subsnorm_synapse
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -141,7 +144,9 @@ class syn_reqs(Enum):
     err_diff = 10 # The approximate derivative of the error signal used in input correlation
     sc_inp_sum = 11 # Scaled input sum. This is the sum of presynaptic inputs, each multiplied 
                     # by its synaptic weight, or also the steady-state output of a linear unit. 
-    act_diff_sum = 12 # Sum of derivatives for all presynaptic units with delegate synapses.
+    diff_avg = 12 # Average of derivatives for inputs with diff_hebb_subsnorm synapses.
+    pos_diff_avg = 13 # As diff_avg, but only considers inputs with positive synaptic weights
+
 
     '''
     sum_w = x     # The sum of the weights of all the synapses of the unit  << NOT IMPLEMENTED

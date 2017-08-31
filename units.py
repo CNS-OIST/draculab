@@ -200,13 +200,13 @@ class unit():
         This version works for units that store their previous activity values in a buffer.
         Units without buffers (e.g. source units) have their own get_act function.
         """
-        # Commented out is the more general interpolation using interp1d
+        # Commented out is the more general (but slow) interpolation using interp1d
         # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
         #return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
         #                fill_value="extrapolate", assume_sorted=True)(time)
         
         # This linear interpolation takes advantage of the ordered, regularly-spaced buffer.
-        # time values outside the buffer range receive the buffer endpoints.
+        # Time values outside the buffer range receive the buffer endpoints.
         time = min( max(time,self.times[0]), self.times[-1] ) # clipping 'time'
         frac = (time-self.times[0])/(self.times[-1]-self.times[0])
         base = int(np.floor(frac*(self.buff_size-1))) # biggest index s.t. times[index] <= time
@@ -294,7 +294,7 @@ class unit():
                 self.sq_lpf_slow = self.init_val
                 self.functions.add(self.upd_sq_lpf_slow)
             elif req is syn_reqs.inp_avg:  # <----------------------------------
-                self.snorm_list = []  # a list with all the presynaptic neurons 
+                self.snorm_list = []  # a list with all the presynaptic units
                                       # providing hebbsnorm synapses
                 self.snorm_dels = []  # a list with the delay steps for each connection from snorm_list
                 for syn in self.net.syns[self.ID]:
@@ -306,7 +306,7 @@ class unit():
                 self.snorm_list_dels = list(zip(self.snorm_list, self.snorm_dels)) # both lists zipped
                 self.functions.add(self.upd_inp_avg)
             elif req is syn_reqs.pos_inp_avg:  # <----------------------------------
-                self.snorm_units = []  # a list with all the presynaptic neurons 
+                self.snorm_units = []  # a list with all the presynaptic units
                                       # providing hebbsnorm synapses
                 self.snorm_syns = []  # a list with the synapses for the list above
                 self.snorm_delys = []  # a list with the delay steps for these synapses
@@ -347,6 +347,19 @@ class unit():
                 self.u_d_syn = list(zip(sq_snorm_units, sq_snorm_dels, sq_snorm_syns)) # all lists zipped
                 self.sc_inp_sum = 0.2  # an arbitrary initialization of the scaled input value
                 self.functions.add(self.upd_sc_inp_sum)
+            elif req is syn_reqs.diff_avg: # <----------------------------------
+                self.dsnorm_list = [] # list with all presynaptic units providing
+                                      # diff_hebb_subsnorm synapses
+                self.dsnorm_dels = [] # list with delay steps for each connection in dsnorm_list
+                for syn in self.net.syns[self.ID]:
+                    if syn.type is synapse_types.diff_hebbsnorm:
+                        self.dsnorm_list.append(self.net.units[syn.preID])
+                        self.dsnorm_dels.append(syn.delay_steps)
+                self.n_dhebbsnorm = len(self.dsnorm_list) # number of diff_hebbsnorm synapses received
+                self.diff_avg = 0.2  # an arbitrary initialization of the input derivatives average 
+                self.dsnorm_list_dels = list(zip(self.dsnorm_list, self.dsnorm_dels)) # both lists zipped
+                self.functions.add(self.upd_diff_avg)
+
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
@@ -477,6 +490,19 @@ class unit():
         self.sc_inp_sum = sum([u.get_lpf_fast(d) * syn.w for u,d,syn in self.u_d_syn])
         
         
+    def upd_diff_avg(self, time):
+        """ Update the average of derivatives from inputs with diff_hebbsnorm synapses.
+
+            The values being averaged are not the actual derivatives, but approximations
+            which are roughly proportional to them, coming from the difference 
+            lpf_fast - lpf_mid . 
+        """
+        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+                                        ' diff_avg updated backwards in time']
+        self.diff_avg = ( sum([u.get_lpf_fast(s) - u.get_lpf_mid(s) for u,s in self.dsnorm_list_dels]) 
+                          / self.n_dhebbsnorm )
+
+
 class source(unit):
     """ The class of units whose activity comes from some Python function.
     
