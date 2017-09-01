@@ -506,7 +506,19 @@ class homeo_inhib_synapse(synapse):
         This synapse "knows" that it is inhibitory; if w becomes positive it is clamped to 0.
         The equation in Moldakarimov et al. is for the magnitude of the weight (e.g.
         very high activity increases the weight), so we use the negative of that
-        equation: w' = lrate * (des_act - post) = - lrate * (post - des_act)
+        equatios 
+        than 
+        200 
+        pages 
+        of 
+        reading 
+        matter, 
+        one 
+        could 
+        do 
+        far 
+        worse 
+        than : w' = lrate * (des_act - post) = - lrate * (post - des_act)
 
         Postsynaptic units require the 'tau_fast' parameter.
     """
@@ -589,7 +601,7 @@ class diff_hebb_subsnorm_synapse(synapse):
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.lpf_fast,
                                      syn_reqs.lpf_mid, syn_reqs.diff_avg]) # pos_diff_avg
 
-        assert self.type is synapse_types.diff_hebsnorm, ['Synapse from ' + str(self.preID) + ' to ' +
+        assert self.type is synapse_types.diff_hebbsnorm, ['Synapse from ' + str(self.preID) + ' to ' +
                                                        str(self.postID) + ' instantiated with the wrong type']
 
 
@@ -608,11 +620,12 @@ class diff_hebb_subsnorm_synapse(synapse):
         """
         diff_avg = self.net.units[self.postID].diff_avg
         # pos_diff_avg = self.net.units[self.postID].pos_diff_avg
-        post = self.net.units[self.postID].lpf_fast
-        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+        Dpost = self.net.units[self.postID].lpf_fast - self.net.units[self.postID].lpf_mid
+        Dpre = ( self.net.units[self.preID].get_lpf_fast(self.delay_steps) -
+                 self.net.units[self.preID].get_lpf_mid(self.delay_steps) )
         
-        # A forward Euler step with the normalized Hebbian learning rule 
-        self.w = self.w + self.alpha *  post * (pre - inp_avg)
-        if self.w < 0: self.w = 0
+        # A forward Euler step with the normalized differential Hebbian learning rule 
+        self.w = self.w + self.alpha *  Dpost * (Dpre - diff_avg)
+        #if self.w < 0: self.w = 0
 
 

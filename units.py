@@ -514,14 +514,15 @@ class source(unit):
     def __init__(self, ID, params, network):
         """ The class constructor.
 
-        In practice, the function giving the activity of the unit is set after the
-        constructor has been called, using source.set_function .
 
         Args:
             ID, params, network : same as in the parent class (unit).
             In addition, the params dictionary must include:
             REQUIRED PARAMETERS
             'function' : Reference to a Python function that gives the activity of the unit.
+                         Oftentimes the function giving the activity of the unit is set after 
+                         the constructor has been called, using source.set_function . In this 
+                         case it is good practice to set 'function' : lambda x: None
 
             Notice that 'init_val' is still required because it is used to initialize any
             low-pass filtered values the unit might be keeping.
