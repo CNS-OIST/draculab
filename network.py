@@ -232,6 +232,7 @@ class network():
                         to the number of connections to be made. Distributions:
                         'uniform' - the delay dictionary must also include 'low' and 'high' values.
                         Example: {..., 'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.} }
+                Any other required parameters (e.g. 'lrate') depend on the synapse type.
                 OPTIONAL PARAMETERS
                 'inp_ports' : input ports of the connections. Either a single integer, or a list.
                             If using a list, its length must match the number of connections being
@@ -395,7 +396,10 @@ class network():
                     REQUIRED ENTRIES
                     'type' : one of the synapse_types. Currently only 'static' allowed, because the
                              plant does not update the synapse dynamics in its update method.
-                    'init_w': initial synaptic weight. A scalar, or a list of length len(unitIDs)
+                    'init_w': initial synaptic weight. A scalar, a list of length len(unitIDs), or
+                              a dictionary specifying a distribution. Distributions:
+                              'uniform' - the delay dictionary must also include 'low' and 'high' values.
+                              Example: {..., 'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.} }
 
             Raises:
                 ValueError, NotImplementedError
@@ -423,6 +427,12 @@ class network():
                 weights = [syn_spec['init_w']]*len(unitIDs)
             elif (type(syn_spec['init_w']) is list) or (type(syn_spec['init_w']) is np.ndarray):
                 weights = syn_spec['init_w']
+            elif type(syn_spec['init_w']) is dict: 
+                w_dict = syn_spec['init_w']
+                if w_dict['distribution'] == 'uniform':  #<----------------------
+                    weights = np.random.uniform(w_dict['low'], w_dict['high'], len(unitIDs))
+                else:
+                    raise NotImplementedError('Initializing weights with an unknown distribution')
             else:
                 raise ValueError('Invalid value for initial weights when connecting units to plant')
 
