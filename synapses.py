@@ -505,20 +505,8 @@ class homeo_inhib_synapse(synapse):
 
         This synapse "knows" that it is inhibitory; if w becomes positive it is clamped to 0.
         The equation in Moldakarimov et al. is for the magnitude of the weight (e.g.
-        very high activity increases the weight), so we use the negative of that
-        equatios 
-        than 
-        200 
-        pages 
-        of 
-        reading 
-        matter, 
-        one 
-        could 
-        do 
-        far 
-        worse 
-        than : w' = lrate * (des_act - post) = - lrate * (post - des_act)
+        very high activity increases the weight), so we use the negative of that:
+        w' = lrate * (des_act - post) = - lrate * (post - des_act)
 
         Postsynaptic units require the 'tau_fast' parameter.
     """
