@@ -789,7 +789,7 @@ class kWTA(unit):
         The behavior can be changed by setting the flag 'neg_act' equal to 'True'.
     """
 
-    def init(self, ID, params, network):
+    def __init__(self, ID, params, network):
         """ The unit constructor.
 
             All the attributes that require knowledge about the units in the layer
@@ -840,7 +840,7 @@ class kWTA(unit):
         # Calculate the required activation value
         ## First, get the activation for all the units
         for idx, act in enumerate(self.net.act[self.ID]):
-            self.activs[idx] = act(time - net.delays[self.ID][idx])
+            self.activs[idx] = act(time - self.net.delays[self.ID][idx])
         ## We sort the activity and find the unit with the k-th largest activity
         # TODO: find k largest instead of sorting. Needs a single pass.
         sort_ids = self.activs.argsort()
@@ -850,7 +850,7 @@ class kWTA(unit):
         kact = self.activs[kunit]
         new_act = -(1./self.slope)*np.log((1./kact) - 1.) + self.thresh - self.des_inp
                   # Notice how this assumes a synaptic weight of -1
-        if not neg_act: # if negative activation is not allowed
+        if not self.neg_act: # if negative activation is not allowed
             new_act = max(new_act, 0.)
 
         # update the buffers with the new activity value
@@ -859,7 +859,7 @@ class kWTA(unit):
         self.times[self.offset:] = new_times[1:] 
         new_buff = np.linspace(self.buffer[-1], new_act, self.min_buff_size)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
-        self.buffer[self.offset:] = new_buff[1:,0] 
+        self.buffer[self.offset:] = new_buff
 
         self.pre_syn_update(time) # update any variables needed for the synapse to update
         self.last_time = time # last_time is used to update some pre_syn_update values
@@ -874,24 +874,32 @@ class kWTA(unit):
         """
         super(kWTA, self).init_buffers() # the init_buffers of the unit parent class
 
+        # If this is the first time init_buffers is called, end here
+        try:
+            self.net.units[self.ID]
+        except IndexError: # when the unit is being created, it is not in net.units
+            return
+
         # Get a list with the IDs of the units sending inputs
         inps = []
-        for unit in self.net.units[self.ID]:
-            inps.append(unit.ID)    
+        for syn in self.net.syns[self.ID]:
+            inps.append(syn.preID)    
 
         # If we have inputs, initialize the variables used by update()
         if len(inps) > 0:
             self.inpIDs = np.array(inps)
             self.activs = np.zeros(len(inps))
-            self.slope = self.net.units[self.ID][0].slope
-            self.thresh = self.net.units[self.ID][0].thresh
+            self.slope = self.net.units[inps[0]].slope
+            self.thresh = self.net.units[inps[0]].thresh
             self.des_inp = self.thresh - (1./self.slope)*np.log((1./self.des_act)-1.)
         else:
             return
 
         # Running some tests...
         ## Make sure all slopes and thresholds are the same
-        for unit in self.net.units[self.ID]:
+        for unit in [self.net.units[idx] for idx in inps]:
+            if unit.type != unit_types.sigmoidal:
+                raise TypeError('kWTA unit connected to non-sigmoidal units')
             if self.thresh != unit.thresh:
                 raise ValueError('Not all threshold values are equal in kWTA layer')
             if self.slope != unit.slope:
