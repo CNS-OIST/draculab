@@ -230,8 +230,12 @@ class network():
                 'init_w' : Initial weight values. Either a dictionary specifying a distribution, a
                         scalar value to be applied for all created synapses, or a list with length equal
                         to the number of connections to be made. Distributions:
-                        'uniform' - the delay dictionary must also include 'low' and 'high' values.
+                        'uniform' : the delay dictionary must also include 'low' and 'high' values.
                         Example: {..., 'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.} }
+                        'equal_norm' : the weight vectors for units in 'to_list' are uniformly sampled
+                                      from the space of vectors with a given norm. The delay
+                                      dictionary must also include the 'norm' parameter.
+                        Example: {..., 'init_w':{'distribution':'unit_norm', 'norm':1.5} }
                 Any other required parameters (e.g. 'lrate') depend on the synapse type.
                 OPTIONAL PARAMETERS
                 'inp_ports' : input ports of the connections. Either a single integer, or a list.
@@ -300,6 +304,21 @@ class network():
             w_dict = syn_spec['init_w']
             if w_dict['distribution'] == 'uniform':  #<----------------------
                 weights = np.random.uniform(w_dict['low'], w_dict['high'], n_conns)
+            if w_dict['distribution'] == 'equal_norm':  #<----------------------
+                # For each unit in 'to_list', get the indexes where it appears in 'connections',
+                # create a vector with the given norm, and distribute it with those indexes in 
+                # the 'weights' vector
+                weights = np.zeros(len(connections)) # initializing 
+                for unit in to_list:  # For each unit in 'to_list'
+                    idx_list = []
+                    for idx,conn in enumerate(connections): # get the indexes where unit appears
+                        if conn[1] == unit:
+                            idx_list.append(idx)
+                    if len(idx_list) > 0:  # create the vector, set it in 'weights' using the indexes
+                        norm_vec = np.random.uniform(0.,1.,len(idx_list))
+                        norm_vec = (w_dict['norm'] / np.linalg.norm(norm_vec)) * norm_vec
+                        for id_u, id_w in enumerate(idx_list):
+                            weights[id_w] = norm_vec[id_u]
             else:
                 raise NotImplementedError('Initializing weights with an unknown distribution')
         elif type(syn_spec['init_w']) is float or type(syn_spec['init_w']) is int:
