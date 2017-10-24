@@ -304,7 +304,7 @@ class network():
             w_dict = syn_spec['init_w']
             if w_dict['distribution'] == 'uniform':  #<----------------------
                 weights = np.random.uniform(w_dict['low'], w_dict['high'], n_conns)
-            if w_dict['distribution'] == 'equal_norm':  #<----------------------
+            elif w_dict['distribution'] == 'equal_norm':  #<----------------------
                 # For each unit in 'to_list', get the indexes where it appears in 'connections',
                 # create a vector with the given norm, and distribute it with those indexes in 
                 # the 'weights' vector
