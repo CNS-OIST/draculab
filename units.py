@@ -129,8 +129,12 @@ class unit():
         
         The sum accounts for transmission delays. Input ports are ignored. 
         """
-        return sum([ syn.w * fun(time-dely) for syn,fun,dely in zip(self.net.syns[self.ID], 
-                        self.net.act[self.ID], self.net.delays[self.ID]) ])
+        # original implementation is below
+        #return sum([ syn.w * fun(time-dely) for syn,fun,dely in zip(self.net.syns[self.ID], 
+        #                self.net.act[self.ID], self.net.delays[self.ID]) ])
+        # second implementation is below
+        return sum( map( lambda x: (x[0].w) * (x[1](time-x[2])), 
+                    zip(self.net.syns[self.ID], self.net.act[self.ID], self.net.delays[self.ID]) ) )
 
 
     def get_mp_input_sum(self, time):
