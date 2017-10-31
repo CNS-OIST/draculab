@@ -6,8 +6,9 @@ This file contains all the unit models used in the draculab simulator.
 from draculab import unit_types, synapse_types, syn_reqs  # names of models and requirements
 from synapses import *
 import numpy as np
-from scipy.interpolate import interp1d # to interpolate values
 from scipy.integrate import odeint # to integrate ODEs
+from cython_utils import cython_get_act  # the cythonized linear interpolation 
+#from scipy.interpolate import interp1d # to interpolate values
 
 
 class unit():
@@ -108,6 +109,7 @@ class unit():
         self.buffer = np.array( [self.init_val]*self.buff_size ) # numpy array with previous activation values
         self.times = np.linspace(-self.delay, 0., self.buff_size) # the corresponding times for the buffer values
         self.times_grid = np.linspace(0, min_del, min_buff+1) # used to create values for 'times'
+        self.time_bit = self.times[1] - self.times[0] + 1e-9 # time interval used by get_act.
         
         
     def get_inputs(self, time):
@@ -203,19 +205,44 @@ class unit():
 
         This version works for units that store their previous activity values in a buffer.
         Units without buffers (e.g. source units) have their own get_act function.
+
+        This is the most time-consuming method in draculab (thus the various optimizations).
         """
-        # Commented out is the more general (but slow) interpolation using interp1d
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Below is the more general (but slow) interpolation using interp1d
         # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
-        #return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
-        #                fill_value="extrapolate", assume_sorted=True)(time)
-        
+        """
+        return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
+                        fill_value="extrapolate", assume_sorted=True)(time)
+        """
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # Below the code for the second implementation.
         # This linear interpolation takes advantage of the ordered, regularly-spaced buffer.
         # Time values outside the buffer range receive the buffer endpoints.
+        # The third implementation is faster, but for small buffer sizes in test2.ipynb this
+        # gives more exact results. I can't figure out why.
+        """
         time = min( max(time,self.times[0]), self.times[-1] ) # clipping 'time'
         frac = (time-self.times[0])/(self.times[-1]-self.times[0])
         base = int(np.floor(frac*(self.buff_size-1))) # biggest index s.t. times[index] <= time
         frac2 = ( time-self.times[base] ) / ( self.times[min(base+1,self.buff_size-1)] - self.times[base] + 1e-8 )
         return self.buffer[base] + frac2 * ( self.buffer[min(base+1,self.buff_size-1)] - self.buffer[base] )
+        """
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # This is the third implementation. 
+        # Takes advantage of the regularly spaced times using divmod.
+        # Values outside the buffer range will fall between buffer[-1] and buffer[-2].
+        """
+        base, rem = divmod(time-self.times[0], self.time_bit)
+        # because time_bit is slightly larger than times[1]-times[0], we can limit
+        # base to buff_size-2, even if time = times[-1]
+        base =  max( 0, min(int(base), self.buff_size-2) ) 
+        frac2 = rem/self.time_bit
+        return self.buffer[base] + frac2 * ( self.buffer[base+1] - self.buffer[base] )
+        """
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # The fourth implementation uses the same algorithm as the third, with Cython
+        return cython_get_act(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
 
   
     def init_pre_syn_update(self):
