@@ -616,4 +616,60 @@ class diff_hebb_subsnorm_synapse(synapse):
         self.w = self.w + self.alpha *  Dpost * (Dpre - diff_avg)
         #if self.w < 0: self.w = 0
 
+class corr_homeo_inhib_synapse(synapse):
+    """ An inhibitory synapse with activity-dependent potentiation and depression.
+
+        The equation comes from: Vogels et al. (2011)
+        "Inhibitory Plasticity Balances Excitation and Inhibition in Sensory Pathways
+        and Memory Networks", Science 334(6062):1569-1573.
+
+        This rule is meant to maintain a state of balanced exchitation and inhibition using
+        inhibitory units whose activity correlates with that of this unit. For the rule to
+        be effective it is recommended that inputs to the network activate both excitatory and
+        inhibitory units, and that inhibitory units project to the co-excited excitatory units.
+
+        This synapse "knows" that it is inhibitory; if w becomes positive it is clamped to 0.
+        The equation in Vogels et al. is for the magnitude of the weight (e.g.
+        very high pre-post correation increases the weight), so we use the negative of that:
+        w' = -lrate*(pre*post - rho_0*pre) = lrate * pre * (rho_0 - post) 
+
+        Notice this rule is similar to the one in Moldakarimov et al 2006 (homeo_inhib_synapse),
+        with an extra modulation by the presynaptic activity. rho_0 is the desired activity,
+        and you have the extra constraint of not modifying the synapse unless the presynaptic
+        unit is active (otherwise the change wouldn't have any effect anyway).  Thus the notation:
+        w' = lrate * pre * (des_act - post),
+        and thus the name "Correlational Homeostatic Inhibition Synapse".
+
+        Presynaptic and postsynaptic units require the 'tau_fast' parameter.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the parent class, with two additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            'des_act' : A value for the desired average activity level (rho_0 parameter).
+
+        Raises:
+            AssertionError.
+        """
+        super(corr_homeo_inhib_synapse, self).__init__(params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.des_act = params['des_act'] # desired average level of activity
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast])
+
+        assert self.type is synapse_types.corr_inh, ['Synapse from ' + str(self.preID) + ' to ' +
+                                                       str(self.postID) + ' instantiated with the wrong type']
+
+    
+    def update(self, time):
+        """ Update the weight using the homeostatic rule. """
+        post = self.net.units[self.postID].lpf_fast
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+        # A forward Euler step 
+        self.w = self.w + self.alpha * pre * (self.des_act - post)
+        if self.w > 0.: self.w = 0.  
+
 

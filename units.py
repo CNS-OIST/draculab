@@ -177,7 +177,6 @@ class unit():
         In addition, all the synapses of the unit are updated.
         source and kwta units override this with shorter update functions.
         """
-
         # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
         # Maybe there should be a single 'times' array in the network. This seems more parallelizable, though.
         assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'

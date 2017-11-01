@@ -62,8 +62,9 @@ class synapse_types(Enum):
     inp_corr = 7 # Input correlation
     bcm = 8 # Bienenstock, Cooper, and Munro learning rule
     sq_hebbsnorm = 9 # Hebbian rule with substractive normalization, second version
-    homeo_inh = 10 # Homeostatic inhibition
-    diff_hebbsnorm = 11 # Differential Hebbian with substractive normalization
+    homeo_inh = 10 # Homeostatic inhibition from Moldakarimov et al. 2006
+    corr_inh = 11 # Homeostatic inhibition from Vogels et al. 2011
+    diff_hebbsnorm = 12 # Differential Hebbian with substractive normalization
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
     def get_class(self):
@@ -97,6 +98,8 @@ class synapse_types(Enum):
             syn_class = bcm_synapse
         elif self == synapse_types.homeo_inh:
             syn_class = homeo_inhib_synapse
+        elif self == synapse_types.corr_inh:
+            syn_class = corr_homeo_inhib_synapse
         elif self == synapse_types.diff_hebbsnorm:
             syn_class = diff_hebb_subsnorm_synapse
         else:
