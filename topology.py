@@ -207,7 +207,7 @@ class topology():
                               Same as setting a uniform distribution in 'init_w' of syn_spec, but
                               with different syntax in the dictionary.
                            >> {'linear' : {'c' : c, 'a' : a}}. Units with distance d will connect with
-                              synaptic weight max( c  - a*d, 0 ) .
+                              synaptic weight: max( c  - a*d, 0 ) if c > 0, min( c + a*d, 0) if c < 0.
                            >> {'gaussian' : {'p_center' : w, 'sigma' : s}}. Units with distance d will
                               connect with synaptic weight w * exp( - (d/s)**2 ) . 
 
@@ -394,13 +394,16 @@ class topology():
             elif 'linear' in conn_spec['weights']:
                 c = conn_spec['weights']['linear']['c']
                 a = conn_spec['weights']['linear']['a']
-                weights = list(map(lambda d: max(c - a*d, 0.), distances))
+                if c > 0:
+                    weights = list(map(lambda d: max(c - a*d, 0.), distances))
+                else:
+                    weights = list(map(lambda d: min(c + a*d, 0.), distances))
             elif 'gaussian' in conn_spec['weights']:
                 w = conn_spec['weights']['gaussian']['p_center']
                 s = conn_spec['weights']['gaussian']['sigma']
                 weights = [ w*np.exp(-((d/s)**2.)) for d in distances]
-            if max(weights) > max_w:
-                raise ValueError('Received weights distribution produces values larger than ' + str(max_w))
+            if max(np.abs(weights)) > max_w:
+                raise ValueError('Received weights distribution produces abs values larger than ' + str(max_w))
 
             syn_spec['init_w'] = weights
 

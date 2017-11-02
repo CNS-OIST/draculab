@@ -18,6 +18,7 @@ class unit_types(Enum):
     mp_linear  = 4
     custom_fi = 5
     custom_sc_fi = 6
+    kwta = 7
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -42,6 +43,8 @@ class unit_types(Enum):
             unit_class = custom_fi
         elif self == unit_types.custom_sc_fi:
             unit_class = custom_scaled_fi
+        elif self == unit_types.kwta:
+            unit_class = kWTA
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?
@@ -59,8 +62,9 @@ class synapse_types(Enum):
     inp_corr = 7 # Input correlation
     bcm = 8 # Bienenstock, Cooper, and Munro learning rule
     sq_hebbsnorm = 9 # Hebbian rule with substractive normalization, second version
-    homeo_inh = 10 # Homeostatic inhibition
-    diff_hebbsnorm = 11 # Differential Hebbian with substractive normalization
+    homeo_inh = 10 # Homeostatic inhibition from Moldakarimov et al. 2006
+    corr_inh = 11 # Homeostatic inhibition from Vogels et al. 2011
+    diff_hebbsnorm = 12 # Differential Hebbian with substractive normalization
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
     def get_class(self):
@@ -94,6 +98,8 @@ class synapse_types(Enum):
             syn_class = bcm_synapse
         elif self == synapse_types.homeo_inh:
             syn_class = homeo_inhib_synapse
+        elif self == synapse_types.corr_inh:
+            syn_class = corr_homeo_inhib_synapse
         elif self == synapse_types.diff_hebbsnorm:
             syn_class = diff_hebb_subsnorm_synapse
         else:

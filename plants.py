@@ -184,7 +184,7 @@ class pendulum(plant):
     The get_state(time) function returns the two state variables of the model in a numpy 
     array. Angle has index 0, and angular velocity has index 1. The \'time\' argument
     should be in the interval [sim_time - del, sim_time], where sim_time is the current
-    simualation time (time of last simulation step), and del is the \'delay\' value
+    simulation time (time of last simulation step), and del is the \'delay\' value
     of the plant.
 
     Alternatively, the state variables can be retrieved with the get_angle(t) and
