@@ -208,8 +208,12 @@ class topology():
                               with different syntax in the dictionary.
                            >> {'linear' : {'c' : c, 'a' : a}}. Units with distance d will connect with
                               synaptic weight: max( c  - a*d, 0 ) if c > 0, min( c + a*d, 0) if c < 0.
-                           >> {'gaussian' : {'p_center' : w, 'sigma' : s}}. Units with distance d will
+                           >> {'gaussian' : {'w_center' : w, 'sigma' : s}}. Units with distance d will
                               connect with synaptic weight w * exp( - (d/s)**2 ) . 
+                           >> {'ring_gaussian' : {'w_center' : w, 'sigma' : s, 'radius' : r}}. Units
+                              with distance d will connect with synaptic weight:
+                              w * exp( - ((d-r)/s)**2 ). One use for this is to set the negative part
+                              of "Mexican hat" connectivity.
 
                 'edge_wrap' : Assume that all units are inside a rectangle with periodic boundaries (e.g. 
                               toroidal topology). By default this is set to False, but if set to True the 
@@ -399,9 +403,14 @@ class topology():
                 else:
                     weights = list(map(lambda d: min(c + a*d, 0.), distances))
             elif 'gaussian' in conn_spec['weights']:
-                w = conn_spec['weights']['gaussian']['p_center']
+                w = conn_spec['weights']['gaussian']['w_center']
                 s = conn_spec['weights']['gaussian']['sigma']
                 weights = [ w*np.exp(-((d/s)**2.)) for d in distances]
+            elif 'ring_gaussian' in conn_spec['weights']:
+                w = conn_spec['weights']['ring_gaussian']['w_center']
+                s = conn_spec['weights']['ring_gaussian']['sigma']
+                r = conn_spec['weights']['ring_gaussian']['radius']
+                weights = [ w*np.exp(-(((d-r)/s)**2.)) for d in distances]
             if max(np.abs(weights)) > max_w:
                 raise ValueError('Received weights distribution produces abs values larger than ' + str(max_w))
 
