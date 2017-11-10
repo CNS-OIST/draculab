@@ -65,6 +65,7 @@ class synapse_types(Enum):
     homeo_inh = 10 # Homeostatic inhibition from Moldakarimov et al. 2006
     corr_inh = 11 # Homeostatic inhibition from Vogels et al. 2011
     diff_hebbsnorm = 12 # Differential Hebbian with substractive normalization
+    exp_rate_dist = 13 # To create an exponential firing rate distribution
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
     def get_class(self):
@@ -102,6 +103,8 @@ class synapse_types(Enum):
             syn_class = corr_homeo_inhib_synapse
         elif self == synapse_types.diff_hebbsnorm:
             syn_class = diff_hebb_subsnorm_synapse
+        elif self == synapse_types.exp_rate_dist:
+            syn_class = exp_rate_dist_synapse
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -149,9 +152,10 @@ class syn_reqs(Enum):
     pos_inp_avg = 9 # as inp_avg, but only considers inputs with positive synaptic weights
     err_diff = 10 # The approximate derivative of the error signal used in input correlation
     sc_inp_sum = 11 # Scaled input sum. This is the sum of presynaptic inputs, each multiplied 
-                    # by its synaptic weight, or also the steady-state output of a linear unit. 
+                    # by its synaptic weight.
     diff_avg = 12 # Average of derivatives for inputs with diff_hebb_subsnorm synapses.
     pos_diff_avg = 13 # As diff_avg, but only considers inputs with positive synaptic weights
+    lpf_mid_inp_sum = 14 # LPF'd sum of presynaptic inputs with a medium time constant.
 
 
     '''

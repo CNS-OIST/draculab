@@ -98,6 +98,8 @@ class unit():
             self.lpf_mid_buff = np.array( [self.init_val]*self.steps )
         if syn_reqs.lpf_slow in self.syn_needs:
             self.lpf_slow_buff = np.array( [self.init_val]*self.steps )
+        if syn_reqs.lpf_mid_inp_sum in self.syn_needs:
+            self.lpf_mid_inp_sum_buff = np.array( [self.init_val]*self.steps )
 
         # 'source' units don't use activity buffers, so for them the method ends here
         if self.type == unit_types.source:
@@ -278,7 +280,7 @@ class unit():
 
         # Each synapse should know the delay of its connection
         for syn, delay in zip(self.net.syns[self.ID], self.net.delays[self.ID]):
-            syn.delay_steps = int(round(delay/self.net.min_delay))
+            syn.delay_steps = min(self.steps, int(round(delay/self.net.min_delay)))
 
         # For each synapse you receive, add its requirements
         for syn in self.net.syns[self.ID]:
@@ -389,6 +391,11 @@ class unit():
                 self.diff_avg = 0.2  # an arbitrary initialization of the input derivatives average 
                 self.dsnorm_list_dels = list(zip(self.dsnorm_list, self.dsnorm_dels)) # both lists zipped
                 self.functions.add(self.upd_diff_avg)
+            elif req is syn_reqs.lpf_mid_inp_sum:  # <----------------------------------
+                if not hasattr(self,'tau_mid'): 
+                    raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
+                self.lpf_mid_inp_sum = self.init_val # this initialization is rather arbitrary
+                self.functions.add(self.upd_lpf_mid_inp_sum)
 
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
@@ -531,6 +538,27 @@ class unit():
                                         ' diff_avg updated backwards in time']
         self.diff_avg = ( sum([u.get_lpf_fast(s) - u.get_lpf_mid(s) for u,s in self.dsnorm_list_dels]) 
                           / self.n_dhebbsnorm )
+
+    def upd_lpf_mid_inp_sum(self,time):
+        """ Update the lpf_mid_inp_sum variable. """
+        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+                                        ' lpf_mid_inp_sum updated backwards in time']
+        cur_inp_sum = sum(self.get_inputs(time))
+        # This updating rule comes from analytically solving 
+        # lpf_x' = ( x - lpf_x ) / tau
+        # and assuming x didn't change much between self.last_time and time.
+        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
+        self.lpf_mid_inp_sum = cur_inp_sum + ( (self.lpf_mid_inp_sum - cur_inp_sum) * 
+                                   np.exp( (self.last_time-time)/self.tau_mid) )
+        # update the buffer
+        self.lpf_mid_inp_sum_buff = np.roll(self.lpf_mid_inp_sum_buff, -1)
+        self.lpf_mid_inp_sum_buff[-1] = self.lpf_mid_inp_sum
+
+
+    def get_lpf_mid_inp_sum(self):
+        """ Get the latest value of the mid-speed low-pass filtered sum of inputs. """
+        return self.lpf_mid_inp_sum_buff[-1]
+
 
 
 class source(unit):

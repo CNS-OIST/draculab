@@ -673,3 +673,49 @@ class corr_homeo_inhib_synapse(synapse):
         if self.w > 0.: self.w = 0.  
 
 
+class exp_rate_dist_synapse(synapse):
+    """ A synapse that adapts in order to produce an exponential distribution of firing rates.
+
+        In other words, a fully connected network where all the connections are of this type
+        will in theory converge towards a fixed point for both the firing rates and the
+        synaptic weights. At this fixed point the firing rates --which are assumed to lie 
+        in the interval (0,1) -- will have a probability density function of the form:
+        rho(f) = (c/(1-exp(-c))) * exp(-c*f),  where c is a constant parameter, f is the
+        firing rate, and rho(f) is the PDF.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the parent class, with two additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            'c' : Changes the homogeneity of the firing rate distribution.
+                  Values very close to 0 make all firing rates equally probable, whereas
+                  larger values make small firing rates more probable.
+
+        Raises:
+            AssertionError.
+        """
+        super(exp_rate_dist_synapse, self).__init__(params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.c = params['c'] # level of heterogeneity for firing rates
+        self.k = ( 1. - np.exp(-self.c) ) / self.c # factor so distro integrates to 1
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_mid_inp_sum])
+
+        assert self.type is synapse_types.exp_rate_dist, ['Synapse from ' + str(self.preID) + ' to ' +
+                                                       str(self.postID) + ' instantiated with the wrong type']
+
+    
+    def update(self, time):
+        """ Update the weight using the firing rate exponential distribution rule. """
+        u = self.net.units[self.postID].get_input_sum(time)  # using instantaneous value!
+        mu = self.net.units[self.postID].get_lpf_mid_inp_sum()
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+        # A forward Euler step 
+        self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / mu) - self.w )
+
+
+
+        
