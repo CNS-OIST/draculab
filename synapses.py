@@ -715,6 +715,7 @@ class exp_rate_dist_synapse(synapse):
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
         self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / mu) - self.w )
+        self.w = min( max( -2., self.w ), 2.)
 
 
 
