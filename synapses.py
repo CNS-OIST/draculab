@@ -710,7 +710,10 @@ class exp_rate_dist_synapse(synapse):
     
     def update(self, time):
         """ Update the weight using the firing rate exponential distribution rule. """
-        u = self.net.units[self.postID].get_input_sum(time)  # using instantaneous value!
+        # this line killed the speed
+        #u = self.net.units[self.postID].get_input_sum(time)  # using instantaneous value!
+        # this line saved us all
+        u = self.net.units[self.postID].buffer[-1] # still using instantaneous value!
         mu = self.net.units[self.postID].get_lpf_mid_inp_sum()
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
