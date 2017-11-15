@@ -280,7 +280,9 @@ class unit():
 
         # Each synapse should know the delay of its connection
         for syn, delay in zip(self.net.syns[self.ID], self.net.delays[self.ID]):
-            syn.delay_steps = min(self.steps, int(round(delay/self.net.min_delay)))
+            # The -1 below is because get_lpf_fast etc. return lpf_fast_buff[-1-steps], corresponding to
+            # the assumption that buff[-1] is the value zero steps back
+            syn.delay_steps = min(self.net.units[syn.preID].steps-1, int(round(delay/self.net.min_delay)))
 
         # For each synapse you receive, add its requirements
         for syn in self.net.syns[self.ID]:
@@ -421,7 +423,7 @@ class unit():
 
 
     def get_lpf_fast(self, steps):
-        """ Get the fast low-pass filtered activity, as it was 'step' simulation steps before. """
+        """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
         return self.lpf_fast_buff[-1-steps]
 
 
@@ -442,7 +444,7 @@ class unit():
 
 
     def get_lpf_mid(self, steps):
-        """ Get the mid-speed low-pass filtered activity, as it was 'step' simulation steps before. """
+        """ Get the mid-speed low-pass filtered activity, as it was 'steps' simulation steps before. """
         return self.lpf_mid_buff[-1-steps]
 
 
@@ -463,7 +465,7 @@ class unit():
 
 
     def get_lpf_slow(self, steps):
-        """ Get the slow low-pass filtered activity, as it was 'step' simulation steps before. """
+        """ Get the slow low-pass filtered activity, as it was 'steps' simulation steps before. """
         return self.lpf_slow_buff[-1-steps]
 
 
@@ -567,6 +569,9 @@ class source(unit):
         source units provide inputs to the network. They can be conceived as units
         whose activity at time 't' comes from a function f(t). This function is passed to
         the constructor as a parameter, or later specified with the set_function method.
+
+        Source units are also useful to track the value of any simulation variable that
+        can be retrieved with a function.
     """
     
     def __init__(self, ID, params, network):

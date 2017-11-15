@@ -235,7 +235,7 @@ class network():
                         'equal_norm' : the weight vectors for units in 'to_list' are uniformly sampled
                                       from the space of vectors with a given norm. The delay
                                       dictionary must also include the 'norm' parameter.
-                        Example: {..., 'init_w':{'distribution':'unit_norm', 'norm':1.5} }
+                        Example: {..., 'init_w':{'distribution':'equal_norm', 'norm':1.5} }
                 Any other required parameters (e.g. 'lrate') depend on the synapse type.
                 OPTIONAL PARAMETERS
                 'inp_ports' : input ports of the connections. Either a single integer, or a list.
