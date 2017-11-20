@@ -398,6 +398,9 @@ class unit():
                     raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
                 self.lpf_mid_inp_sum = self.init_val # this initialization is rather arbitrary
                 self.functions.add(self.upd_lpf_mid_inp_sum)
+            elif req is syn_reqs.n_erd:  # <----------------------------------
+                self.n_erd = len([s for s in self.net.syns[self.ID] if s.type is synapse_types.exp_rate_dist])
+                # n_erd doesn't need to be updated :)
 
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
