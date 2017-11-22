@@ -702,20 +702,21 @@ class exp_rate_dist_synapse(synapse):
         self.c = params['c'] # level of heterogeneity for firing rates
         self.k = ( 1. - np.exp(-self.c) ) / self.c # normalizing factor for the exp distribution
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
-        #self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_mid_inp_sum])
-        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.n_erd])
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_mid_inp_sum])
+        #self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.n_erd])
         assert self.type is synapse_types.exp_rate_dist, ['Synapse from ' + str(self.preID) + ' to ' +
                                                        str(self.postID) + ' instantiated with the wrong type']
 
     
     def update(self, time):
         """ Update the weight using the firing rate exponential distribution rule. """
-        u = self.net.units[self.postID].buffer[-1] # using instantaneous value...
-        #mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
-        m = self.net.units[self.postID].n_erd
+        f = self.net.units[self.postID].buffer[-1] # using instantaneous value...
+        u = np.log(f/(1.-f))
+        mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
+        #mu = self.net.units[self.postID].n_erd
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
-        self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (m*pre*(1.-pre))) - self.w )
+        self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*pre*(1.-pre))) - self.w )
         self.w = min( max( -3., self.w ), 3.)
 
 
