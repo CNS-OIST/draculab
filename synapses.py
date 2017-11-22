@@ -711,6 +711,7 @@ class exp_rate_dist_synapse(synapse):
     def update(self, time):
         """ Update the weight using the firing rate exponential distribution rule. """
         f = self.net.units[self.postID].buffer[-1] # using instantaneous value...
+        f = max( min( .99, f), 0.01 )
         u = np.log(f/(1.-f))
         mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
         #mu = self.net.units[self.postID].n_erd
