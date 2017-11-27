@@ -711,13 +711,14 @@ class exp_rate_dist_synapse(synapse):
         """ Update the weight using the firing rate exponential distribution rule. """
         f = self.net.units[self.postID].buffer[-1] # using instantaneous value...
         f = max( min( .999, f), 0.001 )
-        u = (np.log(f/(1.-f))/self.net.units[self.postID].slope) + self.net.units[self.postID].thresh
-        mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
+        #u = (np.log(f/(1.-f))/self.net.units[self.postID].slope) + self.net.units[self.postID].thresh
+        #mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
         h = self.net.units[self.postID].n_erd
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
-        self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*h*pre*(pre-1.))) - self.w )
+        #self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*h*pre*(pre-1.))) - self.w )
         #self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*h)) - self.w )
+        self.w = self.w + self.alpha * ( ( self.k * f * np.exp(self.c * pre) / (h*pre*(1.-pre))) - self.w )
         self.w = min( max( -3., self.w ), 3.)
 
 
