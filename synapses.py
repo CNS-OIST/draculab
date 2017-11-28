@@ -700,25 +700,26 @@ class exp_rate_dist_synapse(synapse):
         super(exp_rate_dist_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.c = params['c'] # level of heterogeneity for firing rates
-        self.k = self.c / ( 1. - np.exp(-self.c) )  # normalizing factor for the exp distribution
+        self.k = ( 1. - np.exp(-self.c) ) / self.c   # reciprocal of normalizing factor for the exp distribution
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
-        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_mid_inp_sum, syn_reqs.n_erd])
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_fast, syn_reqs.lpf_mid_inp_sum, syn_reqs.n_erd])
         assert self.type is synapse_types.exp_rate_dist, ['Synapse from ' + str(self.preID) + ' to ' +
                                                        str(self.postID) + ' instantiated with the wrong type']
 
     
     def update(self, time):
         """ Update the weight using the firing rate exponential distribution rule. """
-        f = self.net.units[self.postID].buffer[-1] # using instantaneous value...
-        f = max( min( .999, f), 0.001 )
-        #u = (np.log(f/(1.-f))/self.net.units[self.postID].slope) + self.net.units[self.postID].thresh
-        #mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
+        f = self.net.units[self.postID].get_lpf_fast(1)
+        #f = self.net.units[self.postID].buffer[-1] # using instantaneous value...
+        #f = max( min( .999, f), 0.001 ) # avoids bad arguments in the log below
+        u = (np.log(f/(1.-f))/self.net.units[self.postID].slope) + self.net.units[self.postID].thresh
+        mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
         h = self.net.units[self.postID].n_erd
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
         #self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*h*pre*(pre-1.))) - self.w )
-        #self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*h)) - self.w )
-        self.w = self.w + self.alpha * ( ( self.k * f * np.exp(self.c * pre) / (h*pre*(1.-pre))) - self.w )
+        self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*h)) - self.w )
+        #self.w = self.w + self.alpha * ( ( self.k * f * np.exp(self.c * pre) / (h*pre*(1.-pre))) - self.w )
         self.w = min( max( -3., self.w ), 3.)
 
 
