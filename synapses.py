@@ -703,6 +703,7 @@ class exp_rate_dist_synapse(synapse):
         self.k = ( 1. - np.exp(-self.c) ) / self.c   # reciprocal of normalizing factor for the exp distribution
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_fast, syn_reqs.lpf_mid_inp_sum, syn_reqs.n_erd])
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.lpf_mid_inp_sum, syn_reqs.balance])
         assert self.type is synapse_types.exp_rate_dist, ['Synapse from ' + str(self.preID) + ' to ' +
                                                        str(self.postID) + ' instantiated with the wrong type']
 
@@ -714,13 +715,30 @@ class exp_rate_dist_synapse(synapse):
         #f = max( min( .999, f), 0.001 ) # avoids bad arguments in the log below
         u = (np.log(f/(1.-f))/self.net.units[self.postID].slope) + self.net.units[self.postID].thresh
         mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
-        h = self.net.units[self.postID].n_erd
-        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+        #h = self.net.units[self.postID].n_erd
+        #pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
         #self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*h*pre*(pre-1.))) - self.w )
-        self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*h)) - self.w )
+        #self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*h)) - self.w )
         #self.w = self.w + self.alpha * ( ( self.k * f * np.exp(self.c * pre) / (h*pre*(1.-pre))) - self.w )
+
+        # The version below is an adaptation of the successful weight kernel in histogram_map.ipynb
+        w2 = self.net.units[self.postID].bin_width / 2.
+        extra = self.net.units[self.postID].around - ( self.cdf(f + w2) - self.cdf(f - w2) )
+        if extra > w2: # too many units around; let's move them
+            left_extra = self.net.units[self.postID].below - self.cdf(f - w2)
+            right_extra = 1. - extra - left_extra
+            direction = left_extra - right_extra # if they are equal we have no direction ...
+            delta = direction * extra
+        else:
+            delta = 0.
+        self. w = self.w + self.alpha * (u + delta) / mu
+
         self.w = min( max( -3., self.w ), 3.)
+
+    def cdf(self, x):
+        """ The cumulative density function of the distribution we're approaching. """
+        return ( 1. - np.exp(-self.c*x) ) / ( 1. - np.exp(-self.c) )
 
 
 

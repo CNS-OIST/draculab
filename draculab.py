@@ -157,6 +157,7 @@ class syn_reqs(Enum):
     pos_diff_avg = 13 # As diff_avg, but only considers inputs with positive synaptic weights
     lpf_mid_inp_sum = 14 # LPF'd sum of presynaptic inputs with a medium time constant.
     n_erd = 15 # number of exp_rate_dist synapses on the postsynaptic unit
+    balance = 16 # fraction of inputs above, below, and around the current rate
 
 
     '''

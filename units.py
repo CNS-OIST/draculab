@@ -65,6 +65,9 @@ class unit():
         if 'tau_slow' in params: self.tau_slow = params['tau_slow']
         if 'n_ports' in params: self.n_ports = params['n_ports']
         else: self.n_ports = 1
+        # This is used for the "balance" synaptic requirement in the upd_balance function
+        if 'bin_width' in params: self.bin_width = params['bin_width']
+
         self.multi_port = False # indicates whether the unit has multi-port support, which 
                                 # means it has customized get_input* functions
 
@@ -401,6 +404,13 @@ class unit():
             elif req is syn_reqs.n_erd:  # <----------------------------------
                 self.n_erd = len([s for s in self.net.syns[self.ID] if s.type is synapse_types.exp_rate_dist])
                 # n_erd doesn't need to be updated :)
+            elif req is syn_reqs.balance:  # <----------------------------------
+                if not hasattr(self,'bin_width'): 
+                    raise NameError( 'Synaptic plasticity requires unit parameter bin_width, not yet set' )
+                self.below = 0.4 # this initialization is rather arbitrary
+                self.above = 0.4 
+                self.around = 0.2 
+                self.functions.add(self.upd_balance)
 
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
@@ -564,6 +574,25 @@ class unit():
         """ Get the latest value of the mid-speed low-pass filtered sum of inputs. """
         return self.lpf_mid_inp_sum_buff[-1]
 
+    def upd_balance(self, time):
+        """ Updates three numbers: below, around, and above.
+
+            Let the rate of the unit be r, and the 'bin_width' attribute bw.
+            below = number of inputs with rate below r - bw/2
+            around = number of inputs with rate > r - bw/2 and rate < r + bw/2
+            above = number of inputs with rate above r + bw/2
+
+            NOTICE: this version does not restrict inputs to exp_rate_dist synapses.
+        """
+        inputs = np.array(self.get_inputs(time)) # current inputs
+        r = self.buffer[-1] # current rate
+        N = len(inputs)
+        self.above = ( 0.5 * sum( (np.sign(inputs - r - self.bin_width/2.) + 1.) ) ) / N
+        self.below = ( 0.5 * sum( (np.sign(r - inputs - self.bin_width/2.) + 1.) ) ) / N
+        self.around =  1. - self.above - self.below 
+
+        #assert self.above+self.below+self.around - 1. < 1e-5, ['sum was not 1: ' + 
+        #                            str(self.above + self.below + self.around)]
 
 
 class source(unit):
