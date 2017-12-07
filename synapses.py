@@ -725,14 +725,18 @@ class exp_rate_dist_synapse(synapse):
         # The version below is an adaptation of the successful weight kernel in histogram_map.ipynb
         w2 = self.net.units[self.postID].bin_width / 2.
         extra = self.net.units[self.postID].around - ( self.cdf(f + w2) - self.cdf(f - w2) )
-        if extra > w2: # too many units around; let's move them
+        #if extra > w2: # too many units around; let's move them
+        if extra > 0.: # too many units around; let's move them
             left_extra = self.net.units[self.postID].below - self.cdf(f - w2)
-            right_extra = 1. - extra - left_extra
+            #right_extra = 1. - extra - left_extra
+            right_extra = self.net.units[self.postID].above - (1. - self.cdf(f + w2))
+            assert abs(extra+left_extra+right_extra) < 1e-6, ['extras add to ' 
+                                                           + str(extra+left_extra+right_extra) ]
             direction = left_extra - right_extra # if they are equal we have no direction ...
             delta = direction * extra
         else:
             delta = 0.
-        self. w = self.w + self.alpha * (u + delta) / mu
+        self. w = self.w + self.alpha * ( (u + delta) / mu - self.w )
 
         self.w = min( max( -3., self.w ), 3.)
 
