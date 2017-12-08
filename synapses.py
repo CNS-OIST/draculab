@@ -692,7 +692,10 @@ class exp_rate_dist_synapse(synapse):
             'lrate' : A scalar value that will multiply the derivative of the weight.
             'c' : Changes the homogeneity of the firing rate distribution.
                   Values very close to 0 make all firing rates equally probable, whereas
-                  larger values make small firing rates more probable.
+                  larger values make small firing rates more probable. 
+                  Shouldn't be set to zero (causes zero division in the cdf function).
+            'wshift' : If the rule wants to shift the firing rate of the neuron, it will
+                       change the weight by this amount (the sign depends on the rule).
 
         Raises:
             AssertionError.
@@ -700,9 +703,10 @@ class exp_rate_dist_synapse(synapse):
         super(exp_rate_dist_synapse, self).__init__(params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.c = params['c'] # level of heterogeneity for firing rates
+        self.wshift = params['wshift'] # how much to shift weight if unit should change bin
         self.k = ( 1. - np.exp(-self.c) ) / self.c   # reciprocal of normalizing factor for the exp distribution
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
-        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_fast, syn_reqs.lpf_mid_inp_sum, syn_reqs.n_erd])
+        #self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_fast, syn_reqs.lpf_mid_inp_sum, syn_reqs.n_erd])
         self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.lpf_mid_inp_sum, syn_reqs.balance])
         assert self.type is synapse_types.exp_rate_dist, ['Synapse from ' + str(self.preID) + ' to ' +
                                                        str(self.postID) + ' instantiated with the wrong type']
@@ -728,12 +732,11 @@ class exp_rate_dist_synapse(synapse):
         #if extra > w2: # too many units around; let's move them
         if extra > 0.: # too many units around; let's move them
             left_extra = self.net.units[self.postID].below - self.cdf(f - w2)
-            #right_extra = 1. - extra - left_extra
-            right_extra = self.net.units[self.postID].above - (1. - self.cdf(f + w2))
-            assert abs(extra+left_extra+right_extra) < 1e-6, ['extras add to ' 
-                                                           + str(extra+left_extra+right_extra) ]
-            direction = left_extra - right_extra # if they are equal we have no direction ...
-            delta = direction * extra
+            right_extra = - extra - left_extra
+            #right_extra = self.net.units[self.postID].above - (1. - self.cdf(f + w2))
+            #assert abs(extra+left_extra+right_extra) < 1e-6, ['extras add to ' 
+            #                                               + str(extra+left_extra+right_extra) ]
+            delta = self.wshift * self.sgnm(left_extra - right_extra)
         else:
             delta = 0.
         self. w = self.w + self.alpha * ( (u + delta) / mu - self.w )
@@ -743,6 +746,13 @@ class exp_rate_dist_synapse(synapse):
     def cdf(self, x):
         """ The cumulative density function of the distribution we're approaching. """
         return ( 1. - np.exp(-self.c*x) ) / ( 1. - np.exp(-self.c) )
+
+    def sgnm(self,x):
+        """ The sign function, but  returns -1 for x==0 """
+        return -1. if x == 0 else np.sign(x)
+
+
+
 
 
 

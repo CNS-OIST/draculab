@@ -578,20 +578,21 @@ class unit():
         """ Updates three numbers: below, around, and above.
 
             Let the rate of the unit be r, and the 'bin_width' attribute bw.
-            below = number of inputs with rate below r - bw/2
-            around = number of inputs with rate > r - bw/2 and rate < r + bw/2
-            above = number of inputs with rate above r + bw/2
+            below = fraction of inputs with rate below r - bw/2
+            around = fraction of inputs with rate > r - bw/2 and rate < r + bw/2
+            above = fraction of inputs with rate above r + bw/2
 
             NOTICE: this version does not restrict inputs to exp_rate_dist synapses.
         """
         inputs = np.array(self.get_inputs(time)) # current inputs
         r = self.buffer[-1] # current rate
         N = len(inputs)
-        self.above = ( 0.5 * sum( (np.sign(inputs - r - self.bin_width/2.) + 1.) ) ) / N
-        self.below = ( 0.5 * sum( (np.sign(r - inputs - self.bin_width/2.) + 1.) ) ) / N
-        self.around =  1. - self.above - self.below 
-
-        #assert self.above+self.below+self.around - 1. < 1e-5, ['sum was not 1: ' + 
+        w2 = self.bin_width / 2.
+        self.above = ( 0.5 * sum( (np.sign(inputs - r - w2) + 1.) ) ) / N
+        self.below = ( 0.5 * sum( (np.sign(r - inputs - w2) + 1.) ) ) / N
+        self.around = 0.25*sum((np.sign(inputs - r + w2) + 1.)*(np.sign(r - inputs + w2) + 1.)) / N
+        #self.around =  1. - self.above - self.below 
+        #assert abs(self.above+self.below+self.around - 1.) < 1e-5, ['sum was not 1: ' + 
         #                            str(self.above + self.below + self.around)]
 
 
