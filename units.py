@@ -634,7 +634,9 @@ class unit():
         exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
         left_extra = self.below - exp_cdf
         right_extra = self.above - (1. - exp_cdf)
-        self.exp_scale = self.exp_scale + self.wscale * (left_extra - right_extra)
+        ss_scale = (u + self.wscale * (left_extra - right_extra)) / (r * mu)
+        self.exp_scale = 0.8*self.exp_scale + 0.2*ss_scale
+        #self.exp_scale = self.exp_scale + self.wscale * (left_extra - right_extra)
         self.scale_facs[self.exc_idx] = self.exp_scale
 
     def upd_inp_vector(self, time):
