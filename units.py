@@ -65,8 +65,6 @@ class unit():
         if 'tau_slow' in params: self.tau_slow = params['tau_slow']
         if 'n_ports' in params: self.n_ports = params['n_ports']
         else: self.n_ports = 1
-        # This is used for the "balance" synaptic requirement in the upd_balance function
-        if 'bin_width' in params: self.bin_width = params['bin_width']
 
         self.multi_port = False # indicates whether the unit has multi-port support, which 
                                 # means it has customized get_input* functions
@@ -166,6 +164,21 @@ class unit():
         return sum([ syn.gain * syn.w * fun(time-dely) for syn,fun,dely in zip(self.net.syns[self.ID], 
                         self.net.act[self.ID], self.net.delays[self.ID]) ])
 
+
+    def get_exp_sc_input_sum(self, time):
+        """ 
+        Returns the sum of inputs, each scaled by its weight and by a scale factor.
+        
+        The sum accounts for transmission delays. Input ports are ignored. 
+
+        The scale factor is applied only to excitatory synapses, and it is the exp_scale value
+        set by the upd_exp_scale function. This is the way that exp_dist_sigmoidal units get
+        their total input.
+        """
+        weights = np.array([ syn.w for syn in self.net.syns[self.ID] ])
+        return sum( self.scale_facs * weights * self.inp_vector )
+
+
     def get_weights(self, time):
         """ Returns a list with the weights corresponding to the input list obtained with get_inputs.
         """
@@ -184,7 +197,7 @@ class unit():
         """
         # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
         # Maybe there should be a single 'times' array in the network. This seems more parallelizable, though.
-        assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
+        #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
 
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.min_buff_size)
@@ -330,6 +343,9 @@ class unit():
                     raise NameError( 'Synaptic plasticity requires unit parameter tau_slow, not yet set' )
                 self.sq_lpf_slow = self.init_val
                 self.functions.add(self.upd_sq_lpf_slow)
+            elif req is syn_reqs.inp_vector: # <----------------------------------
+                self.inp_vector = np.tile(self.init_val, len(self.net.syns[self.ID]))
+                self.functions.add(self.upd_inp_vector)
             elif req is syn_reqs.inp_avg:  # <----------------------------------
                 self.snorm_list = []  # a list with all the presynaptic units
                                       # providing hebbsnorm synapses
@@ -399,19 +415,29 @@ class unit():
             elif req is syn_reqs.lpf_mid_inp_sum:  # <----------------------------------
                 if not hasattr(self,'tau_mid'): 
                     raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
+                if not syn_reqs.inp_vector in self.syn_needs:
+                    raise AssertionError('lpf_mid_inp_sum requires the inp_vector requirement to be set')
                 self.lpf_mid_inp_sum = self.init_val # this initialization is rather arbitrary
                 self.functions.add(self.upd_lpf_mid_inp_sum)
             elif req is syn_reqs.n_erd:  # <----------------------------------
                 self.n_erd = len([s for s in self.net.syns[self.ID] if s.type is synapse_types.exp_rate_dist])
                 # n_erd doesn't need to be updated :)
             elif req is syn_reqs.balance:  # <----------------------------------
-                if not hasattr(self,'bin_width'): 
-                    raise NameError( 'Synaptic plasticity requires unit parameter bin_width, not yet set' )
-                self.below = 0.4 # this initialization is rather arbitrary
-                self.above = 0.4 
-                self.around = 0.2 
+                self.below = 0.5 # this initialization is rather arbitrary
+                self.above = 0.5 
                 self.functions.add(self.upd_balance)
-
+            elif req is syn_reqs.exp_scale:  # <----------------------------------
+                if not syn_reqs.inp_vector in self.syn_needs:
+                    raise AssertionError('exp_scale requires the inp_vector requirement to be set')
+                self.exp_scale = 1. # initalizing the scaling factor
+                self.scale_facs= np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
+                self.exc_idx = []
+                for idx, syn in enumerate(self.net.syns[self.ID]):
+                    if syn.w >= 0.:  # Ideally, no weights should be initalized to zero.
+                        self.exc_idx.append(idx)
+                        self.scale_facs[idx] = self.exp_scale
+                self.exc_idx = np.array(self.exc_idx)
+                self.functions.add(self.upd_exp_scale)
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
@@ -558,7 +584,8 @@ class unit():
         """ Update the lpf_mid_inp_sum variable. """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' lpf_mid_inp_sum updated backwards in time']
-        cur_inp_sum = sum(self.get_inputs(time))
+        cur_inp_sum = sum(self.inp_vector)
+        #cur_inp_sum = sum(self.get_inputs(time))
         # This updating rule comes from analytically solving 
         # lpf_x' = ( x - lpf_x ) / tau
         # and assuming x didn't change much between self.last_time and time.
@@ -575,26 +602,45 @@ class unit():
         return self.lpf_mid_inp_sum_buff[-1]
 
     def upd_balance(self, time):
-        """ Updates three numbers: below, around, and above.
+        """ Updates two numbers called  below, and above.
 
-            Let the rate of the unit be r, and the 'bin_width' attribute bw.
-            below = fraction of inputs with rate below r - bw/2
-            around = fraction of inputs with rate > r - bw/2 and rate < r + bw/2
-            above = fraction of inputs with rate above r + bw/2
+            below = fraction of inputs with rate lower than this unit.
+            above = fraction of inputs with rate higher than this unit.
+
+            Those numbers are useful to produce a given firing rate distribtuion.
 
             NOTICE: this version does not restrict inputs to exp_rate_dist synapses.
         """
         inputs = np.array(self.get_inputs(time)) # current inputs
         r = self.buffer[-1] # current rate
         N = len(inputs)
-        w2 = self.bin_width / 2.
-        self.above = ( 0.5 * sum( (np.sign(inputs - r - w2) + 1.) ) ) / N
-        self.below = ( 0.5 * sum( (np.sign(r - inputs - w2) + 1.) ) ) / N
-        self.around = 0.25*sum((np.sign(inputs - r + w2) + 1.)*(np.sign(r - inputs + w2) + 1.)) / N
-        #self.around =  1. - self.above - self.below 
-        #assert abs(self.above+self.below+self.around - 1.) < 1e-5, ['sum was not 1: ' + 
-        #                            str(self.above + self.below + self.around)]
 
+        self.above = ( 0.5 * sum( (np.sign(inputs - r) + 1.) ) ) / N
+        self.below = ( 0.5 * sum( (np.sign(r - inputs) + 1.) ) ) / N
+
+        #assert abs(self.above+self.below - 1.) < 1e-5, ['sum was not 1: ' + 
+        #                            str(self.above + self.below)]
+
+
+    def upd_exp_scale(self, time):
+        """ Updates the synaptic scaling factor used in exp_dist_sigmoidal units.
+
+            The algorithm is basically the same used in exp_rate_dist syanpases.
+        """
+        r = self.get_lpf_fast(0)
+        r = max( min( .9999, r), 0.0001 ) # avoids bad arguments in the log below
+        u = (np.log(r/(1.-r))/self.slope) + self.thresh
+        mu = self.get_lpf_mid_inp_sum() 
+        exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+        left_extra = self.below - exp_cdf
+        right_extra = self.above - (1. - exp_cdf)
+        self.exp_scale = self.exp_scale + self.wscale * (left_extra - right_extra)
+        self.scale_facs[self.exc_idx] = self.exp_scale
+
+    def upd_inp_vector(self, time):
+        """ Update a numpy array containing all the current synaptic inputs """
+        self.inp_vector = np.array([ fun(time - dely) for dely,fun in 
+                                     zip(self.net.delays[self.ID], self.net.act[self.ID]) ])
 
 class source(unit):
     """ The class of units whose activity comes from some Python function.
@@ -1014,4 +1060,63 @@ class kWTA(unit):
                         raise ValueError('kWTA sends connection with invalid weight value')
 
 
+class exp_dist_sigmoidal(unit): 
+    """
+    A unit where the synaptic weights are scaled to produce an exponential distribution.
+    
+    This unit has the same activation function as the sigmoidal unit, but the excitatory
+    synatpic weights are scaled to produce an exponential distribution of the firing rates in
+    the network, using the same approach as the exp_rate_dist_synapse.
+
+    Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
+    Synaptic weights initialized to zero will be considered excitatory.
+    """
+    # The visible difference with sigmoidal units.derivatives is that this unit type
+    # calls get_exp_sc_input_sum() instead of get_input_sum(), and this causes the 
+    # excitatory inputs to be scaled using an 'exp_scale' factor. The exp_scale
+    # factor is calculated by the upd_exp_scale function, which is called every update
+    # thanks to the exp_scale synaptic requirement.
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function.
+                'tau' : Time constant of the update dynamics.
+                'wscale' : Synaptic scaling will be proportional to this value.
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+
+        Raises:
+            AssertionError.
+
+        """
+
+        super(exp_dist_sigmoidal, self).__init__(ID, params, network)
+        self.slope = params['slope']    # slope of the sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.wscale = params['wscale']  # the synaptic scaling factor
+        self.c = params['c']  # The coefficient in the exponential distribution
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.syn_needs.update([syn_reqs.balance, syn_reqs.exp_scale, syn_reqs.lpf_mid_inp_sum, 
+                               syn_reqs.lpf_fast, syn_reqs.inp_vector])
+        #assert self.type is unit_types.exp_dist_sigmoidal, ['Unit ' + str(self.ID) + 
+        #                                                    ' instantiated with the wrong type']
+        
+    def f(self, arg):
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
+        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+    
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        return ( self.f(self.get_exp_sc_input_sum(t)) - y[0] ) * self.rtau
+    
 

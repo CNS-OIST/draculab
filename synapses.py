@@ -682,6 +682,8 @@ class exp_rate_dist_synapse(synapse):
         in the interval (0,1) -- will have a probability density function of the form:
         rho(f) = (c/(1-exp(-c))) * exp(-c*f),  where c is a constant parameter, f is the
         firing rate, and rho(f) is the PDF.
+
+        This rule is only meant to be used with sigmodial units.
     """
     def __init__(self, params, network):
         """ The class constructor.
@@ -695,7 +697,7 @@ class exp_rate_dist_synapse(synapse):
                   larger values make small firing rates more probable. 
                   Shouldn't be set to zero (causes zero division in the cdf function).
             'wshift' : If the rule wants to shift the firing rate of the neuron, it will
-                       change the weight by this amount (the sign depends on the rule).
+                       change the weight proportionally to this amount. 
 
         Raises:
             AssertionError.
@@ -704,21 +706,33 @@ class exp_rate_dist_synapse(synapse):
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.c = params['c'] # level of heterogeneity for firing rates
         self.wshift = params['wshift'] # how much to shift weight if unit should change bin
-        self.k = ( 1. - np.exp(-self.c) ) / self.c   # reciprocal of normalizing factor for the exp distribution
+        #self.k = ( 1. - np.exp(-self.c) ) / self.c   # reciprocal of normalizing factor for the exp distribution
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         #self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_fast, syn_reqs.lpf_mid_inp_sum, syn_reqs.n_erd])
-        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.lpf_mid_inp_sum, syn_reqs.balance])
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.inp_vector, syn_reqs.lpf_mid_inp_sum, syn_reqs.balance])
         assert self.type is synapse_types.exp_rate_dist, ['Synapse from ' + str(self.preID) + ' to ' +
                                                        str(self.postID) + ' instantiated with the wrong type']
 
-    
     def update(self, time):
         """ Update the weight using the firing rate exponential distribution rule. """
-        f = self.net.units[self.postID].get_lpf_fast(1)
+        # The version below is a binless version of w_ss_send_balance in histogram_map.ipynb
+        r = self.net.units[self.postID].get_lpf_fast(0)
+        r = max( min( .9999, r), 0.0001 ) # avoids bad arguments in the log below
+        u = (np.log(r/(1.-r))/self.net.units[self.postID].slope) + self.net.units[self.postID].thresh
+        mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
+        left_extra = self.net.units[self.postID].below - self.cdf(r)
+        right_extra = self.net.units[self.postID].above - (1. - self.cdf(r))
+        delta = self.wshift * (left_extra - right_extra)
+        self. w = self.w + self.alpha * ( (u + delta) / mu - self.w )
+
+
+    def legacy_update(self, time):
+        """ A bunch of things I was testing before I had the rule I ended up using.  """
+        #f = self.net.units[self.postID].get_lpf_fast(0)
         #f = self.net.units[self.postID].buffer[-1] # using instantaneous value...
         #f = max( min( .999, f), 0.001 ) # avoids bad arguments in the log below
-        u = (np.log(f/(1.-f))/self.net.units[self.postID].slope) + self.net.units[self.postID].thresh
-        mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
+        #u = (np.log(f/(1.-f))/self.net.units[self.postID].slope) + self.net.units[self.postID].thresh
+        #mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
         #h = self.net.units[self.postID].n_erd
         #pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
@@ -726,6 +740,7 @@ class exp_rate_dist_synapse(synapse):
         #self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*h)) - self.w )
         #self.w = self.w + self.alpha * ( ( self.k * f * np.exp(self.c * pre) / (h*pre*(1.-pre))) - self.w )
 
+        """
         # The version below is an adaptation of the successful weight kernel in histogram_map.ipynb
         w2 = self.net.units[self.postID].bin_width / 2.
         extra = self.net.units[self.postID].around - ( self.cdf(f + w2) - self.cdf(f - w2) )
@@ -740,8 +755,9 @@ class exp_rate_dist_synapse(synapse):
         else:
             delta = 0.
         self. w = self.w + self.alpha * ( (u + delta) / mu - self.w )
-
-        self.w = min( max( -3., self.w ), 3.)
+        """
+        #self.w = min( max( -3., self.w ), 3.)
+        pass
 
     def cdf(self, x):
         """ The cumulative density function of the distribution we're approaching. """

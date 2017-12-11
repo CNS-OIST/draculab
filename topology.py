@@ -213,7 +213,7 @@ class topology():
                            >> {'ring_gaussian' : {'w_center' : w, 'sigma' : s, 'radius' : r}}. Units
                               with distance d will connect with synaptic weight:
                               w * exp( - ((d-r)/s)**2 ). One use for this is to set the negative part
-                              of "Mexican hat" connectivity.
+                              of "Mexican hat" connectivity without using two Gaussians.
 
                 'edge_wrap' : Assume that all units are inside a rectangle with periodic boundaries (e.g. 
                               toroidal topology). By default this is set to False, but if set to True the 

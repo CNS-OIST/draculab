@@ -19,6 +19,7 @@ class unit_types(Enum):
     custom_fi = 5
     custom_sc_fi = 6
     kwta = 7
+    exp_dist_sig = 8
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -45,6 +46,8 @@ class unit_types(Enum):
             unit_class = custom_scaled_fi
         elif self == unit_types.kwta:
             unit_class = kWTA
+        elif self == unit_types.exp_dist_sig:
+            unit_class = exp_dist_sigmoidal
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?
@@ -140,6 +143,9 @@ class plant_models(Enum):
 class syn_reqs(Enum):
     """ This enum contains all the variables that a synapse model may ask a unit
         to maintain in order to support its learning function.
+
+        Details are in the function which updates each requirement. The updating function
+        of each requirement is specified in unit.init_pre_syn_update.
     """
     lpf_fast = 1  # postsynaptic activity low-pass filtered with a fast time constant
     lpf_mid = 2   # postsynaptic activity low-pass filtered with a medium time constant
@@ -158,6 +164,8 @@ class syn_reqs(Enum):
     lpf_mid_inp_sum = 14 # LPF'd sum of presynaptic inputs with a medium time constant.
     n_erd = 15 # number of exp_rate_dist synapses on the postsynaptic unit
     balance = 16 # fraction of inputs above, below, and around the current rate
+    exp_scale = 17 # synaptic scaling to produce an exponential firing rate distribution
+    inp_vector = 18 # the current "raw" input vector in a numpy array
 
 
     '''
