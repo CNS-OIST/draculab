@@ -175,8 +175,11 @@ class unit():
         set by the upd_exp_scale function. This is the way that exp_dist_sigmoidal units get
         their total input.
         """
-        weights = np.array([ syn.w for syn in self.net.syns[self.ID] ])
-        return sum( self.scale_facs * weights * self.inp_vector )
+        # This accelerates the simulation, but inp_vector is incorrect (only updates every min_delay).
+        #weights = np.array([ syn.w for syn in self.net.syns[self.ID] ])
+        #return sum( self.scale_facs * weights * self.inp_vector )
+        return sum( [ sc * syn.w * fun(time-dely) for sc,syn,fun,dely in zip(self.scale_facs, 
+                      self.net.syns[self.ID], self.net.act[self.ID], self.net.delays[self.ID]) ] )
 
 
     def get_weights(self, time):
@@ -601,6 +604,7 @@ class unit():
         """ Get the latest value of the mid-speed low-pass filtered sum of inputs. """
         return self.lpf_mid_inp_sum_buff[-1]
 
+
     def upd_balance(self, time):
         """ Updates two numbers called  below, and above.
 
@@ -628,16 +632,26 @@ class unit():
             The algorithm is basically the same used in exp_rate_dist syanpases.
         """
         r = self.get_lpf_fast(0)
-        r = max( min( .9999, r), 0.0001 ) # avoids bad arguments in the log below
-        u = (np.log(r/(1.-r))/self.slope) + self.thresh
+        r = max( min( .999, r), 0.001 ) # avoids bad arguments in the log below
+        #u = (np.log(r/(1.-r))/self.slope) + self.thresh
         mu = self.get_lpf_mid_inp_sum() 
         exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
-        left_extra = self.below - exp_cdf
-        right_extra = self.above - (1. - exp_cdf)
-        ss_scale = (u + self.wscale * (left_extra - right_extra)) / (r * mu)
-        self.exp_scale = 0.8*self.exp_scale + 0.2*ss_scale
+        #left_extra = self.below - exp_cdf
+        #right_extra = self.above - (1. - exp_cdf)
+        #ss_scale = (u + self.wscale * (left_extra - right_extra)) / (r * mu)
+        delta_w = self.wscale * ( self.below - self.above - 2.*exp_cdf + 1. )
+        # The factor has a different impact depending on the gain we have at the current point along 
+        # the f-I curve. Assuming sigmoidal units we can multipliy by the reciprocal of the derivative
+        fpr = 1. / (self.c * r * (1. - r))
+        #fpr = np.minimum( fpr, 100. )
+        ss_scale = (1. + delta_w*fpr)  
+        self.exp_scale = 0.995*self.exp_scale + 0.005*ss_scale
         #self.exp_scale = self.exp_scale + self.wscale * (left_extra - right_extra)
-        self.scale_facs[self.exc_idx] = self.exp_scale
+        weights = np.array([syn.w for syn in self.net.syns[self.ID]])
+        self.scale_facs[self.exc_idx] = self.exp_scale 
+        #self.scale_facs[self.exc_idx] = np.maximum( 
+        #                                np.minimum( 
+        #                                self.exp_scale / weights[self.exc_idx], 2.), 0.1) 
 
     def upd_inp_vector(self, time):
         """ Update a numpy array containing all the current synaptic inputs """
@@ -688,7 +702,7 @@ class source(unit):
         """
         self.get_act = function
         # What if you're doing this after the connections have already been made?
-        # Then net.act has links to functions other than this get_act.
+        # Then net.act and syns_act_dels have links to functions other than this get_act.
         # Thus, we need to reset all those net.act entries...
         for idx1, syn_list in enumerate(self.net.syns):
             for idx2, syn in enumerate(syn_list):
