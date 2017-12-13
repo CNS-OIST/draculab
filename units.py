@@ -432,7 +432,10 @@ class unit():
             elif req is syn_reqs.exp_scale:  # <----------------------------------
                 if not syn_reqs.inp_vector in self.syn_needs:
                     raise AssertionError('exp_scale requires the inp_vector requirement to be set')
+                if not hasattr(self,'sslope'): 
+                    raise NameError( 'exp_scale requires unit parameter sslope, not yet set' )
                 self.exp_scale = 1. # initalizing the scaling factor
+                self.delta_w = 0. # initializing modifier
                 self.scale_facs= np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
                 self.exc_idx = []
                 for idx, syn in enumerate(self.net.syns[self.ID]):
@@ -632,23 +635,43 @@ class unit():
             The algorithm is basically the same used in exp_rate_dist syanpases.
         """
         r = self.get_lpf_fast(0)
-        r = max( min( .999, r), 0.001 ) # avoids bad arguments in the log below
-        #u = (np.log(r/(1.-r))/self.slope) + self.thresh
-        mu = self.get_lpf_mid_inp_sum() 
+        r = max( min( .999, r), 0.001 ) # avoids bad arguments and overflows
         exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+
+        # Version with "integrative" modifier
+        #self.delta_w += self.wscale * ( self.below - self.above - 2.*exp_cdf + 1. )
+
+        # Version with gradual fixed modifier
+        self.delta_w = self.delta_w + self.wscale * ( self.below - self.above - 2.*exp_cdf + 1. - self.delta_w)
+
+        # Version with instant fixed modifier
+        #self.delta_w = self.wscale * ( self.below - self.above - 2.*exp_cdf + 1. )
+
+        fpr = 1. / (self.c * r * (1. - r))
+        #fpr = np.minimum( fpr, 20. )
+        #ss_scale = 1. / (1. + np.exp(-4.*(self.delta_w*fpr - 1.)))
+        ss_scale = 0.5 + 1. / (1. + np.exp(-self.sslope*(self.delta_w*fpr)))
+        #ss_scale = 1. + fpr * self.delta_w
+        self.exp_scale = self.exp_scale + self.wscale * (ss_scale - self.exp_scale)
+        self.scale_facs[self.exc_idx] = self.exp_scale 
+
+        #u = (np.log(r/(1.-r))/self.slope) + self.thresh
+        #mu = self.get_lpf_mid_inp_sum() 
+        #exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
         #left_extra = self.below - exp_cdf
         #right_extra = self.above - (1. - exp_cdf)
         #ss_scale = (u + self.wscale * (left_extra - right_extra)) / (r * mu)
-        delta_w = self.wscale * ( self.below - self.above - 2.*exp_cdf + 1. )
+        #self.delta_w += self.wscale * ( self.below - self.above - 2.*exp_cdf + 1. )
         # The factor has a different impact depending on the gain we have at the current point along 
         # the f-I curve. Assuming sigmoidal units we can multipliy by the reciprocal of the derivative
-        fpr = 1. / (self.c * r * (1. - r))
-        #fpr = np.minimum( fpr, 100. )
-        ss_scale = (1. + delta_w*fpr)  
-        self.exp_scale = 0.995*self.exp_scale + 0.005*ss_scale
+        #fpr = 1. / (self.c * r * (1. - r))
+        #fpr = np.minimum( fpr, 50. )
+        #self.exp_scale = 1. + self.delta_w*fpr
+        #s_scale =  1. / (1. + np.exp(-4.*(self.delta_w*fpr - 1.)))
+        #elf.exp_scale = 0.99*self.exp_scale + 0.01*ss_scale
         #self.exp_scale = self.exp_scale + self.wscale * (left_extra - right_extra)
-        weights = np.array([syn.w for syn in self.net.syns[self.ID]])
-        self.scale_facs[self.exc_idx] = self.exp_scale 
+        #weights = np.array([syn.w for syn in self.net.syns[self.ID]])
+        #elf.scale_facs[self.exc_idx] = self.exp_scale 
         #self.scale_facs[self.exc_idx] = np.maximum( 
         #                                np.minimum( 
         #                                self.exp_scale / weights[self.exc_idx], 2.), 0.1) 
@@ -1099,11 +1122,12 @@ class exp_dist_sigmoidal(unit):
         Args:
             ID, params, network: same as in the parent's constructor.
             In addition, params should have the following entries.
-                REQUIRED PARAMETERS
+                REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
                 'slope' : Slope of the sigmoidal function.
                 'thresh' : Threshold of the sigmoidal function.
                 'tau' : Time constant of the update dynamics.
-                'wscale' : Synaptic scaling will be proportional to this value.
+                'wscale' : sets the speed of change for the scaling factor
+                'sslope' : sets how much the scaling factor changes
                 'c' : Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
                     larger values make small firing rates more probable. 
@@ -1119,6 +1143,7 @@ class exp_dist_sigmoidal(unit):
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
         self.wscale = params['wscale']  # the synaptic scaling factor
+        self.sslope = params['sslope']  # akin to a slope for scaling factor change
         self.c = params['c']  # The coefficient in the exponential distribution
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         self.syn_needs.update([syn_reqs.balance, syn_reqs.exp_scale, syn_reqs.lpf_mid_inp_sum, 
