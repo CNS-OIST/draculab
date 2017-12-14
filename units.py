@@ -426,6 +426,8 @@ class unit():
                 self.n_erd = len([s for s in self.net.syns[self.ID] if s.type is synapse_types.exp_rate_dist])
                 # n_erd doesn't need to be updated :)
             elif req is syn_reqs.balance:  # <----------------------------------
+                if not syn_reqs.inp_vector in self.syn_needs:
+                    raise AssertionError('balance requirement has the inp_vector requirement as a prerequisite')
                 self.below = 0.5 # this initialization is rather arbitrary
                 self.above = 0.5 
                 self.functions.add(self.upd_balance)
@@ -434,6 +436,7 @@ class unit():
                     raise AssertionError('exp_scale requires the inp_vector requirement to be set')
                 if not hasattr(self,'sslope'): 
                     raise NameError( 'exp_scale requires unit parameter sslope, not yet set' )
+                self.error = 0. # DEBUGGING. Not really needed
                 self.exp_scale = 1. # initalizing the scaling factor
                 self.delta_w = 0. # initializing modifier
                 self.scale_facs= np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
@@ -590,7 +593,7 @@ class unit():
         """ Update the lpf_mid_inp_sum variable. """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' lpf_mid_inp_sum updated backwards in time']
-        cur_inp_sum = sum(self.inp_vector)
+        cur_inp_sum = (self.inp_vector).sum()
         #cur_inp_sum = sum(self.get_inputs(time))
         # This updating rule comes from analytically solving 
         # lpf_x' = ( x - lpf_x ) / tau
@@ -618,12 +621,14 @@ class unit():
 
             NOTICE: this version does not restrict inputs to exp_rate_dist synapses.
         """
-        inputs = np.array(self.get_inputs(time)) # current inputs
-        r = self.buffer[-1] # current rate
+        #inputs = np.array(self.get_inputs(time)) # current inputs
+        inputs = self.inp_vector
         N = len(inputs)
 
-        self.above = ( 0.5 * sum( (np.sign(inputs - r) + 1.) ) ) / N
-        self.below = ( 0.5 * sum( (np.sign(r - inputs) + 1.) ) ) / N
+        r = self.buffer[-1] # current rate
+
+        self.above = ( 0.5 * (np.sign(inputs - r) + 1.).sum() ) / N
+        self.below = ( 0.5 * (np.sign(r - inputs) + 1.).sum() ) / N
 
         #assert abs(self.above+self.below - 1.) < 1e-5, ['sum was not 1: ' + 
         #                            str(self.above + self.below)]
@@ -638,6 +643,33 @@ class unit():
         r = max( min( .999, r), 0.001 ) # avoids bad arguments and overflows
         exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
 
+        error = self.below - self.above - 2.*exp_cdf + 1. 
+        self.error = error # DEBUGGING
+
+        if r > 0.9:
+            above = ( 0.5 * (np.sign(self.inp_vector - 0.9) + 1.).sum() ) / len(self.inp_vector)
+            cdf_diff = 1. - ( ( 1. - np.exp(-self.c*.9)) / ( 1. - np.exp(-self.c) ) )
+            error = 10.*(cdf_diff - above)
+        elif r < 0.1:
+            below = ( 0.5 * (np.sign(.1 - self.inp_vector) + 1.).sum() ) / len(self.inp_vector)
+            cdf_diff = ( 1. - np.exp(-self.c*.1) ) / ( 1. - np.exp(-self.c) )
+            error = 10.*(below - cdf_diff) 
+
+        # PID version
+        self.delta_w += self.net.min_delay * error
+        p = self.Kp * error
+        d = self.Kd * ( r - self.get_lpf_mid(0) ) # approximatig (d error)/dt with dr/dt
+        i = self.Ki * self.delta_w
+
+        fpr = 1. / (self.c * r * (1. - r))
+        modif = max( min( fpr * (p + d + i), 1. ), -.99 )
+        weights = np.array([syn.w for syn in self.net.syns[self.ID]])
+        #self.scale_facs[self.exc_idx] = 1. + (modif / weights[self.exc_idx])
+        self.scale_facs[self.exc_idx] += self.wscale*( 1. +  modif * weights[self.exc_idx]  
+                                                       - self.scale_facs[self.exc_idx] )
+        #self.scale_facs[self.exc_idx] = 1. + modif 
+
+        """
         # Version with "integrative" modifier
         #self.delta_w += self.wscale * ( self.below - self.above - 2.*exp_cdf + 1. )
 
@@ -654,6 +686,7 @@ class unit():
         #ss_scale = 1. + fpr * self.delta_w
         self.exp_scale = self.exp_scale + self.wscale * (ss_scale - self.exp_scale)
         self.scale_facs[self.exc_idx] = self.exp_scale 
+        """
 
         #u = (np.log(r/(1.-r))/self.slope) + self.thresh
         #mu = self.get_lpf_mid_inp_sum() 
@@ -675,6 +708,7 @@ class unit():
         #self.scale_facs[self.exc_idx] = np.maximum( 
         #                                np.minimum( 
         #                                self.exp_scale / weights[self.exc_idx], 2.), 0.1) 
+
 
     def upd_inp_vector(self, time):
         """ Update a numpy array containing all the current synaptic inputs """
@@ -1144,10 +1178,13 @@ class exp_dist_sigmoidal(unit):
         self.tau = params['tau']  # the time constant of the dynamics
         self.wscale = params['wscale']  # the synaptic scaling factor
         self.sslope = params['sslope']  # akin to a slope for scaling factor change
+        self.Kp = params['Kp']  # proportional gain
+        self.Ki = params['Ki']  # integral gain
+        self.Kd = params['Kd']  # derivative gain
         self.c = params['c']  # The coefficient in the exponential distribution
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
-        self.syn_needs.update([syn_reqs.balance, syn_reqs.exp_scale, syn_reqs.lpf_mid_inp_sum, 
-                               syn_reqs.lpf_fast, syn_reqs.inp_vector])
+        self.syn_needs.update([syn_reqs.balance, syn_reqs.exp_scale, #syn_reqs.lpf_mid_inp_sum, 
+                               syn_reqs.lpf_fast, syn_reqs.lpf_mid, syn_reqs.inp_vector])
         #assert self.type is unit_types.exp_dist_sigmoidal, ['Unit ' + str(self.ID) + 
         #                                                    ' instantiated with the wrong type']
         
