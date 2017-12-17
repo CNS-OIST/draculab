@@ -448,7 +448,7 @@ class unit():
                 self.exc_idx = np.array(self.exc_idx)
                 self.inh_idx = np.array(range(len(self.net.syns[self.ID]))) # array with index of inhibitory units
                 self.inh_idx[self.exc_idx] = 0.
-                self.inh_idx = self.inh_idx.nonzero() 
+                self.inh_idx = self.inh_idx.nonzero()[0]
                 self.functions.add(self.upd_exp_scale)
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
@@ -636,33 +636,95 @@ class unit():
         #assert abs(self.above+self.below - 1.) < 1e-5, ['sum was not 1: ' + 
         #                            str(self.above + self.below)]
 
-
+    
     def upd_exp_scale(self, time):
         """ Updates the synaptic scaling factor used in exp_dist_sigmoidal units.
 
-            The algorithm is basically the same used in exp_rate_dist syanpases.
+            The algorithm is a multiplicative version of the  one used in exp_rate_dist syanpases.
         """
+        H = lambda x: 0.5 * (np.sign(x) + 1.)
+        cdf = lambda x: ( 1. - np.exp(-self.c*min(max(x,0.),1.) ) ) / ( 1. - np.exp(-self.c) )
         r = self.get_lpf_fast(0)
         r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
-        exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+        #exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+        exp_cdf = cdf(r)
 
         error = self.below - self.above - 2.*exp_cdf + 1. 
         self.error = error # DEBUGGING
 
         # First APCTP version (12/13/17)
         ######################################################################
-        # not very stable
-        """
         u = (np.log(r/(1.-r))/self.slope) + self.thresh
         weights = np.array([syn.w for syn in self.net.syns[self.ID]])
         I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
         mu_exc = np.sum( self.inp_vector[self.exc_idx] )
         fpr = 1. / (self.c * r * (1. - r))
-        ss_scale = (u - I + fpr * error) / mu_exc
-        self.scale_facs[self.exc_idx] += 0.0005* (ss_scale/weights[self.exc_idx] - self.scale_facs[self.exc_idx])
-        """ 
+        ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
+        self.scale_facs[self.exc_idx] += self.wscale * (ss_scale/weights[self.exc_idx] - self.scale_facs[self.exc_idx])
 
         # PID version with moving bin
+        ######################################################################
+        # handling of the edges is a bit hacky
+        """
+        rwid = 0.1
+        N = len(self.inp_vector)
+        gain = 10.
+        if r > 1.-rwid:
+            #above = ( 0.5 * (np.sign(self.inp_vector - (1.-rwid)) + 1.).sum() ) / N
+            above = ( H( self.inp_vector - (1.-rwid) ).sum() ) / N
+            #cdf_diff = 1. - ( ( 1. - np.exp(-self.c*(1.-rwid))) / ( 1. - np.exp(-self.c) ) )
+            cdf_diff = 1. - cdf(1. - rwid)
+            error = gain *(cdf_diff - above)
+        elif r < rwid:
+            #below = ( 0.5 * (np.sign(rwid - self.inp_vector) + 1.).sum() ) / N
+            below = ( H(rwid - self.inp_vector).sum() ) / N
+            #cdf_diff = ( 1. - np.exp(-self.c*rwid) ) / ( 1. - np.exp(-self.c) )
+            cdf_diff = cdf(rwid)
+            error = gain * (below - cdf_diff) 
+        else:
+            #above = ( 0.5 * (np.sign(self.inp_vector - r - rwid/2.) + 1.).sum() ) / N
+            above = ( H( self.inp_vector - r - rwid/2. ).sum() ) / N
+            #below = ( 0.5 * (np.sign(r - self.inp_vector - rwid/2.) + 1.).sum() ) / N
+            below = ( H( r - self.inp_vector - rwid/2. ).sum() ) / N
+            center = 1. - above - below
+            #cdf_right =  ( 1. - np.exp(-self.c*(r + rwid/2.))) / ( 1. - np.exp(-self.c) ) 
+            cdf_right = 1. - cdf(r + rwid/2.)
+            #cdf_left =  ( 1. - np.exp(-self.c*(r - rwid/2.))) / ( 1. - np.exp(-self.c) ) 
+            cdf_left = cdf(r - rwid/2.)
+            left_extra = below - cdf_left
+            right_extra = above - (1. - cdf_right)
+            center_extra = center - (cdf_right - cdf_left)
+
+            #assert abs(center_extra+left_extra+right_extra) < 1e-4, 'extras do not add to 1'
+
+            if center > 1/N:
+                error = gain * center * (left_extra - right_extra)
+            else:
+                error = 0.
+        """
+        """
+        center = ( H( self.inp_vector - r - rwid/2.) * H( r - self.inp_vector - rwid/2.) ).sum() 
+        cdf_center = N * ( cdf(r + rwid/2.) - cdf(r - rwid/2.) )
+        extra = center - cdf_center
+        errorB =   (0.4 - r) * extra
+        error = error + errorB
+        #error = errorB
+
+        self.delta_w += self.net.min_delay * error
+        p = self.Kp * error
+        d = self.Kd * ( r - self.get_lpf_mid(0) ) # approximatig (d error)/dt with dr/dt
+        i = self.Ki * self.delta_w
+
+        fpr = 1. / (self.c * r * (1. - r))
+        modif = max( min( fpr * (p + d + i), 1. ), -.99 )
+        self.scale_facs[self.exc_idx] += self.wscale*( 1. +  modif - self.scale_facs[self.exc_idx] ) 
+
+        #weights = np.array([syn.w for syn in self.net.syns[self.ID]])
+        #self.scale_facs[self.exc_idx] += self.wscale*( 1. +  modif * weights[self.exc_idx]  
+        #                                               - self.scale_facs[self.exc_idx] )
+        """
+
+        # PID version
         ######################################################################
         # handling of the edges is a bit hacky
         """
@@ -678,49 +740,12 @@ class unit():
             below = ( 0.5 * (np.sign(rwid - self.inp_vector) + 1.).sum() ) / N
             cdf_diff = ( 1. - np.exp(-self.c*rwid) ) / ( 1. - np.exp(-self.c) )
             error = gain * (below - cdf_diff) 
-        else:
-            above = ( 0.5 * (np.sign(self.inp_vector - r - rwid/2.) + 1.).sum() ) / N
-            below = ( 0.5 * (np.sign(r - self.inp_vector - rwid/2.) + 1.).sum() ) / N
-            center = 1. - above - below
-            cdf_right =  ( 1. - np.exp(-self.c*(r + rwid/2.))) / ( 1. - np.exp(-self.c) ) 
-            cdf_left =  ( 1. - np.exp(-self.c*(r - rwid/2.))) / ( 1. - np.exp(-self.c) ) 
-            left_extra = below - cdf_left
-            right_extra = above - (1. - cdf_right)
-            center_extra = center - (cdf_right - cdf_left)
-            if center > 1/N:
-                error = gain * center * (left_extra - right_extra)
-            else:
-                error = 0.
-
         self.delta_w += self.net.min_delay * error
+        #p = self.Kp * np.sign(error)
         p = self.Kp * error
-        d = self.Kd * abs( r - self.get_lpf_mid(0) ) # approximatig (d error)/dt with dr/dt
-        i = self.Ki * self.delta_w
-
-        fpr = 1. / (self.c * r * (1. - r))
-        modif = max( min( fpr * (p + d + i), 1. ), -.99 )
-        weights = np.array([syn.w for syn in self.net.syns[self.ID]])
-        self.scale_facs[self.exc_idx] += self.wscale*( 1. +  modif * weights[self.exc_idx]  
-                                                       - self.scale_facs[self.exc_idx] )
-        """
-
-        # PID version
-        ######################################################################
-        # handling of the edges is a bit hacky
-        """
-        if r > 0.9:
-            above = ( 0.5 * (np.sign(self.inp_vector - 0.9) + 1.).sum() ) / len(self.inp_vector)
-            cdf_diff = 1. - ( ( 1. - np.exp(-self.c*.9)) / ( 1. - np.exp(-self.c) ) )
-            error = 10.*(cdf_diff - above)
-        elif r < 0.1:
-            below = ( 0.5 * (np.sign(.1 - self.inp_vector) + 1.).sum() ) / len(self.inp_vector)
-            cdf_diff = ( 1. - np.exp(-self.c*.1) ) / ( 1. - np.exp(-self.c) )
-            error = 10.*(below - cdf_diff) 
-        """
-        self.delta_w += self.net.min_delay * error
-        p = self.Kp * np.sign(error)
-        d = self.Kd * abs( r - self.get_lpf_mid(0) ) # approximatig (d error)/dt with dr/dt
-        i = self.Ki * self.delta_w
+        #d = self.Kd * abs( r - self.get_lpf_mid(0) ) # approximatig (d error)/dt with dr/dt
+        d = self.Kd * ( r - self.get_lpf_mid(0) ) # approximatig (d error)/dt with dr/dt
+        i = self.Ki * np.sign(self.delta_w)
 
         fpr = 1. / (self.c * r * (1. - r))
         modif = max( min( fpr * (p + d + i), 1. ), -.99 )
@@ -728,6 +753,7 @@ class unit():
         #self.scale_facs[self.exc_idx] = 1. + (modif / weights[self.exc_idx])
         self.scale_facs[self.exc_idx] += self.wscale*( 1. +  modif * weights[self.exc_idx]  
                                                        - self.scale_facs[self.exc_idx] )
+        """
 
         ######################################################################
         # Version with "integrative" modifier
