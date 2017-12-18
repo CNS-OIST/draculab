@@ -162,7 +162,7 @@ class syn_reqs(Enum):
     diff_avg = 12 # Average of derivatives for inputs with diff_hebb_subsnorm synapses.
     pos_diff_avg = 13 # As diff_avg, but only considers inputs with positive synaptic weights
     lpf_mid_inp_sum = 14 # LPF'd sum of presynaptic inputs with a medium time constant.
-    n_erd = 15 # number of exp_rate_dist synapses on the postsynaptic unit
+    n_erd = 15 # number of exp_rate_dist synapses on the postsynaptic unit. ONLY USED IN LEGACY CODE
     balance = 16 # fraction of inputs above, below, and around the current rate
     exp_scale = 17 # synaptic scaling to produce an exponential firing rate distribution
     inp_vector = 18 # the current "raw" input vector in a numpy array

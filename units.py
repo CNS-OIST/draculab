@@ -171,7 +171,7 @@ class unit():
         
         The sum accounts for transmission delays. Input ports are ignored. 
 
-        The scale factor is applied only to excitatory synapses, and it is the exp_scale value
+        The scale factor is applied only to excitatory synapses, and it is the scale_facs value
         set by the upd_exp_scale function. This is the way that exp_dist_sigmoidal units get
         their total input.
         """
@@ -422,7 +422,7 @@ class unit():
                     raise AssertionError('lpf_mid_inp_sum requires the inp_vector requirement to be set')
                 self.lpf_mid_inp_sum = self.init_val # this initialization is rather arbitrary
                 self.functions.add(self.upd_lpf_mid_inp_sum)
-            elif req is syn_reqs.n_erd:  # <----------------------------------
+            elif req is syn_reqs.n_erd:  # <---------------------------------- ONLY USED IN LEGACY CODE
                 self.n_erd = len([s for s in self.net.syns[self.ID] if s.type is synapse_types.exp_rate_dist])
                 # n_erd doesn't need to be updated :)
             elif req is syn_reqs.balance:  # <----------------------------------
@@ -432,23 +432,14 @@ class unit():
                 self.above = 0.5 
                 self.functions.add(self.upd_balance)
             elif req is syn_reqs.exp_scale:  # <----------------------------------
-                if not syn_reqs.inp_vector in self.syn_needs:
-                    raise AssertionError('exp_scale requires the inp_vector requirement to be set')
-                if not hasattr(self,'sslope'): 
-                    raise NameError( 'exp_scale requires unit parameter sslope, not yet set' )
-                self.error = 0. # DEBUGGING. Not really needed
-                self.exp_scale = 1. # initalizing the scaling factor
-                self.delta_w = 0. # initializing modifier
+                if not syn_reqs.balance in self.syn_needs:
+                    raise AssertionError('exp_scale requires the balance requirement to be set')
                 self.scale_facs= np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
-                self.exc_idx = []  # array with index of excitatory units
-                for idx, syn in enumerate(self.net.syns[self.ID]):
-                    if syn.w >= 0.:  # Ideally, no weights should be initalized to zero.
-                        self.exc_idx.append(idx)
-                        self.scale_facs[idx] = self.exp_scale
+                # exc_idx = numpy array with index of all excitatory units in the input vector
+                self.exc_idx = [idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w >= 0]
                 self.exc_idx = np.array(self.exc_idx)
-                self.inh_idx = np.array(range(len(self.net.syns[self.ID]))) # array with index of inhibitory units
-                self.inh_idx[self.exc_idx] = 0.
-                self.inh_idx = self.inh_idx.nonzero()[0]
+                # inh_idx = numpy array with index of all inhibitory units 
+                self.inh_idx = np.array([idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w < 0])
                 self.functions.add(self.upd_exp_scale)
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
@@ -642,15 +633,13 @@ class unit():
 
             The algorithm is a multiplicative version of the  one used in exp_rate_dist syanpases.
         """
-        H = lambda x: 0.5 * (np.sign(x) + 1.)
-        cdf = lambda x: ( 1. - np.exp(-self.c*min(max(x,0.),1.) ) ) / ( 1. - np.exp(-self.c) )
+        #H = lambda x: 0.5 * (np.sign(x) + 1.)
+        #cdf = lambda x: ( 1. - np.exp(-self.c*min(max(x,0.),1.) ) ) / ( 1. - np.exp(-self.c) )
         r = self.get_lpf_fast(0)
         r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
-        #exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
-        exp_cdf = cdf(r)
-
+        exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+        #exp_cdf = cdf(r)
         error = self.below - self.above - 2.*exp_cdf + 1. 
-        self.error = error # DEBUGGING
 
         # First APCTP version (12/13/17)
         ######################################################################
@@ -660,7 +649,7 @@ class unit():
         mu_exc = np.sum( self.inp_vector[self.exc_idx] )
         fpr = 1. / (self.c * r * (1. - r))
         ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
-        self.scale_facs[self.exc_idx] += self.wscale * (ss_scale/weights[self.exc_idx] - self.scale_facs[self.exc_idx])
+        self.scale_facs[self.exc_idx] += self.tau_scale * (ss_scale/weights[self.exc_idx] - self.scale_facs[self.exc_idx])
 
         # PID version with moving bin
         ######################################################################
@@ -1248,12 +1237,12 @@ class exp_dist_sigmoidal(unit):
                 'slope' : Slope of the sigmoidal function.
                 'thresh' : Threshold of the sigmoidal function.
                 'tau' : Time constant of the update dynamics.
-                'wscale' : sets the speed of change for the scaling factor
-                'sslope' : sets how much the scaling factor changes
+                'tau_scale' : sets the speed of change for the scaling factor
                 'c' : Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
                     larger values make small firing rates more probable. 
                     Shouldn't be set to zero (causes zero division in the cdf function).
+                'Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
 
         Raises:
             AssertionError.
@@ -1264,15 +1253,12 @@ class exp_dist_sigmoidal(unit):
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
-        self.wscale = params['wscale']  # the synaptic scaling factor
-        self.sslope = params['sslope']  # akin to a slope for scaling factor change
-        self.Kp = params['Kp']  # proportional gain
-        self.Ki = params['Ki']  # integral gain
-        self.Kd = params['Kd']  # derivative gain
+        self.tau_scale = params['tau_scale']  # the scaling time constant
+        self.Kp = params['Kp']  # gain for synaptic scaling
         self.c = params['c']  # The coefficient in the exponential distribution
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
-        self.syn_needs.update([syn_reqs.balance, syn_reqs.exp_scale, #syn_reqs.lpf_mid_inp_sum, 
-                               syn_reqs.lpf_fast, syn_reqs.lpf_mid, syn_reqs.inp_vector])
+        self.syn_needs.update([syn_reqs.balance, syn_reqs.exp_scale, 
+                               syn_reqs.lpf_fast, syn_reqs.inp_vector])
         #assert self.type is unit_types.exp_dist_sigmoidal, ['Unit ' + str(self.ID) + 
         #                                                    ' instantiated with the wrong type']
         
