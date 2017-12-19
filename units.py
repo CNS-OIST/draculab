@@ -212,7 +212,8 @@ class unit():
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:,0] 
 
-        self.pre_syn_update(time) # update any variables needed for the synapse to update
+        self.pre_syn_update(time) # Update any variables needed for the synapse to update.
+                                  # It is important this is done after the buffer has been updated.
         # For each synapse on the unit, update its state
         for pre in self.net.syns[self.ID]:
             pre.update(time)
@@ -450,9 +451,10 @@ class unit():
 
     def upd_lpf_fast(self,time):
         """ Update the lpf_fast variable. """
+        # Source units have their own implementation
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' lpf_fast updated backwards in time']
-        cur_act = self.get_act(time) # current activity
+        cur_act = self.buffer[-1] # This doesn't work for source units
         # This updating rule comes from analytically solving 
         # lpf_x' = ( x - lpf_x ) / tau
         # and assuming x didn't change much between self.last_time and time.
@@ -471,9 +473,10 @@ class unit():
 
     def upd_lpf_mid(self,time):
         """ Update the lpf_mid variable. """
+        # Source units have their own implementation
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' lpf_mid updated backwards in time']
-        cur_act = self.get_act(time) # current activity
+        cur_act = self.buffer[-1] # This doesn't work for source units
         # This updating rule comes from analytically solving 
         # lpf_x' = ( x - lpf_x ) / tau
         # and assuming x didn't change much between self.last_time and time.
@@ -492,9 +495,10 @@ class unit():
 
     def upd_lpf_slow(self,time):
         """ Update the lpf_slow variable. """
+        # Source units have their own implementation
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' lpf_slow updated backwards in time']
-        cur_act = self.get_act(time) # current activity
+        cur_act = self.buffer[-1] # This doesn't work for source units
         # This updating rule comes from analytically solving 
         # lpf_x' = ( x - lpf_x ) / tau
         # and assuming x didn't change much between self.last_time and time.
@@ -513,9 +517,10 @@ class unit():
 
     def upd_sq_lpf_slow(self,time):
         """ Update the sq_lpf_slow variable. """
+        # Source units have their own implementation
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' sq_lpf_slow updated backwards in time']
-        cur_sq_act = self.get_act(time)**2 # square of current activity
+        cur_sq_act = self.buffer[-1]**2.  # This doesn't work for source units.
         # This updating rule comes from analytically solving 
         # lpf_x' = ( x - lpf_x ) / tau
         # and assuming x didn't change much between self.last_time and time.
@@ -861,6 +866,60 @@ class source(unit):
 
         self.pre_syn_update(time) # update any variables needed for the synapse to update
         self.last_time = time # last_time is used to update some pre_syn_update values
+
+
+    def upd_lpf_fast(self,time):
+        """ Update the lpf_fast variable. 
+        
+            Same as unit.upd_lpf_fast, except for the line obtaining cur_act .
+        """
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_fast updated backwards in time']
+        cur_act = self.get_act(time) # current activity
+        self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
+                                   np.exp( (self.last_time-time)/self.tau_fast ) )
+        # update the buffer
+        self.lpf_fast_buff = np.roll(self.lpf_fast_buff, -1)
+        self.lpf_fast_buff[-1] = self.lpf_fast
+
+
+    def upd_lpf_mid(self,time):
+        """ Update the lpf_mid variable.
+
+            Same as unit.upd_lpf_mid, except for the line obtaining cur_act .
+        """
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_mid updated backwards in time']
+        cur_act = self.get_act(time) # current activity
+        self.lpf_mid = cur_act + ( (self.lpf_mid - cur_act) * 
+                                   np.exp( (self.last_time-time)/self.tau_mid) )
+        self.lpf_mid_buff = np.roll(self.lpf_mid_buff, -1)
+        self.lpf_mid_buff[-1] = self.lpf_mid
+
+
+    def upd_lpf_slow(self,time):
+        """ Update the lpf_slow variable.
+
+            Same as unit.upd_lpf_slow, except for the line obtaining cur_act .
+        """
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_slow updated backwards in time']
+        cur_act = self.get_act(time) # current activity
+        self.lpf_slow = cur_act + ( (self.lpf_slow - cur_act) * 
+                                   np.exp( (self.last_time-time)/self.tau_slow ) )
+        self.lpf_slow_buff = np.roll(self.lpf_slow_buff, -1)
+        self.lpf_slow_buff[-1] = self.lpf_slow
+
+
+    def upd_sq_lpf_slow(self,time):
+        """ Update the sq_lpf_slow variable. """
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' sq_lpf_slow updated backwards in time']
+        cur_sq_act = self.get_act(time)**2 # square of current activity
+        self.sq_lpf_slow = cur_sq_act + ( (self.sq_lpf_slow - cur_sq_act) * 
+                                  np.exp( (self.last_time-time)/self.tau_slow ) )
+
+
 
 
     
