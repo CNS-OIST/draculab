@@ -11,7 +11,6 @@ from units import *
 from synapses import *
 from network import *
 import numpy as np
-import random # to create random connections
 
 
 class topology():
@@ -348,7 +347,7 @@ class topology():
             # third, do the sampling
             if 'number_of_connections' in conn_spec:
                 n_of_c = conn_spec['number_of_connections']
-                random.shuffle(masked) # to reduce dependency on order in masked
+                np.random.shuffle(masked) # to reduce dependency on order in masked
             else:
                 n_of_c = len(masked) + 1 # this value controls a 'break' below
             connected = 0 # to keep track of how many connections we've appended
@@ -357,7 +356,7 @@ class topology():
                 for f_idx in masked_copy:
                     f_c = net.units[f_idx].coordinates
                     d = dist(uc, f_c)
-                    if random.random() < kerfun(d):
+                    if np.random.rand() < kerfun(d):
                         if conn_spec['connection_type'] == 'divergent':
                             connections.append( (idx, f_idx) )
                         else:  # connection_type is 'convergent'

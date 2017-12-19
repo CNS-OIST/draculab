@@ -8,7 +8,6 @@ from units import *
 from synapses import *
 from plants import *
 import numpy as np
-import random # to create random connections
 
 class network():
     """ 
@@ -223,6 +222,7 @@ class network():
                         Delays should be multiples of the network minimum delay.
                 OPTIONAL PARAMETERS
                 'allow_autapses' : True or False. Can units connect to themselves? Default is True.
+                'allow_multapses' : Can units send many connections to another unit?  Default is False.
 
             syn_spec: A dictionary used to initialize the synapses in the connections.
                 REQUIRED PARAMETERS
@@ -255,30 +255,44 @@ class network():
 
         # If 'allow_autapses' not in dictionary, set default value
         if not ('allow_autapses' in conn_spec): conn_spec['allow_autapses'] = True
+        # If 'allow_multapses' not in dictionary, set default value
+        if not ('allow_multapses' in conn_spec): conn_spec['allow_multapses'] = False
        
         # The units connected depend on the connectivity rule in conn_spec
         # We'll specify  connectivity by creating a list of 2-tuples with all the
         # pairs of units to connect
         connections = []  # the list with all the connection pairs as (source,target)
+
+        if conn_spec['allow_multapses']:
+            rep = True  # sampling will be done with replacement
+        else:
+            rep = False
+
         if conn_spec['rule'] == 'fixed_outdegree':  #<----------------------
+            assert len(to_list) >= conn_spec['outdegree'] or rep, ['Outdegree larger than number of targets']
             for u in from_list:
                 if conn_spec['allow_autapses']:
-                    targets = random.sample(to_list, conn_spec['outdegree'])
+                    #targets = random.sample(to_list, conn_spec['outdegree'])
+                    targets = np.random.choice(to_list, size=conn_spec['outdegree'], replace=rep)
                 else:
                     to_copy = to_list.copy()
                     while u in to_copy:
                         to_copy.remove(u)
-                    targets = random.sample(to_copy, conn_spec['outdegree'])
+                    #targets = random.sample(to_copy, conn_spec['outdegree'])
+                    targets = np.random.choice(to_copy, size=conn_spec['outdegree'], replace=rep)
                 connections += [(u,y) for y in targets]
         elif conn_spec['rule'] == 'fixed_indegree':   #<----------------------
+            assert len(from_list) >= conn_spec['indegree'] or rep, ['Indegree larger than number of sources']
             for u in to_list:
                 if conn_spec['allow_autapses']:
-                    sources = random.sample(from_list, conn_spec['indegree'])
+                    #sources = random.sample(from_list, conn_spec['indegree'])
+                    sources = np.random.choice(from_list, size=conn_spec['indegree'], replace=rep)
                 else:
                     from_copy = from_list.copy()
                     while u in from_copy:
                         from_copy.remove(u)
-                    sources = random.sample(from_copy, conn_spec['indegree'])
+                    #sources = random.sample(from_copy, conn_spec['indegree'])
+                    sources = np.random.choice(from_copy, size=conn_spec['indegree'], replace=rep)
                 connections += [(x,u) for x in sources]
         elif conn_spec['rule'] == 'all_to_all':    #<----------------------
             targets = to_list
