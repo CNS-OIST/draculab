@@ -191,6 +191,7 @@ class topology():
                               will have a delay equal to [c + a*d], where the square brackets indicate that 
                               this value will be transformed to the nearest multiple of the minimum 
                               transmission delay. Notice a=0 implies all delays will have value [c].
+                          When 'edge_wrap'=True, periodic-boundary distance is used to calculate 'd'.
                 OPTIONAL ENTRIES
                 'allow_autapses' : Can units connect to themselves? Default is True.
                 'allow_multapses' : Can a unit have more than one connection to the same target?
