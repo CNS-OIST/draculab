@@ -1,5 +1,4 @@
 
-from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib import cm
@@ -115,7 +114,10 @@ class ei_net():
         self.x_pars = {'type' : unit_types.source,
             'init_val' : 0.,
             'tau_fast' : 0.04,
-            'coordinates' : np.array([0.,0.]), # for plotting purposes
+            'function' : lambda x: None }
+        self.wt_pars = {'type' : unit_types.source,  # parameters for "weight tracking" units
+            'init_val' : 0.,
+            'tau_fast' : 0.04,
             'function' : lambda x: None }
         # CONNECTION PARAMETERS
         self.ee_conn = {'connection_type' : 'divergent',
@@ -252,7 +254,7 @@ class ei_net():
         self.i = topo.create_group(self.net, self.i_geom, self.i_pars)
         self.x = topo.create_group(self.net, self.x_geom, self.x_pars)
         # Create weight tracking units
-        self.w_track = self.net.create(self.n['w_track'], self.x_pars)
+        self.w_track = self.net.create(self.n['w_track'], self.wt_pars)
         # Create connections
         topo.topo_connect(self.net, self.e, self.e, self.ee_conn, self.ee_syn)
         topo.topo_connect(self.net, self.e, self.i, self.ei_conn, self.ei_syn)
@@ -297,18 +299,18 @@ class ei_net():
         self.history.append(dictionary + '[\'' + entry + '\'] = ' + str(value) ) # record assignment
             
     def make_sin_pulse(self, t_init, t_end, per, amp): 
-        """ This function returns a function implementing a localized sinusoidal bump(s). """
+        """ This function returns a function implementing a sinusoidal bump(s). """
         return lambda t : amp * ( np.sqrt( 0.5 * (1. + 
                       np.sin( np.pi*( 2.*(t - t_init)/per - 0.5 ) ) ) ) ) if (t_init < t and t < min(t_init+per,t_end)) else 0.
     
     def input_vector(self):
         """This function returns an input vector. Different distributions can be implemented with this. """
         ## random vector with unit norm, positive entries
-        # vec = np.random.uniform(0., 1., self.n_units['inp'])
+        # vec = np.random.uniform(0., 1., self.n['x'])
         # return  vec / np.linalg.norm(vec)
         
         ## random vector with unit norm, positive and negative entries
-        vec = np.random.uniform(0., 1., self.n_units['inp']) - np.random.uniform(0., 1., self.n_units['inp'])
+        vec = np.random.uniform(0., 1., self.n['x']) - np.random.uniform(0., 1., self.n['x'])
         return  vec / np.linalg.norm(vec)
         
     def run(self, n_pres, inp_time, inp_amp, pres_time, alpha=0.):
@@ -327,7 +329,7 @@ class ei_net():
         self.all_times = []
         self.all_activs = []
         start_time = time.time()
-        inp_vel = np.zeros(self.n_units['inp']) # initial velocity for the input drift
+        inp_vel = np.zeros(self.n['x']) # initial velocity for the input drift
         inp_vec = inp_amp*self.input_vector() # initial amplitudes of the inputs
         # present input patterns
         for pres in range(n_pres):
@@ -337,8 +339,8 @@ class ei_net():
             inp_accel = inp_amp*self.input_vector() # having an acceleration confers "momentum" to the input drift
             inp_vel = (1.-alpha)*inp_vel + alpha*inp_accel 
             inp_vec = (1.-alpha)*inp_vec + alpha*inp_vel
-            for i in self.inp:
-                self.net.units[i].set_function(self.make_sin_pulse(t, t+pres_time, inp_time, inp_vec[i-self.inp[0]]))
+            for i in self.x:
+                self.net.units[i].set_function(self.make_sin_pulse(t, t+pres_time, inp_time, inp_vec[i-self.x[0]]))
         
             times, activs, plants = self.net.run(pres_time)
             self.all_times.append(times)
@@ -353,39 +355,42 @@ class ei_net():
     def basic_plot(self):
         #%matplotlib inline
         inp_fig = plt.figure(figsize=(10,5))
-        inputs = np.transpose([self.all_activs[i] for i in self.inp])
+        inputs = np.transpose([self.all_activs[i] for i in self.x])
         plt.plot(self.all_times, inputs, linewidth=1, figure=inp_fig)
         plt.title('Inputs')
 
         unit_fig = plt.figure(figsize=(10,5))
-        some_acts = np.transpose(self.all_activs[[self.units[i] for i in self.tracked]])
-        plt.plot(self.all_times, some_acts, figure=unit_fig)
-        plt.title('Some unit activities')
+        e_tracked = [e for e in self.tracked if e in self.e]
+        i_tracked = [i for i in self.tracked if i in self.i]
+        e_acts = np.transpose(self.all_activs[e_tracked])
+        i_acts = np.transpose(self.all_activs[i_tracked])
+        plt.plot(self.all_times, e_acts, figure=unit_fig, linewidth=4)
+        plt.plot(self.all_times, i_acts, figure=unit_fig, linewidth=1)
+        plt.title('Some unit activities. Thick=Exc, Thin=Inh')
         
         # Plot the evolution of the synaptic weights
         w_fig = plt.figure(figsize=(10,5))
-        weights = np.transpose([self.all_activs[self.w_track[i]] for i in range(self.n_units['w_track'])])
+        weights = np.transpose([self.all_activs[self.w_track[i]] for i in range(self.n['w_track'])])
         plt.plot(self.all_times, weights, linewidth=1)
         plt.title('Some synaptic weights')
         
+        """
         # Plot the evolution of the synaptic scale factors
         if self.unit_pars['type'] == unit_types.exp_dist_sig:
             sc_fig = plt.figure(figsize=(10,5))
             factors = np.transpose([self.all_activs[self.sc_track[i]] for i in range(self.n_units['w_track'])])
             plt.plot(self.all_times, factors, linewidth=1)
             plt.title('Some synaptic scale factors')
-
+        """
         plt.show()
         
-    def act_anim(self, thr, interv=100, slider=False):
-        """ An animation to visualize the activity of the excitatory units. 
-        
+    def act_anim(self, pop, thr, interv=100, slider=False):
+        """ An animation to visualize the activity of a set of units. 
+            
+            pop : an array or list with the IDs of the units to visualize.
             interv : refresh interval of the simulation.
             slider : When set to True the animation is substituted by a slider widget.
-            
-            Units whose activity surpasses 'thr' will be highlighted.
-            It is assumed that this import statement has happened:
-            from matplotlib.animation import FuncAnimation
+            thr : units whose activity surpasses 'thr' will be highligthted.
         """
         get_ipython().run_line_magic('matplotlib', 'qt5')
         # notebook or qt5 
@@ -394,11 +399,12 @@ class ei_net():
         self.ax = self.unit_fig.add_axes([0, 0, 1, 1], frameon=False)
         self.ax.set_xlim(-1, 1), self.ax.set_xticks([])
         self.ax.set_ylim(-1, 1), self.ax.set_yticks([])
-        xcoords = [ u.coordinates[0] for u in [self.net.units[i] for i in self.units] ]
-        ycoords = [ u.coordinates[1] for u in [self.net.units[i] for i in self.units] ]
-        self.scat = self.ax.scatter(xcoords, ycoords, s=20.*self.all_activs[self.units,0])
+        xcoords = [ u.coordinates[0] for u in [self.net.units[i] for i in pop] ]
+        ycoords = [ u.coordinates[1] for u in [self.net.units[i] for i in pop] ]
+        self.scat = self.ax.scatter(xcoords, ycoords, s=20.*self.all_activs[pop,0])
         self.n_data = len(self.all_activs[0])
         self.act_thr = thr
+        self.act_anim_pop = pop
         
         if not slider:
             animation = FuncAnimation(self.unit_fig, self.update_act_anim, 
@@ -418,16 +424,18 @@ class ei_net():
         # Each frame advances one simulation step (min_delay time units)
         idx = frame%self.n_data
         cur_time = self.net.min_delay*idx
-        self.scat.set_sizes(300.*self.all_activs[self.units,idx])
-        self.scat.set_color(self.color_fun(self.all_activs[self.units,idx]))
+        self.scat.set_sizes(300.*self.all_activs[self.act_anim_pop,idx])
+        self.scat.set_color(self.color_fun(self.all_activs[self.act_anim_pop, idx]))
         self.unit_fig.suptitle('Time: ' + '{:f}'.format(cur_time))
         return self.ax,
     
-    def conn_anim(self, source, sink, interv=100, slider=False, weights=False):
+    def conn_anim(self, source, sink, interv=100, slider=False, weights=True):
         """ An animation to visualize the connectivity of populations. 
     
             source and sink are lists with the IDs of the units whose connections we'll
-            visualize. Each frame of the animation shows: for a particular unit in source,
+            visualize. They should consist of contiguous, increasing integers. 
+            
+            Each frame of the animation shows: for a particular unit in source,
             all the neurons in sink that receive connections from it (left plot), and for 
             a particular unit in sink, all the units in source that send it connections
             (right plot).
@@ -436,7 +444,10 @@ class ei_net():
             
             If weights=True, then the dots' size and color will reflect the absolute value
             of the connection weight.
-        
+
+            Returns:
+                animation object from FuncAnimation if slider = False
+                widget object from ipywidgets.interact if slider = True
         """
         get_ipython().run_line_magic('matplotlib', 'qt5')
         # notebook or qt5 
@@ -508,7 +519,7 @@ class ei_net():
         sink_sizes = np.tile(2, self.len_sink)
         source_colors = np.tile(self.std_src,(self.len_source,1))
         sink_colors = np.tile(self.std_snk, (self.len_sink,1))
-        source_sizes[sou_u] = 30
+        source_sizes[sou_u] = 50
         source_colors[sou_u] = self.big_src
         # getting targets of projections from the unit 'sou_u'
         targets = [syn.postID - self.sink_0 for syn in self.all_syns if syn.preID == sou_u + self.source_0]
@@ -526,7 +537,7 @@ class ei_net():
         sink_sizes = np.tile(2, self.len_sink)
         source_colors = np.tile(self.std_src, (self.len_source,1))
         sink_colors = np.tile(self.std_snk, (self.len_sink,1))
-        sink_sizes[snk_u] = 30
+        sink_sizes[snk_u] = 50
         sink_colors[snk_u] = self.big_snk
         # getting senders of projections to the unit 'snk_u'
         senders = [syn.preID - self.source_0 for syn in self.all_syns if syn.postID == snk_u + self.sink_0]
@@ -570,37 +581,38 @@ class ei_net():
     
         return self.ax1, self.ax2,
     
-    def hist_anim(self, nbins=15, interv=100, slider=False, pdf=False):
-        """ An animation to visualize the firing rate histogram through time. 
+    def hist_anim(self, pop, nbins=20, interv=100, slider=False, pdf=False):
+        """ An animation to visualize the firing rate histogram of a given population through time. 
         
+            pop : list or array with the IDs of the units whose histogram we'll visualize.
             interv : refresh interval of the simulation.
             slider : When set to True the animation is substituted by a slider widget.
             nbins : number of bins in the histogram
             pdf: include a plot of the exponential PDF?
-            
-            It is assumed that this import statement has happened:
-            from matplotlib.animation import FuncAnimation
+                 Used when visualizing exp_dist_sig units or exp_rate_dist synapses.
+                 CURRENTLY ONLY SUPPORTED WHEN pop IS THE EXCITATORY POPULATION.
         """
         get_ipython().run_line_magic('matplotlib', 'qt5')
         # notebook or qt5 
         self.hist_fig = plt.figure(figsize=(10,10))
-        if pdf:
-            if self.unit_pars['type'] == unit_types.exp_dist_sig:
-                c = self.net.units[0].c
+        if pdf: # assuming pop consists of excitatory units
+            if self.e_pars['type'] == unit_types.exp_dist_sig:
+                c = self.net.units[self.e[0]].c
             else:
-                c = self.syn['c']
+                c = self.ee_syn['c']
             # plot the exponential distro on the same figure
-            k = len(self.units) * c / (1. - np.exp(-c)) / nbins
+            k = len(pop) * c / (1. - np.exp(-c)) / nbins
             plt.plot(np.linspace(0,1,100), k * np.exp(-c*np.linspace(0,1,100)))
             upper_tick = round(max(1., np.exp(-c)) * k)  + 5.
         else:
-            upper_tick = len(self.units)
+            upper_tick = len(pop)
         # initial histogram plot
-        hist, bins, self.patches = plt.hist(self.all_activs[self.units,0], bins=nbins)
+        hist, bins, self.patches = plt.hist(self.all_activs[pop,0], bins=nbins, range=(0.,1.001))
         plt.yticks([0.,upper_tick])
         
         self.n_data = len(self.all_activs[0])
         self.n_bins = nbins
+        self.ha_pop = pop
                 
         if not slider:
             animation = FuncAnimation(self.hist_fig, self.update_hist_anim, 
@@ -615,20 +627,23 @@ class ei_net():
         # Each frame advances one simulation step (min_delay time units)
         idx = frame%self.n_data
         cur_time = self.net.min_delay*idx
-        binz, valz = np.histogram(self.all_activs[self.units,idx], bins=self.n_bins)
+        binz, valz = np.histogram(self.all_activs[self.ha_pop, idx], bins=self.n_bins, range=(0.,1.001))
         for count, patch in zip(binz, self.patches):
             patch.set_height(count)
         self.hist_fig.suptitle('Time: ' + '{:f}'.format(cur_time))
         return 
     
-    def double_anim(self, nbins=15, interv=100, slider=False, thr=0.9, pdf=False):
-        """ An animation of both firing rate histograms and unit activities. 
+    def double_anim(self, pop, nbins=20, interv=100, slider=False, thr=0.9, pdf=False):
+        """ An animation of both firing rate histograms and unit activities for a given population.
         
+            pop : list or array with the IDs of the units to visualize.
             bins = number of bins in the firing rate histogram
             inter = refresh interval in ms
             slider = whether to use an interactive slider instead of an animation
             thr = value at which the dots change color in the unit activity diagram
-            pdf = whehter to overlay a plot of the exponential pdf the histogram should approach
+            pdf = whether to overlay a plot of the exponential pdf the histogram should approach.
+                 CURRENTLY ONLY SUPPORTED WHEN pop IS THE EXCITATORY POPULATION.
+                  
         """
         get_ipython().run_line_magic('matplotlib', 'qt5')
         
@@ -638,26 +653,28 @@ class ei_net():
         self.n_data = len(self.all_activs[0])
         # Histogram figure and axis
         self.hist_ax = self.double_fig.add_axes([0.02, .04, .47, .92])
-        if pdf:
-            if self.unit_pars['type'] == unit_types.exp_dist_sig:
-                c = self.net.units[0].c
+        if pdf: # assuming pop consists of excitatory units
+            if self.e_pars['type'] == unit_types.exp_dist_sig:
+                c = self.net.units[self.e[0]].c
             else:
-                c = self.syn['c']
+                c = self.ee_syn['c']
             # plot the exponential distro on the left axis
-            k = len(self.units) * c / (1. - np.exp(-c)) / nbins
+            k = len(pop) * c / (1. - np.exp(-c)) / nbins
             self.hist_ax.plot(np.linspace(0,1,100), k * np.exp(-c*np.linspace(0,1,100)), 'y')
             y_lim = round(max(1., np.exp(-c)) * k)  + 5.
         else:
-            y_lim = len(self.units)
-        hist, bins, self.patches = self.hist_ax.hist(self.all_activs[self.units,0], bins=nbins, range=(0.,1.001))
+            y_lim = len(pop)
+        hist, bins, self.patches = self.hist_ax.hist(self.all_activs[pop,0], bins=nbins, range=(0.,1.001))
         self.hist_ax.set_ylim(top=y_lim) 
         # Activity figure and axis
         self.act_ax = self.double_fig.add_axes([.51, .02, .47, .94], frameon=False)
         self.act_ax.set_xlim(-1, 1), self.act_ax.set_xticks([])
         self.act_ax.set_ylim(-1, 1), self.act_ax.set_yticks([])
-        xcoords = [ u.coordinates[0] for u in [self.net.units[i] for i in self.units] ]
-        ycoords = [ u.coordinates[1] for u in [self.net.units[i] for i in self.units] ]
-        self.scat = self.act_ax.scatter(xcoords, ycoords, s=20.*self.all_activs[self.units,0])
+        xcoords = [ u.coordinates[0] for u in [self.net.units[i] for i in pop] ]
+        ycoords = [ u.coordinates[1] for u in [self.net.units[i] for i in pop] ]
+        self.scat = self.act_ax.scatter(xcoords, ycoords, s=20.*self.all_activs[pop,0])
+        
+        self.da_pop = pop
         # select viewing mode
         if not slider:
             animation = FuncAnimation(self.double_fig, self.update_double_anim, 
@@ -673,12 +690,12 @@ class ei_net():
         idx = frame%self.n_data
         cur_time = self.net.min_delay*idx
         # updating histogram
-        binz, valz = np.histogram(self.all_activs[self.units,idx], bins=self.n_bins, range=(0.,1.001))
+        binz, valz = np.histogram(self.all_activs[self.da_pop,idx], bins=self.n_bins, range=(0.,1.001))
         for count, patch in zip(binz, self.patches):
             patch.set_height(count)
         # updating activities
-        self.scat.set_sizes(300.*self.all_activs[self.units,idx])
-        self.scat.set_color(self.color_fun(self.all_activs[self.units,idx]))
+        self.scat.set_sizes(300.*self.all_activs[self.da_pop,idx])
+        self.scat.set_color(self.color_fun(self.all_activs[self.da_pop,idx]))
         self.double_fig.suptitle('Time: ' + '{:f}'.format(cur_time))
         return self.hist_ax, self.act_ax,
     
@@ -688,7 +705,7 @@ class ei_net():
         if make_history:
             self.history.append('#' + string)
             
-    def log(self, name="rate_density_simlog.txt"):
+    def log(self, name="ei_net_log.txt"):
         with open(name, 'a') as f:
             f.write('#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
             f.write('#---------Logging exp_distro object---------\n')
@@ -700,13 +717,13 @@ class ei_net():
             f.write('\n')
             f.close()
         
-    def save(self, name="rate_density_pickled.pkl"):
+    def save(self, name="ei_net_pickle.pkl"):
         """ Saving simulation results. 
             A draculab network contains lists with functions, so it is not picklable. 
             But it can be serialized with dill: https://github.com/uqfoundation/dill 
             
             After saving, retrieve object using, for example:
-            F = open("rate_density_pickled.pkl", 'rb')
+            F = open("ei_net_pickle.pkl", 'rb')
             ei = dill.load(F)
             F.close()
         """
