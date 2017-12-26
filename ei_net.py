@@ -259,7 +259,7 @@ class ei_net():
         topo.topo_connect(self.net, self.e, self.e, self.ee_conn, self.ee_syn)
         topo.topo_connect(self.net, self.e, self.i, self.ei_conn, self.ei_syn)
         topo.topo_connect(self.net, self.i, self.e, self.ie_conn, self.ie_syn)
-        topo.topo_connect(self.net, self.i, self.i, self.ii_conn, self.ie_syn)
+        topo.topo_connect(self.net, self.i, self.i, self.ii_conn, self.ii_syn)
         topo.topo_connect(self.net, self.x, self.i, self.xi_conn, self.xi_syn)
         topo.topo_connect(self.net, self.x, self.e, self.xe_conn, self.xe_syn)
         # Set the function of the w_track units to follow randomly chosen weights.
