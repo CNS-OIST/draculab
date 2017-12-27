@@ -5,6 +5,7 @@ from matplotlib import cm
 import numpy as np
 import time
 import dill
+import pprint
 from draculab import *
 
 
@@ -46,12 +47,19 @@ class ei_net():
             Time units are seconds for compatibility with the pendulum model.
             Length units for geometry dictionaries are centimeters.
             Axonal conduction speed is ~1 m/s, synaptic delay about 5 ms for the population response.
+
+            The slope, thresh, tau, and init_val parameters of sigmoidal units are by default set 
+            randomly using the formula:  par = par_min + par_wid * rand ,
+            where par is either slope, thresh, tau, or init_val; par_min is the minimum value; 
+            par_wid is the 'width' of the parameter distribution; and rand is a random value coming 
+            from the uniform distribution in the [0,1) interval.
+            To set a different distribution for these parameters, just set the desired value(s) in
+            the 'slope', 'thresh', 'tau', or 'init_val' entry of the (e|i)_pars dictionary.
         """
 
-
-        # The history list will store strings containing the instructions doing parameter changes, 
-        # building the network, or running a simulation. It also may contain notes.
-        self.history = ["__init__ at " + time.ctime()]
+        # The history list will store strings containing the paramter dictionaries, the instructions doing 
+        # parameter changes, building the network, or running a simulation. It also may contain notes.
+        self.history = ["# __init__ at " + time.ctime()]
         self.notes = '' # comments about network configuration or simulation results.
         # fixing random seed
         seed = 19680801
@@ -91,20 +99,28 @@ class ei_net():
             'i' : self.i_geom['rows'] * self.i_geom['columns'],  # number of inhibitory units
             'x' : self.x_geom['rows'] * self.x_geom['columns'],  # number of input units
             'w_track': 6 } # number of weight tracking units
-        self.e_pars = {'init_val' : np.random.rand(self.n['e']), 
-            'slope' : 1.,
-            'thresh' : 0.,
-            'tau' : 0.02,  # 20 ms time constant
+        self.e_pars = {'init_val_min' : 0.001,
+            'init_val_wid' : 1.,
+            'slope_min' : 0.5, # minimum slope
+            'slope_wid' : 3.,  # 'width' of the slope distribution
+            'thresh_min' : -0.2,
+            'thresh_wid' : 0.6,
+            'tau_min' : 0.01,  # 10 ms minimum time constant
+            'tau_wid' : 0.04,  # 40 ms variation
             'tau_fast' : 0.04, # 40 ms for fast low-pass filter
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
             'c' : 2., # for exp_dist_sigmoidal units
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'type' : unit_types.sigmoidal }
-        self.i_pars = {'init_val' : np.random.rand(self.n['i']), 
-            'slope' : 1.,
-            'thresh' : 0.,
-            'tau' : 0.02,  # 20 ms time constant
+        self.i_pars = {'init_val_min' : 0.001,
+            'init_val_wid' : 1.,
+            'slope_min' : 0.5, # minimum slope
+            'slope_wid' : 3.,  # 'width' of the slope distribution
+            'thresh_min' : -0.2,
+            'thresh_wid' : 0.6,
+            'tau_min' : 0.01,  # 10 ms minimum time constant
+            'tau_wid' : 0.04,  # 40 ms variation
             'tau_fast' : 0.04, # 40 ms for fast low-pass filter
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
@@ -226,12 +242,14 @@ class ei_net():
         self.n['e'] =  self.e_geom['rows'] * self.e_geom['columns'] # number of e units
         self.n['i'] =  self.i_geom['rows'] * self.i_geom['columns']
         self.n['x'] =  self.x_geom['rows'] * self.x_geom['columns'] 
+
         self.ee_conn['delays'] = {'linear' : {'c' : self.net_params['min_delay'], 'a' : self.net_params['cm_del']}}
         self.ei_conn['delays'] = {'linear' : {'c' : self.net_params['min_delay'], 'a' : self.net_params['cm_del']}}
         self.ie_conn['delays'] = {'linear' : {'c' : self.net_params['min_delay'], 'a' : self.net_params['cm_del']}}
         self.ii_conn['delays'] = {'linear' : {'c' : self.net_params['min_delay'], 'a' : self.net_params['cm_del']}}
         self.xe_conn['delays'] = {'linear' : {'c' : self.net_params['min_delay'], 'a' : self.net_params['cm_del']}}
         self.xi_conn['delays'] = {'linear' : {'c' : self.net_params['min_delay'], 'a' : self.net_params['cm_del']}}
+
         if (self.ee_conn['edge_wrap'] == True or self.ei_conn['edge_wrap'] == True or
             self.ie_conn['edge_wrap'] == True or self.ii_conn['edge_wrap'] == True or
             self.xe_conn['edge_wrap'] == True or self.xi_conn['edge_wrap'] == True):
@@ -243,8 +261,23 @@ class ei_net():
         self.ii_conn['boundary'] = {'center': np.array(self.i_geom['center']), 'extent' : self.i_geom['extent']}
         self.xe_conn['boundary'] = {'center': np.array(self.e_geom['center']), 'extent' : self.e_geom['extent']}
         self.xi_conn['boundary'] = {'center': np.array(self.i_geom['center']), 'extent' : self.i_geom['extent']}
-        self.e_pars['init_val'] = np.random.rand(self.n['e'])
-        self.i_pars['init_val'] = np.random.rand(self.n['i'])
+
+        # Before we populate the parameter dictionaries with random values, let's print them to history
+        self.history.append('########### PARAMETER DICTIONARIES USED TO BUILD ##########')
+        pp = pprint.PrettyPrinter(indent=4, compact=True)
+        for name in vars(self):
+            attr = self.__getattribute__(name)
+            if type(attr) is dict:
+                self.history.append(name + ' = ' + pp.pformat(attr)+'\n')
+        self.history.append('#####################')
+
+        # Now we populatate the parameter dictionaries with the appropriate random values
+        for par in ['slope', 'thresh', 'tau', 'init_val']:
+            if not par in self.e_pars:
+                self.e_pars[par] = self.e_pars[par+'_min'] + self.e_pars[par+'_wid'] * np.random.random(self.n['e'])
+            if not par in self.i_pars:
+                self.i_pars[par] = self.i_pars[par+'_min'] + self.i_pars[par+'_wid'] * np.random.random(self.n['i'])
+
         # Create an auxiliary topology object
         topo = topology()
         # Create network
@@ -274,18 +307,16 @@ class ei_net():
         for uid,u in enumerate(which_u):
             for sid,s in enumerate(which_syns[uid]):
                 self.net.units[self.w_track[uid*n_syns+sid]].set_function(self.net.syns[u][s].get_w)
-        """ 
         # If there are exp_dist_sigmoidal units, create some units to track their scale factors
-        if self.unit_pars['type'] == unit_types.exp_dist_sig:
-            self.sc_track = self.net.create(self.n_units['w_track'], self.inp_pars)
+        if self.e_pars['type'] == unit_types.exp_dist_sig and self.i_pars['type'] == unit_types.exp_dist_sig:
+            self.sc_track = self.net.create(self.n['w_track'], self.wt_pars)
             def scale_tracker(u,s):
                 return lambda x: self.net.units[u].scale_facs[s]
             for uid,u in enumerate(which_u):
                 for sid,s in enumerate(which_syns[uid]):
                     self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
-        """ 
-
         
+
     def set_param(self, dictionary, entry, value):
         """ Change a value in a parameter dictionary. 
         
@@ -298,49 +329,117 @@ class ei_net():
         self.__getattribute__(dictionary)[entry] = value  # set the new value
         self.history.append(dictionary + '[\'' + entry + '\'] = ' + str(value) ) # record assignment
             
+
     def make_sin_pulse(self, t_init, t_end, per, amp): 
         """ This function returns a function implementing a sinusoidal bump(s). """
         return lambda t : amp * ( np.sqrt( 0.5 * (1. + 
                       np.sin( np.pi*( 2.*(t - t_init)/per - 0.5 ) ) ) ) ) if (t_init < t and t < min(t_init+per,t_end)) else 0.
     
-    def input_vector(self):
-        """This function returns an input vector. Different distributions can be implemented with this. """
+
+    def default_inp_pat(self, pres, rows, columns):
+        """ A default set_inp_pat argument for the run() method. 
+
+            The returned input patterns are random vectors with unit norm.
+        """
+        n = rows*columns
         ## random vector with unit norm, positive entries
-        # vec = np.random.uniform(0., 1., self.n['x'])
-        # return  vec / np.linalg.norm(vec)
-        
-        ## random vector with unit norm, positive and negative entries
-        vec = np.random.uniform(0., 1., self.n['x']) - np.random.uniform(0., 1., self.n['x'])
+        vec = np.random.uniform(0., 1., n)
         return  vec / np.linalg.norm(vec)
+        ## random vector with unit norm, positive and negative entries
+        #vec = 1. - np.random.uniform(0., 2., n)
+        #return  vec / np.linalg.norm(vec)
+
+
+    def H(self, x): 
+        """ The Heaviside step function. """
+        return 0.5 * (np.sign(x) + 1.)
+
+
+    def make_inp_fun(self, prev, cur, init_time, tran_time):
+        """ Creates an input function that from init_time to tran_time goes linearly from prev to cur, 
+            and remains constant with value cur afterwards.
+
+            Auxiliary to default_inp_fun to avoid scoping problems:
+            https://eev.ee/blog/2011/04/24/gotcha-python-scoping-closures/
+        """
+        return ( lambda t : self.H(t - tran_time) * cur + self.H(tran_time - t) *
+                            (prev +  (t - init_time) * (cur - prev) / (tran_time - init_time)) )
+   
+
+    def default_inp_fun(self, pre_inp, cur_inp, init_time, pres_time, inp_units, frac=0.2):
+        """ A default set_inp_fun argument for the run() method. 
         
-    def run(self, n_pres, inp_time, inp_amp, pres_time, alpha=0.):
-        """ Run a simulation, presenting n_pres patterns, each lasting pres_time, 
-            with inputs of amplitude inp_amp and lasting inp_time at the beginning of each presentation.
+            The input function transitions linearly from the previous to the current input
+            pattern during the first 'frac' fraction of the presentation.
+        """
+        t_tran = init_time + frac * pres_time
+        for unit, pre, cur in zip(inp_units, pre_inp, cur_inp):
+            unit.set_function( self.make_inp_fun(pre, cur, init_time, t_tran) )
+
+
+    def run(self, n_pres,  pres_time, *input_creators):
+        """ Run a simulation, presenting n_pres patterns, each lasting pres_time. 
+
+            n_pres : number of pattern presentations to simulate.
+            pres_time : time that each pattern presentation will last.
+            input_creators : the functions set_inp_pat and set_inp_fun, in that order. If not included
+                             in the call, default_inp_pat and default_inp_fun are used.
+
+            At the beginning of each presentation, the method set_inp_pat is called. This creates a new
+            pattern to be presented. Then the set_inp_fun method is called, which sets the functions
+            of the input units based on the new pattern.
             
-            The argument alpha determines how fast the input amplitudes drift.
+            set_inp_pat(pres, rows, columns)
+                # Given a presentation number and the number of rows and columns in the input layer, 
+                # returns an input pattern, which is a 1-D numpy array with the value thate the input 
+                # function should attain during the presentation.
+                # To map a given pair (r,c) to its corresponding entry in the returned vector use:
+                # idx = rows*c + r, 
+                # e.g. input[idx] corresponds to the unit in row r, and column c, with the indexes starting
+                # from 0. This is consistent with the way coordinates are assigned in topology.create_group.
+                
+            set_inp_fun(prev_inp_pat, cur_inp_pat, init_time, pres_time, inp_units))
+                # Assigns a Python function to each of the input units.
+                # pre_inp_pat : input pattern from the previous presentation (in the format of set_inp_pat).
+                # cur_inp_pat : current input pattern.
+                # init_time : time when the presentation will start.
+                # pres_time : duration of the presentation.
+                # inp_units : a list with the input units (e.g. "x").
             
             Updates:
                 self.all_times: 1-D numpy array with the times for each data point in all_activs.
                 self.all_activs: 2-D numpy array with the activity of all units at each point in all_times. 
         """
         # store a record of this simulation
-        self.history.append('run(%d, %f, %f, %f, %f)' % (n_pres, inp_time, inp_amp, pres_time, alpha)) 
+        self.history.append('run(n_pres=%d, pres_time=%f, ...)' % (n_pres, pres_time)) 
         # initialize storage of results
         self.all_times = []
         self.all_activs = []
+        # initialize other variables
+        if len(input_creators) == 2:
+            set_inp_pat = inpup_creators[0]
+            set_inp_fun = inpup_creators[1]
+        else:
+            set_inp_pat = self.default_inp_pat
+            set_inp_fun = self.default_inp_fun
         start_time = time.time()
-        inp_vel = np.zeros(self.n['x']) # initial velocity for the input drift
-        inp_vec = inp_amp*self.input_vector() # initial amplitudes of the inputs
+        inp_units = [self.net.units[i] for i in self.x]
+        self.inp_pat = set_inp_pat(0, self.x_geom['rows'], self.x_geom['columns'])
         # present input patterns
         for pres in range(n_pres):
             print('Simulating presentation ' + str(pres), end='\r')
             pres_start = time.time()
             t = self.net.sim_time
-            inp_accel = inp_amp*self.input_vector() # having an acceleration confers "momentum" to the input drift
-            inp_vel = (1.-alpha)*inp_vel + alpha*inp_accel 
-            inp_vec = (1.-alpha)*inp_vec + alpha*inp_vel
-            for i in self.x:
-                self.net.units[i].set_function(self.make_sin_pulse(t, t+pres_time, inp_time, inp_vec[i-self.x[0]]))
+
+            # Creating input pattern
+            prev_pat = self.inp_pat
+            self.inp_pat = set_inp_pat(pres, self.x_geom['rows'], self.x_geom['columns'])
+
+            # Setting input functions
+            set_inp_fun(prev_pat, self.inp_pat, t, pres_time, inp_units)
+
+            #for i in self.x:
+            #    self.net.units[i].set_function(self.make_sin_pulse(t, t+pres_time, inp_time, inp_vec[i-self.x[0]]))
         
             times, activs, plants = self.net.run(pres_time)
             self.all_times.append(times)
@@ -362,10 +461,12 @@ class ei_net():
         unit_fig = plt.figure(figsize=(10,5))
         e_tracked = [e for e in self.tracked if e in self.e]
         i_tracked = [i for i in self.tracked if i in self.i]
-        e_acts = np.transpose(self.all_activs[e_tracked])
-        i_acts = np.transpose(self.all_activs[i_tracked])
-        plt.plot(self.all_times, e_acts, figure=unit_fig, linewidth=4)
-        plt.plot(self.all_times, i_acts, figure=unit_fig, linewidth=1)
+        if len(e_tracked) > 0:
+            e_acts = np.transpose(self.all_activs[e_tracked])
+            plt.plot(self.all_times, e_acts, figure=unit_fig, linewidth=4)
+        if len(i_tracked) > 0:
+            i_acts = np.transpose(self.all_activs[i_tracked])
+            plt.plot(self.all_times, i_acts, figure=unit_fig, linewidth=1)
         plt.title('Some unit activities. Thick=Exc, Thin=Inh')
         
         # Plot the evolution of the synaptic weights
@@ -374,15 +475,15 @@ class ei_net():
         plt.plot(self.all_times, weights, linewidth=1)
         plt.title('Some synaptic weights')
         
-        """
         # Plot the evolution of the synaptic scale factors
-        if self.unit_pars['type'] == unit_types.exp_dist_sig:
+        if self.e_pars['type'] == unit_types.exp_dist_sig and self.i_pars['type'] == unit_types.exp_dist_sig:
             sc_fig = plt.figure(figsize=(10,5))
-            factors = np.transpose([self.all_activs[self.sc_track[i]] for i in range(self.n_units['w_track'])])
+            factors = np.transpose([self.all_activs[self.sc_track[i]] for i in range(self.n['w_track'])])
             plt.plot(self.all_times, factors, linewidth=1)
             plt.title('Some synaptic scale factors')
-        """
+
         plt.show()
+
         
     def act_anim(self, pop, thr, interv=100, slider=False):
         """ An animation to visualize the activity of a set of units. 
@@ -708,7 +809,7 @@ class ei_net():
     def log(self, name="ei_net_log.txt"):
         with open(name, 'a') as f:
             f.write('#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
-            f.write('#---------Logging exp_distro object---------\n')
+            f.write('#---------Logging ei_net object---------\n')
             f.write('# HISTORY #\n')
             for entry in self.history:
                 f.write(entry + '\n')
