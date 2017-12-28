@@ -670,8 +670,8 @@ class network():
         """
 
         Nsteps = int(total_time/self.min_delay)
-        unit_stor = [np.zeros(Nsteps) for i in range(self.n_units)]
-        plant_stor = [np.zeros((Nsteps,p.dim)) for p in self.plants]
+        unit_store = [np.zeros(Nsteps) for i in range(self.n_units)]
+        plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants]
         times = np.zeros(Nsteps) + self.sim_time
         
         for step in range(Nsteps):
@@ -679,11 +679,11 @@ class network():
             
             # store current unit activities
             for uid, unit in enumerate(self.units):
-                unit_stor[uid][step] = unit.get_act(self.sim_time)
+                unit_store[uid][step] = unit.get_act(self.sim_time)
            
             # store current plant state variables 
             for pid, plant in enumerate(self.plants):
-                plant_stor[pid][step,:] = plant.get_state(self.sim_time)
+                plant_store[pid][step,:] = plant.get_state(self.sim_time)
                 
             # update units
             for unit in self.units:
@@ -695,5 +695,5 @@ class network():
 
             self.sim_time += self.min_delay
 
-        return times, unit_stor, plant_stor
+        return times, unit_store, plant_store
 

@@ -1274,7 +1274,7 @@ class exp_dist_sigmoidal(unit):
     A unit where the synaptic weights are scaled to produce an exponential distribution.
     
     This unit has the same activation function as the sigmoidal unit, but the excitatory
-    synatpic weights are scaled to produce an exponential distribution of the firing rates in
+    synaptic weights are scaled to produce an exponential distribution of the firing rates in
     the network, using the same approach as the exp_rate_dist_synapse.
 
     Whether an input is excitatory or inhibitory is decided by the sign of its initial value.

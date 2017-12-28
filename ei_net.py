@@ -339,15 +339,20 @@ class ei_net():
     def default_inp_pat(self, pres, rows, columns):
         """ A default set_inp_pat argument for the run() method. 
 
-            The returned input patterns are random vectors with unit norm.
+            The returned input patterns are random vectors with some unit norm.
         """
         n = rows*columns
-        ## random vector with unit norm, positive entries
-        vec = np.random.uniform(0., 1., n)
-        return  vec / np.linalg.norm(vec)
-        ## random vector with unit norm, positive and negative entries
+        #### random vector with unit norm, positive entries
+        #vec = np.random.uniform(0., 1., n)
+        #return  vec / np.linalg.norm(vec)
+        #### random vector with unit norm, positive and negative entries
         #vec = 1. - np.random.uniform(0., 2., n)
         #return  vec / np.linalg.norm(vec)
+        #### randomly choose k units to activate
+        vec = np.zeros(n)
+        k = min(2, n)
+        vec[np.random.choice(n, k, replace=False)] = 1./k
+        return vec
 
 
     def H(self, x): 
