@@ -6,6 +6,7 @@ import numpy as np
 import time
 import dill
 import pprint
+import re
 from draculab import *
 
 
@@ -110,7 +111,8 @@ class ei_net():
             'tau_fast' : 0.04, # 40 ms for fast low-pass filter
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
-            'c' : 2., # for exp_dist_sigmoidal units
+            'tau_thr' : 0.001, # for exp_dist_sig_thr units
+            'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units 
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'type' : unit_types.sigmoidal }
         self.i_pars = {'init_val_min' : 0.001,
@@ -124,7 +126,8 @@ class ei_net():
             'tau_fast' : 0.04, # 40 ms for fast low-pass filter
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
-            'c' : 2., # for exp_dist_sigmoidal units
+            'tau_thr' : 0.001, # for exp_dist_sig_thr units
+            'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'type' : unit_types.sigmoidal }
         self.x_pars = {'type' : unit_types.source,
@@ -263,13 +266,15 @@ class ei_net():
         self.xi_conn['boundary'] = {'center': np.array(self.i_geom['center']), 'extent' : self.i_geom['extent']}
 
         # Before we populate the parameter dictionaries with random values, let's print them to history
-        self.history.append('########### PARAMETER DICTIONARIES USED TO BUILD ##########')
+        self.history.append('#=#=#=#=#=# PARAMETER DICTIONARIES USED IN  build() #=#=#=#=#=#')
+        # ei_net.log uses the '#=#=#=' sequence to recognize where the parameter dictionaries' section
+        # begins and ends in ei_net.history . Thus, this decoration shouldn't be removed.
         pp = pprint.PrettyPrinter(indent=4, compact=True)
         for name in vars(self):
             attr = self.__getattribute__(name)
             if type(attr) is dict:
                 self.history.append(name + ' = ' + pp.pformat(attr)+'\n')
-        self.history.append('#####################')
+        self.history.append('#=#=#=#=#=#=#=#=#=#=#')
 
         # Now we populatate the parameter dictionaries with the appropriate random values
         for par in ['slope', 'thresh', 'tau', 'init_val']:
@@ -811,15 +816,31 @@ class ei_net():
         if make_history:
             self.history.append('#' + string)
             
-    def log(self, name="ei_net_log.txt"):
+    def log(self, name="ei_net_log.txt", params=True):
+        """ Write the history and notes of the ei_net object in a text file.
+        
+            name : A string with the name and path of the file to be written.
+            params : A boolean to indicate including the parameter dictionaries used to build the object. 
+        """
         with open(name, 'a') as f:
+            f.write('\n')
             f.write('#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
             f.write('#---------Logging ei_net object---------\n')
-            f.write('# HISTORY #\n')
-            for entry in self.history:
-                f.write(entry + '\n')
+            f.write('#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
             f.write('# NOTES #\n')
             f.write(self.notes)
+            f.write('\n')
+            f.write('# HISTORY #\n')
+            in_dictionaries = False # A flag indicating the entries are parameter dictionaries
+            for entry in self.history:
+                if params:
+                    f.write(entry + '\n')
+                else:
+                    match = re.search("#=#=#=", entry)
+                    if match:
+                        in_dictionaries = not in_dictionaries
+                    if not in_dictionaries:
+                        f.write(entry + '\n')
             f.write('\n')
             f.close()
         

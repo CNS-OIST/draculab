@@ -20,6 +20,7 @@ class unit_types(Enum):
     custom_sc_fi = 6
     kwta = 7
     exp_dist_sig = 8
+    exp_dist_sig_thr = 9
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -48,6 +49,8 @@ class unit_types(Enum):
             unit_class = kWTA
         elif self == unit_types.exp_dist_sig:
             unit_class = exp_dist_sigmoidal
+        elif self == unit_types.exp_dist_sig_thr:
+            unit_class = exp_dist_sig_thr
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?
@@ -166,6 +169,7 @@ class syn_reqs(Enum):
     balance = 16 # fraction of inputs above, below, and around the current rate
     exp_scale = 17 # synaptic scaling to produce an exponential firing rate distribution
     inp_vector = 18 # the current "raw" input vector in a numpy array
+    slide_thresh = 19 # An activation threshold that adjusts to produce an exp firing rate distro
 
 
     '''
