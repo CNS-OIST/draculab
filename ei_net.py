@@ -707,7 +707,7 @@ class ei_net():
         # notebook or qt5 
         self.hist_fig = plt.figure(figsize=(10,10))
         if pdf: # assuming pop consists of excitatory units
-            if self.e_pars['type'] == unit_types.exp_dist_sig:
+            if self.e_pars['type'] == unit_types.exp_dist_sig or self.e_pars['type'] == unit_types.exp_dist_sig_thr:
                 c = self.net.units[self.e[0]].c
             else:
                 c = self.ee_syn['c']
@@ -765,7 +765,7 @@ class ei_net():
         # Histogram figure and axis
         self.hist_ax = self.double_fig.add_axes([0.02, .04, .47, .92])
         if pdf: # assuming pop consists of excitatory units
-            if self.e_pars['type'] == unit_types.exp_dist_sig:
+            if self.e_pars['type'] == unit_types.exp_dist_sig or self.e_pars['type'] == unit_types.exp_dist_sig_thr:
                 c = self.net.units[self.e[0]].c
             else:
                 c = self.ee_syn['c']
