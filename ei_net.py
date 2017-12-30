@@ -35,7 +35,8 @@ class ei_net():
         log : save the parameter changes and execution history of the network in a text file.
         save : pickle the object and save it in a file.
         -------- 
-        make_sin_pulse, input_vector : auxiliary to 'run'.
+        make_sin_pulse, input_vector, default_inp_pat, default_inp_fun : auxiliary to 'run'.
+        make_inp_fun : auxiliary to default_inp_fun.
         color_fun : auxiliary to act_anim and double_anim.
         update_(conn|hist|act|double)_anim : auxiliary to (conn|hist|act|double)_anim.
         update_weight_anim : auxiliary to conn_anim.
@@ -387,13 +388,11 @@ class ei_net():
             unit.set_function( self.make_inp_fun(pre, cur, init_time, t_tran) )
 
 
-    def run(self, n_pres,  pres_time, *input_creators):
+    def run(self, n_pres,  pres_time, set_inp_pat=None, set_inp_fun=None):
         """ Run a simulation, presenting n_pres patterns, each lasting pres_time. 
 
             n_pres : number of pattern presentations to simulate.
             pres_time : time that each pattern presentation will last.
-            input_creators : the functions set_inp_pat and set_inp_fun, in that order. If not included
-                             in the call, default_inp_pat and default_inp_fun are used.
 
             At the beginning of each presentation, the method set_inp_pat is called. This creates a new
             pattern to be presented. Then the set_inp_fun method is called, which sets the functions
@@ -406,7 +405,8 @@ class ei_net():
                 # To map a given pair (r,c) to its corresponding entry in the returned vector use:
                 # idx = rows*c + r, 
                 # e.g. input[idx] corresponds to the unit in row r, and column c, with the indexes starting
-                # from 0. This is consistent with the way coordinates are assigned in topology.create_group.
+                # from 0. This is consistent with the way coordinates are assigned in topology.create_group,
+                # and the 2-D pattern can be recovered with numpy.reshape(input, (rows, columns)).
                 
             set_inp_fun(prev_inp_pat, cur_inp_pat, init_time, pres_time, inp_units))
                 # Assigns a Python function to each of the input units.
@@ -415,6 +415,8 @@ class ei_net():
                 # init_time : time when the presentation will start.
                 # pres_time : duration of the presentation.
                 # inp_units : a list with the input units (e.g. "x").
+
+            If the set_inp_pat or set_inp_fun arguments are not provided, the class defaults are used.
             
             Updates:
                 self.all_times: 1-D numpy array with the times for each data point in all_activs.
@@ -426,11 +428,9 @@ class ei_net():
         self.all_times = []
         self.all_activs = []
         # initialize other variables
-        if len(input_creators) == 2:
-            set_inp_pat = inpup_creators[0]
-            set_inp_fun = inpup_creators[1]
-        else:
+        if not set_inp_pat:
             set_inp_pat = self.default_inp_pat
+        if not set_inp_fun:
             set_inp_fun = self.default_inp_fun
         start_time = time.time()
         inp_units = [self.net.units[i] for i in self.x]
