@@ -111,6 +111,7 @@ class ei_net():
             'tau_wid' : 0.04,  # 40 ms variation
             'tau_fast' : 0.04, # 40 ms for fast low-pass filter
             'tau_mid' : .1, # 100 ms for medium low-pass filter
+            'tau_slow' : 1, # 1 s for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
             'tau_thr' : 0.001, # for exp_dist_sig_thr units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units 
@@ -126,6 +127,7 @@ class ei_net():
             'tau_wid' : 0.04,  # 40 ms variation
             'tau_fast' : 0.04, # 40 ms for fast low-pass filter
             'tau_mid' : .1, # 100 ms for medium low-pass filter
+            'tau_slow' : 1, # 1 s for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
             'tau_thr' : 0.001, # for exp_dist_sig_thr units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units
@@ -321,7 +323,14 @@ class ei_net():
             for uid,u in enumerate(which_u):
                 for sid,s in enumerate(which_syns[uid]):
                     self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
-        
+        # If there are exp_dist_sigthr units, create some units to track the thresholds
+        if self.e_pars['type'] == unit_types.exp_dist_sig_thr and self.i_pars['type'] == unit_types.exp_dist_sig_thr:
+            self.thr_track = self.net.create(self.n['w_track'], self.wt_pars)
+            def thresh_tracker(u):
+                return lambda x: self.net.units[u].thresh
+            for uid,u in enumerate(which_u):
+                self.net.units[self.thr_track[uid]].set_function(thresh_tracker(u))
+
 
     def set_param(self, dictionary, entry, value):
         """ Change a value in a parameter dictionary. 
@@ -491,6 +500,13 @@ class ei_net():
             factors = np.transpose([self.all_activs[self.sc_track[i]] for i in range(self.n['w_track'])])
             plt.plot(self.all_times, factors, linewidth=1)
             plt.title('Some synaptic scale factors')
+
+        # Plot the evolution of the thresholds
+        if self.e_pars['type'] == unit_types.exp_dist_sig_thr and self.i_pars['type'] == unit_types.exp_dist_sig_thr:
+            thr_fig = plt.figure(figsize=(10,5))
+            thresholds = np.transpose([self.all_activs[self.thr_track[i]] for i in range(self.n['w_track'])])
+            plt.plot(self.all_times, thresholds, linewidth=1)
+            plt.title('Some unit thresholds')
 
         plt.show()
 
