@@ -116,6 +116,7 @@ class ei_net():
             'tau_thr' : 0.001, # for exp_dist_sig_thr units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units 
             'Kp' : 0.05, # for exp_dist_sigmoidal units
+            'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
             'type' : unit_types.sigmoidal }
         self.i_pars = {'init_val_min' : 0.001,
             'init_val_wid' : 1.,
@@ -132,6 +133,7 @@ class ei_net():
             'tau_thr' : 0.001, # for exp_dist_sig_thr units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units
             'Kp' : 0.05, # for exp_dist_sigmoidal units
+            'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
             'type' : unit_types.sigmoidal }
         self.x_pars = {'type' : unit_types.source,
             'init_val' : 0.,
@@ -323,7 +325,7 @@ class ei_net():
             for uid,u in enumerate(which_u):
                 for sid,s in enumerate(which_syns[uid]):
                     self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
-        # If there are exp_dist_sigthr units, create some units to track the thresholds
+        # If there are exp_dist_sig_thr units, create some units to track the thresholds
         if self.e_pars['type'] == unit_types.exp_dist_sig_thr and self.i_pars['type'] == unit_types.exp_dist_sig_thr:
             self.thr_track = self.net.create(self.n['w_track'], self.wt_pars)
             def thresh_tracker(u):
@@ -472,11 +474,13 @@ class ei_net():
     
     def basic_plot(self):
         #%matplotlib inline
+        # Plot the inputs
         inp_fig = plt.figure(figsize=(10,5))
         inputs = np.transpose([self.all_activs[i] for i in self.x])
         plt.plot(self.all_times, inputs, linewidth=1, figure=inp_fig)
         plt.title('Inputs')
 
+        # Plot some unit activities
         unit_fig = plt.figure(figsize=(10,5))
         e_tracked = [e for e in self.tracked if e in self.e]
         i_tracked = [i for i in self.tracked if i in self.i]
