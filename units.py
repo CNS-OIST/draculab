@@ -1399,8 +1399,6 @@ class exp_dist_sig_thr(unit):
         Raises:
             AssertionError.
 
-        The actual values used for scaling are calculated in unit.upd_exp_scale() .
-        Values around Kp=0.1, tau_scale=0.1 are usually appropriate when c >= 1 .
         When c <= 0 the current implementation is not very stable.
         """
 

@@ -508,7 +508,7 @@ class ei_net():
             plt.title('Some synaptic scale factors')
 
         # Plot the evolution of the thresholds
-        if self.e_pars['type'] == unit_types.exp_dist_sig_thr and self.i_pars['type'] == unit_types.exp_dist_sig_thr:
+        if self.e_pars['type'] == unit_types.exp_dist_sig_thr or self.i_pars['type'] == unit_types.exp_dist_sig_thr:
             thr_fig = plt.figure(figsize=(10,5))
             thresholds = np.transpose([self.all_activs[self.thr_track[i]] for i in range(self.n['w_track'])])
             plt.plot(self.all_times, thresholds, linewidth=1)
