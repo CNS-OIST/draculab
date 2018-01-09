@@ -117,6 +117,7 @@ class ei_net():
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units 
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
+            'omega' : 1.5, # for sq_hebb_subsnorm synapses
             'type' : unit_types.sigmoidal }
         self.i_pars = {'init_val_min' : 0.001,
             'init_val_wid' : 1.,
@@ -134,6 +135,7 @@ class ei_net():
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
+            'omega' : 1.5, # for sq_hebb_subsnorm synapses
             'type' : unit_types.sigmoidal }
         self.x_pars = {'type' : unit_types.source,
             'init_val' : 0.,

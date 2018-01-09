@@ -72,6 +72,7 @@ class synapse_types(Enum):
     corr_inh = 11 # Homeostatic inhibition from Vogels et al. 2011
     diff_hebbsnorm = 12 # Differential Hebbian with substractive normalization
     exp_rate_dist = 13 # To create an exponential firing rate distribution
+    anticov_pre = 14  # anticovariance rule using the presynaptic mean activity
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
     def get_class(self):
@@ -111,6 +112,8 @@ class synapse_types(Enum):
             syn_class = diff_hebb_subsnorm_synapse
         elif self == synapse_types.exp_rate_dist:
             syn_class = exp_rate_dist_synapse
+        elif self == synapse_types.anticov_pre:
+            syn_class = anti_cov_pre_synapse 
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
