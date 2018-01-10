@@ -43,7 +43,7 @@ class ei_net():
     """
 
 
-    def __init__(self):
+    def __init__(self, net_number=None):
         """ Create the parameter dictionaries required to build the excitatory-inhibitory network. 
 
             Time units are seconds for compatibility with the pendulum model.
@@ -57,6 +57,9 @@ class ei_net():
             from the uniform distribution in the [0,1) interval.
             To set a different distribution for these parameters, just set the desired value(s) in
             the 'slope', 'thresh', 'tau', or 'init_val' entry of the (e|i)_pars dictionary.
+
+            The argument net_number is an integer to identify the object in multiprocess simulations;
+            see ei_runner_mp.ipynb .
         """
 
         # The history list will store strings containing the paramter dictionaries, the instructions doing 
@@ -67,6 +70,10 @@ class ei_net():
         seed = 19680801
         np.random.seed(seed)
         self.history.append('np.random.seed = ' + str(seed))
+        self.net_number = net_number
+        if net_number:
+            self.history.append('mp_ei_runner assigned this ei_net object the number ' + str(net_number))
+            
         
         """ All the default parameter dictionaries are below.  """
         # PARAMETER DICTIONARY FOR THE NETWORK
