@@ -328,7 +328,7 @@ class ei_net():
                 for sid,s in enumerate(which_syns[uid]):
                     self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
         # If there are exp_dist_sig_thr units, create some units to track the thresholds
-        if self.e_pars['type'] == unit_types.exp_dist_sig_thr and self.i_pars['type'] == unit_types.exp_dist_sig_thr:
+        if self.e_pars['type'] == unit_types.exp_dist_sig_thr or self.i_pars['type'] == unit_types.exp_dist_sig_thr:
             self.thr_track = self.net.create(self.n['w_track'], self.wt_pars)
             def thresh_tracker(u):
                 return lambda x: self.net.units[u].thresh
