@@ -9,17 +9,19 @@ import pprint
 import re
 from draculab import *
 
+# Put ei_network class here
 
-class ei_net():
+class ei_layer():
     """
         This class is used to create, simulate, and visualize a generic network containing 3
         populations: excitatory (e), inhibitory (i), and input (x).  The three populations are 
-        arranged in a rectangular grid. 
+        arranged in a rectangular grid. This class is used by the ei_network object, which 
+        performs simulations of networks consisting of interconnected ei_layer objects.
 
-        After creating an instance of the ei_net class, the parameters of the network can be
-        configured by changing the entries of the parameter dictionaries using the ei_net.set_param 
-        method. Once the parameter dictionaries are as desired the network is created by running
-        ei_net.build() . All units and connections are created using the topology module.
+        After creating an instance of the ei_layer class, the parameters can be configured 
+        by changing the entries of the parameter dictionaries using the ei_layer.set_param 
+        method. Once the parameter dictionaries are as desired the layer is created by running
+        ei_layer.build() . All units and connections are created using the topology module.
 
         An additional 'w_track' population of source units may also be created in order to
         track the temporal evolution of a random sample of synaptic weights.
@@ -34,7 +36,7 @@ class ei_net():
         run : runs simulations.
         basic_plot, act_anim, hist_anim, double_anim : result visualization.
         conn_anim : connections visualization.
-        annotate : append a line with text in the ei_net.notes string.
+        annotate : append a line with text in the ei_layer.notes string.
         log : save the parameter changes and execution history of the network in a text file.
         save : pickle the object and save it in a file.
         -------- 
@@ -47,7 +49,7 @@ class ei_net():
     """
 
 
-    def __init__(self, net_number=None):
+    def __init__(self):
         """ Create the parameter dictionaries required to build the excitatory-inhibitory network. 
 
             Time units are seconds for compatibility with the pendulum model.
@@ -62,30 +64,14 @@ class ei_net():
             To set a different distribution for these parameters, just set the desired value(s) in
             the 'slope', 'thresh', 'tau', or 'init_val' entry of the (e|i)_pars dictionary.
 
-            The argument net_number is an integer to identify the object in multiprocess simulations;
-            see ei_runner_mp.ipynb .
         """
 
         # The history list will store strings containing the parameter dictionaries, the instructions doing 
         # parameter changes, building the network, or running a simulation. It also may contain notes.
         self.history = ["# __init__ at " + time.ctime()]
         self.notes = '' # comments about network configuration or simulation results.
-        # fixing random seed
-        seed = 19680801
-        np.random.seed(seed)
-        self.history.append('np.random.seed(%d)'  % (seed))
-        self.net_number = net_number
-        if net_number:
-            self.history.append('# mp_ei_runner assigned this ei_net object the number ' + str(net_number))
             
-        
         """ All the default parameter dictionaries are below.  """
-        # PARAMETER DICTIONARY FOR THE NETWORK
-        self.net_params = {'min_delay' : 0.005, 
-            'min_buff_size' : 10,
-            'rtol' : 1e-5,
-            'atol' : 1e-5,
-            'cm_del' : .01 }  # delay in seconds for each centimeter in distance. 
         # UNIT PARAMETERS
         self.e_geom = {'shape':'sheet', 
             'extent':[1.,1.], # 1 square centimeter grid
@@ -255,8 +241,11 @@ class ei_net():
             'wshift' : 1. } # for exp_rate_dist synapses
         
 
-    def build(self):
-        """ Create the draculab network. """
+    def build(self, network):
+        """ Add this layer to the draculab network. 
+        
+            The draculab network is recevied as an argument.
+        """
         # store record of network being built
         self.history.append('build()')
         # Set parameters derived from other parameters
@@ -285,8 +274,8 @@ class ei_net():
 
         # Before we populate the parameter dictionaries with random values, let's print them to history
         self.history.append('#=#=#=#=#=# PARAMETER DICTIONARIES USED IN  build() #=#=#=#=#=#')
-        # ei_net.log uses the '#=#=#=' sequence to recognize where the parameter dictionaries' section
-        # begins and ends in ei_net.history . Thus, this decoration shouldn't be removed.
+        # ei_layer.log uses the '#=#=#=' sequence to recognize where the parameter dictionaries' section
+        # begins and ends in ei_layer.history . Thus, this decoration shouldn't be removed.
         pp = pprint.PrettyPrinter(indent=4, compact=True)
         for name in vars(self):
             attr = self.__getattribute__(name)
@@ -303,8 +292,8 @@ class ei_net():
 
         # Create an auxiliary topology object
         topo = topology()
-        # Create network
-        self.net = network(self.net_params)
+        # Assign the network
+        self.net = network
         # Create unit groups
         self.e = topo.create_group(self.net, self.e_geom, self.e_pars)
         self.i = topo.create_group(self.net, self.i_geom, self.i_pars)
@@ -859,8 +848,8 @@ class ei_net():
         if make_history:
             self.history.append('#' + string)
             
-    def log(self, name="ei_net_log.txt", params=True):
-        """ Write the history and notes of the ei_net object in a text file.
+    def log(self, name="ei_layer_log.txt", params=True):
+        """ Write the history and notes of the ei_layer object in a text file.
         
             name : A string with the name and path of the file to be written.
             params : A boolean to indicate including the parameter dictionaries used to build the object. 
@@ -868,7 +857,7 @@ class ei_net():
         with open(name, 'a') as f:
             f.write('\n')
             f.write('#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
-            f.write('#---------Logging ei_net object---------\n')
+            f.write('#---------Logging ei_layer object---------\n')
             f.write('#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
             f.write('# NOTES #\n')
             f.write(self.notes)
@@ -887,13 +876,13 @@ class ei_net():
             f.write('\n')
             f.close()
         
-    def save(self, name="ei_net_pickle.pkl"):
+    def save(self, name="ei_layer_pickle.pkl"):
         """ Saving simulation results. 
             A draculab network contains lists with functions, so it is not picklable. 
             But it can be serialized with dill: https://github.com/uqfoundation/dill 
             
             After saving, retrieve object using, for example:
-            F = open("ei_net_pickle.pkl", 'rb')
+            F = open("ei_layer_pickle.pkl", 'rb')
             ei = dill.load(F)
             F.close()
         """
