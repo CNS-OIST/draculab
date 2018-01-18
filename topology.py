@@ -136,7 +136,7 @@ class topology():
            topology module.
 
         topo_connect() works by first specifing which units to connect, with which weights,
-        and with which delays. Using this it calls the network.connect() method. The same syn_spec
+        and with which delays. Using this it calls the network.connect() method. The received syn_spec
         dictionary is used when calling network.connect(), but the init_w values may be modified. 
         
         Args:
