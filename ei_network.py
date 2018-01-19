@@ -21,10 +21,10 @@ class ei_network():
         1) The class constructor receives a list of strings with the names of the layers to be created.
            The constructor will create layers with those names using standard parameters.
         2) For each pair of layers to be connected, the user calls ei_network.add_connection,
-           which creates standard parameter dictionaries for the connection, and signals the
+           which creates empty parameter dictionaries for the connection, and signals the
            ei_network.build method that the connection should be created.
         3) The user configures the parameter dictionaries for the inter-layer connections using
-           ei_network.set_params
+           ei_network.set_params. Unconfigured parameters will receive the default values.
         4) The user sets the parameters of each layer, retrieving the layer object by name,
            e.g. ei_network.<name>, and then using the ei_layer.set_param method 
            (this could also be done before steps 2 or 3).
@@ -42,10 +42,14 @@ class ei_network():
 
             Args:
                 layers: non-empty list of strings containing the names of all layers to be created.
+                        The constructor will create variables with the names on the string, so the name
+                        of the class' methods and variables should be avoided, as well as the name of
+                        Pyhton's __X__ functions.
                 net_number:  an integer to identify the object in multiprocess simulations (optional).
         """
 
-        self.layers = layers
+        self.layers = layers  # name of all layers
+        self.layer_connections = [] # one entry per connection. See ei_network.add_connection
         self.history = ["# __init__ at " + time.ctime()]
         self.notes = '' # comments about network configuration or simulation results.
         # fixing random seed
@@ -64,6 +68,19 @@ class ei_network():
             'atol' : 1e-5,
             'cm_del' : .01 }  # delay in seconds for each centimeter in distance. 
 
+        # ENSURING THE NAME OF THE LAYERS CAUSES NO CRASHES
+        # They told me I shouldn't let the user decide the variable name.
+        # I thought I was being smarter and did it anyway.
+        # Now I have to update this thing whenever something is added to the class.
+        restricted = self.__dir__()
+        restricted += ['layers', 'layer_connections', 'history', 'notes', 'net_number', 'net_params', 'net', 
+                       'e_conn', 'i_conn', 'x_conn', 'add_connection', 'layer_connections', 'set_param',
+                       'build', 'default_inp_pat', 'default_inp_fun', 'H', 'make_inp_fun', 'run', 'all_times',
+                       'all_activs', 'e_syn', 'i_syn', 'x_syn']
+        for name in layers:
+            if name in restricted:
+                raise ValueError('Layer name \'' + name + '\' conflicts with a name in ei_network')
+
         # CREATING ei_layer OBJECTS
         if type(layers) is list and type(layers[0]) is str:
             for name in layers:
@@ -71,13 +88,75 @@ class ei_network():
         else:
             raise TypeError('First argument to network constructor must be a list with layer names')
 
-        # CREATING THE NETWORK
+        # CREATING THE draculab NETWORK
         self.net = network(self.net_params)
 
+        # CREATING DEFAULT INTER-LAYER CONNECTION AND SYNAPSE DICTIONARIES
+        # They depend on the type of the sending population ('e','i', or 'x').
+        self.e_conn = { 'connection_type' : 'divergent',
+            'mask' : {'circular': {'radius': .4}},  
+            'kernel' : .5,
+            'delays' : {'linear' : {'c' : self.net_params['min_delay'], 'a' : self.net_params['cm_del']}},
+            'weights' :{'uniform' : {'low': 0.01, 'high' : 0.5}},
+            'allow_autapses' : True,
+            'allow_multapses' : False,
+            'edge_wrap' : True,
+            'boundary' : {'center': np.array([0., 0.]), 'extent' : np.array([1., 1.]) },
+            'transform' : lambda x : x }
+
+        self.i_conn = {'connection_type' : 'divergent',
+            'mask' : {'circular': {'radius': .3}}, 
+            'kernel' : .5,
+            'delays' : {'linear' : {'c' : self.net_params['min_delay'], 'a' : self.net_params['cm_del']}},
+            'weights' :{'uniform' : {'low': -0.5, 'high' : -0.01}},
+            'allow_autapses' : True,
+            'allow_multapses' : False,
+            'edge_wrap' : True,
+            'boundary' : {'center': np.array([0., 0.]), 'extent' : np.array([1., 1.]) },
+            'transform' : lambda x : x }
+
+        self.x_conn = {'connection_type' : 'divergent',
+            'mask' : {'circular': {'radius': .2}}, 
+            'kernel' : .9,
+            'delays' : {'linear' : {'c' : self.net_params['min_delay'], 'a' : self.net_params['cm_del']}},
+            'weights' :{'uniform' : {'low': 0.01, 'high' : 0.5}},
+            'allow_autapses' : True,
+            'allow_multapses' : False,
+            'edge_wrap' : True,
+            'boundary' : {'center': np.array([0., 0.]), 'extent' : np.array([1., 1.]) },
+            'transform' : lambda x : x }
+        
+        self.e_syn = {'type' : synapse_types.static,  # excitatory to excitatory synapses
+            'lrate' : 0.1,  # for all dynamic synapse types
+            'omega' : 1.,  # for sq_hebb_subsnorm synapses 
+            'input_type' : 'pred',  # for input_correlation synapses
+            'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'c' : 1., # for exp_rate_dist synapses
+            'wshift' : 1. } # for exp_rate_dist synapses
+
+        self.i_syn = {'type' : synapse_types.static,  # excitatory to excitatory synapses
+            'lrate' : 0.1,  # for all dynamic synapse types
+            'omega' : 1.,  # for sq_hebb_subsnorm synapses 
+            'input_type' : 'pred',  # for input_correlation synapses
+            'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'c' : 1., # for exp_rate_dist synapses
+            'wshift' : 1. } # for exp_rate_dist synapses
+
+        self.x_syn = {'type' : synapse_types.static,  # excitatory to excitatory synapses
+            'lrate' : 0.1,  # for all dynamic synapse types
+            'omega' : 1.,  # for sq_hebb_subsnorm synapses 
+            'input_type' : 'pred',  # for input_correlation synapses
+            'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'c' : 1., # for exp_rate_dist synapses
+            'wshift' : 1. } # for exp_rate_dist synapses
+
+
     
-    def add_connection(self, source, target)
+    def add_connection(self, source, target):
         """
             Add a connection between the populations of two different layers.
+            
+            The connection will be added to the draculab network once ei_network.build is run.
 
             Args:
                 source: a list or a tuple with two entries. 
@@ -89,35 +168,29 @@ class ei_network():
 
             This method will create connection and synapse parameter dictionaries for the connection.
             The name of those dictionaries will come from these strings:
-              source[0] +  source[1] + '-' + target[0] + target[1] + '_conn'   --> connection dictionary
-              source[0] +  source[1] + '-' + target[0] + target[1] + '_syn'    --> synapse dictionary
+              source[0] +  source[1] + '_' + target[0] + target[1] + '_conn'   --> connection dictionary
+              source[0] +  source[1] + '_' + target[0] + target[1] + '_syn'    --> synapse dictionary
         """
-        # Test the arguments
+        # The way this method signals ei_network.build to create the connections is by adding an entry
+        # in the layer_connectins list. Each entry consists of this 4-tuple:
+        # ( source[0], source[1], target[0], target[1] )
+
+        # Make some tests
         if 'build()' in self.history:
             raise AssertionError('Adding connections after network has been built')     
-        if not source[0] in self.layers or not target[0] in layers:
+        if not source[0] in self.layers or not target[0] in self.layers:
             raise ValueError('Unknown layer name found in the arguments to add_connection')
-        if not source[1] in ['e','i','x'] or not target[1] in ['e','i','x']:
-            raise ValueError('Population must be either e, i, or x in arguments to add_connection')
+        if not source[1] in ['e','i','x'] or not target[1] in ['e','i']:
+            raise ValueError('Population must be either e, i, (or x for senders) in arguments to add_connection')
 
-        # Create the dictionaries
-        conn_dict_name = source[0] + source[1] + '-' + target[0] + target[1] + '_conn'
-        syn_dict_name = source[0] + source[1] + '-' + target[0] + target[1] + '_syn'
-        src_lyr = self.__getattribute__(source[0])
-        trg_lyr = self.__getattribute__(target[0])
-        if source[1] = 'e': # projection from an excitatory population
-            setattr(self, conn_dict_name, {
-                'connection_type' : 'convergent',
-                'mask' : {'circular': {'radius': 1000.}},  
-                'kernel' : .5,
-                'delays' : {'linear' : {'c' : self.net_params['min_delay'], 'a' : self.net_params['cm_del']}},
-                'weights' :{'uniform' : {'low': 0.01, 'high' : 0.5}},
-                'allow_autapses' : True,
-                'allow_multapses' : False,
-                'edge_wrap' : True,
-                'boundary' : {'center': np.array(src_lyr.e_geom['center']), 'extent' : src_lyr.e_geom['extent']} })
+        # Add an entery in layer_connections
+        self.layer_connections.append( (source[0], source[1], target[0], target[1]) )
+        # Create emtpy dictionaries
+        conn_dict_name = source[0] + source[1] + '_' + target[0] + target[1] + '_conn'
+        syn_dict_name = source[0] + source[1] + '_' + target[0] + target[1] + '_syn'
+        setattr(self, conn_dict_name, {})
+        setattr(self, syn_dict_name, {})
 
-        
 
     def set_param(self, dictionary, entry, value):
         """ Change a value in a parameter dictionary. 
@@ -134,10 +207,55 @@ class ei_network():
 
     def build(self):
         """ Configure the draculab network. """
-        # store record of network being built
+        # Store record of network being built
         self.history.append('build()')
+
+        # Build the layers
         for name in self.layers:
             self.__getattribute__(name).build(self.net)
+
+        # Create the parameter dictionaries for the inter-layer connections
+        for conn in self.layer_connections:
+            name = conn[0] + conn[1] + '_' + conn[2] + conn[3] # base name of the dictionaries
+            conn_dict = self.__getattribute__(name+'_conn')  # The add_connection method created these
+            syn_dict = self.__getattribute__(name+'_syn')  # The add_connection method created these
+
+            for sndr in [('e',self.e_conn, self.e_syn),('i',self.i_conn, self.i_syn),('x',self.x_conn, self.x_syn)]:
+                if conn[1] == sndr[0]:   # if the connection is being sent from a population of type sndr[0] 
+                    for entry in sndr[1]:  # (e|i|x)_conn are default dictionaries created in __init__
+                        if not entry in conn_dict:  # if the user didn't set a value for the entry
+                            conn_dict[entry] = (sndr[1])[entry]  # set the default value
+                    for entry in sndr[2]: # for each entry in the appropriate default syn dictionary
+                        if not entry in syn_dict:  # if the user didn't set a value for the entry
+                            syn_dict[entry] = (sndr[2])[entry] # set default value
+                    # The default 'boundary' and 'transform' entries of conn_dict must be created here
+                    src_lyr = self.__getattribute__(conn[0])    # the sending layer
+                    trg_lyr = self.__getattribute__(conn[2])    # the receiving layer
+                    src_geom = src_lyr.__getattribute__(conn[1]+'_geom')  # geometry dict of the source population
+                    trg_geom = trg_lyr.__getattribute__(conn[3]+'_geom')  # geometry dict of the target population
+                    if not 'boundary' in conn_dict:
+                        conn_dict['boundary'] = {'center': np.array(trg_geom['center']), 'extent' : trg_geom['extent']}
+                    if not 'transform' in conn_dict:
+                        # The default transform puts the center of the rectangle of the sending population on the
+                        # center of the rectangle for the receiving population
+                        tar_center = np.array( trg_geom['center'] )
+                        src_center = np.array( src_geom['center'] )
+                        conn_dict['transform'] = lambda x : x + (tar_center - src_center)
+
+        # Create the connections
+        topo = topology()
+        for conn in self.layer_connections:
+            name = conn[0] + conn[1] + '_' + conn[2] + conn[3] # base name of the dictionaries
+            conn_dict = self.__getattribute__(name+'_conn')  # The connection dictionary
+            syn_dict = self.__getattribute__(name+'_syn')  # The synapse dictionary
+            src_lyr = self.__getattribute__(conn[0])  # source layer
+            trg_lyr = self.__getattribute__(conn[2])  # target layer
+            src_pop = src_lyr.__getattribute__(conn[1])  # source population (e|i|x)
+            trg_pop = trg_lyr.__getattribute__(conn[3])  # target population (e|i)
+
+            topo.topo_connect(self.net, src_pop, trg_pop, conn_dict, syn_dict)
+        
+
 
 
     def default_inp_pat(self, pres, rows, columns):

@@ -223,6 +223,13 @@ class topology():
                             >> {'center' : c, 'extent' : [x, y]}.
                                c is a numpy array with the coordinates of the boundary rectangle's center. 
                                x and y are scalars that specify its width and length.
+                'transform' : This is a Python function that maps a coordinate to another coordinate.
+                              When this entry is included, all coordinates C of the units in from_list
+                              will be considered to be transform(C) instead.
+                              This is useful when connecting units from different layers, whose containing
+                              regions are separate. In this case the transform can put the mean center of the
+                              units in from_list on the center of the units in to_list by shifting with the
+                              vector (to_center - from_center); moreover, things like reflections can be made.
                 
             syn_spec: A dictionary used to initialize the synapses in the connections.
                 REQUIRED PARAMETERS
@@ -245,6 +252,12 @@ class topology():
         """
         # TODO: it would be very easy to implement the 'targets' option by reducing the to_list to 
         # those units of a particular type at this point. I don't need that feature now, though.
+
+        # If the coordinates of from_list units need to be transformed, we do it now
+        if 'transform' in conn_spec:
+            self.orig_coords = [net.units[idx].coordinates for idx in from_list] # used to restore coordinates
+            for idx, coord in zip(from_list, self.orig_coords):
+                net.units[idx].coordinates = conn_spec['transform'](coord)
 
         connections = []  # a list with all the connection pairs as (source,target)
         distances = [] # the distance for the units in each entry of 'connections'
@@ -371,6 +384,9 @@ class topology():
                 if  not ('number_of_connections' in conn_spec):
                     break 
 
+        if len(connections) == 0:
+            raise AssertionError('Zero connections created with topo_connect')
+
         # setting the delays
         if 'linear' in conn_spec['delays']:
             c = conn_spec['delays']['linear']['c']
@@ -421,6 +437,11 @@ class topology():
         receivers = [c[1] for c in connections]
         conn_dict = {'rule' : 'one_to_one', 'delay' : delays}
         net.connect(senders, receivers, conn_dict, syn_spec)
+
+        # If the coordinates in from_list were transformed, restore them to their original values
+        if 'transform' in conn_spec:
+            for idx , coord in zip(from_list, self.orig_coords):
+                net.units[idx].coordinates = coord    
 
  
     def filter_ids(self, net, id_list, center, spec, fids_dic):
