@@ -20,14 +20,13 @@ class ei_network():
         A standard way to use ei_network is as follows.
         1) The class constructor receives a list of strings with the names of the layers to be created.
            The constructor will create layers with those names using standard parameters.
-        2) For each pair of layers to be connected, the user calls ei_network.add_connection,
+        2) The user sets the parameters of each layer, retrieving the layer object by name,
+           e.g. ei_network.<name>, and then using the ei_layer.set_param method 
+        3) For each pair of layers to be connected, the user calls ei_network.add_connection,
            which creates empty parameter dictionaries for the connection, and signals the
            ei_network.build method that the connection should be created.
-        3) The user configures the parameter dictionaries for the inter-layer connections using
+        4) The user configures the parameter dictionaries for the inter-layer connections using
            ei_network.set_params. Unconfigured parameters will receive the default values.
-        4) The user sets the parameters of each layer, retrieving the layer object by name,
-           e.g. ei_network.<name>, and then using the ei_layer.set_param method 
-           (this could also be done before steps 2 or 3).
         5) The user calls ei_network.build method, which creates a draculab network with all the
            units and connections specified so far.
         6) The user runs simulations with ei_network.run .
@@ -126,7 +125,7 @@ class ei_network():
             'boundary' : {'center': np.array([0., 0.]), 'extent' : np.array([1., 1.]) },
             'transform' : lambda x : x }
         
-        self.e_syn = {'type' : synapse_types.static,  # excitatory to excitatory synapses
+        self.e_syn = {'type' : synapse_types.static,  # synapses from excitatory units
             'lrate' : 0.1,  # for all dynamic synapse types
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
@@ -134,7 +133,7 @@ class ei_network():
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
 
-        self.i_syn = {'type' : synapse_types.static,  # excitatory to excitatory synapses
+        self.i_syn = {'type' : synapse_types.static,  # synapses from inhibitory units
             'lrate' : 0.1,  # for all dynamic synapse types
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
@@ -142,7 +141,7 @@ class ei_network():
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
 
-        self.x_syn = {'type' : synapse_types.static,  # excitatory to excitatory synapses
+        self.x_syn = {'type' : synapse_types.static,  # synapses from source units
             'lrate' : 0.1,  # for all dynamic synapse types
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
@@ -164,7 +163,7 @@ class ei_network():
                         source[1] : population sending the projections. Either 'e', 'i', or 'x'.
                 target: a list or a tuple with two entries. 
                         target[0] : name of the target layer (a string).
-                        target[1] : population sending the projections. Either 'e', 'i', or 'x'.
+                        target[1] : population receiving the projections. Either 'e', or 'i'.
 
             This method will create connection and synapse parameter dictionaries for the connection.
             The name of those dictionaries will come from these strings:
@@ -405,13 +404,17 @@ class ei_layer():
         After creating an instance of the ei_layer class, the parameters can be configured 
         by changing the entries of the parameter dictionaries using the ei_layer.set_param 
         method. Once the parameter dictionaries are as desired the layer is created by running
-        ei_layer.build() . All units and connections are created using the topology module.
+        ei_layer.build . All units and connections are created using the topology module.
+        In practice, the user does not call ei_layer.build, but ei_network.build, which 
+        among other things calls ei_layer.build for all the layers in the network.
 
         An additional 'w_track' population of source units may also be created in order to
         track the temporal evolution of a random sample of synaptic weights.
         Similarly, 'sc_track' or 'thr_track' populations may be created in order to track
         the the values of some scale factors (when using exp_dist_sig units) or thresholds
         (when using exp_dist_sig_thr units).
+        The number of 'w_track', 'sc_track', and 'thr_track' units is controlled by the
+        'w_track' entry in the 'n' dictionary.
 
         METHODS OVERVIEW 
         __init__ : creates parameter dictionaries with the default values.
