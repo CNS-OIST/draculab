@@ -897,7 +897,7 @@ class ei_net():
             ei = dill.load(F)
             F.close()
         """
-        self.history.append('# exp_distro object being saved as ' + name)
+        self.history.append('# ei_net object being saved as ' + name)
         F = open(name, 'wb')
         dill.dump(self, F)
         F.close()

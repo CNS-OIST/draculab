@@ -9,7 +9,6 @@ import pprint
 import re
 from draculab import *
 
-# Put ei_network class here
 
 class ei_network():
     """ 
@@ -35,6 +34,25 @@ class ei_network():
         6) The user runs simulations with ei_network.run .
         7) The user can use the tools to visualize, save, annotate, log, or continue the simulations.
 
+        METHODS OVERVIEW 
+        __init__ : creates some default dictionaries, the ei_layer objects, and the draculab network.
+        get_layer : returns the ei_layer object with the given name.
+        add_connection: add a connection between the populations of two different layers.
+        set_param : changes a value in a parameter dictionary.
+        build : builds the layers and creates the interlayer connections.
+        run : runs simulations.
+        basic_plot, act_anim, hist_anim, double_anim : result visualization.
+        conn_anim : connections visualization.
+        annotate : append a line with text in the ei_network.notes string.
+        log : save the parameters, changes, and execution history of the network in a text file.
+        save : pickle the object and save it in a file.
+        -------- 
+        default_inp_pat, default_inp_fun : auxiliary to 'run'.
+        make_inp_fun : auxiliary to default_inp_fun.
+        H : the Heaviside step function. Auxiliary to make_inp_fun.
+        color_fun : auxiliary to act_anim and double_anim.
+        update_(conn|hist|act|double)_anim : auxiliary to (conn|hist|act|double)_anim.
+        update_weight_anim : auxiliary to conn_anim.
 
     """
         
@@ -79,6 +97,12 @@ class ei_network():
 
         # CREATING THE draculab NETWORK
         self.net = network(self.net_params)
+
+        # DOCUMENT THE NETWORK'S PARAMETERS AND LAYER NAMES
+        pp = pprint.PrettyPrinter(indent=4, compact=True)
+        self.history.append('net_params = ' + pp.pformat(self.net_params))
+        self.history.append('layer_names = ' + pp.pformat(layer_names))
+        self.history.append('# ()()()()() Non-default settings: ()()()()()')
 
         # CREATING DEFAULT INTER-LAYER CONNECTION AND SYNAPSE DICTIONARIES
         # They depend on the type of the sending population ('e','i', or 'x').
@@ -200,6 +224,7 @@ class ei_network():
     def build(self):
         """ Configure the draculab network. """
         # Store record of network being built
+        self.history.append('#()()()()()()()()()()()()()()()()()()')
         self.history.append('build()')
 
         # Build the layers
@@ -233,9 +258,14 @@ class ei_network():
                 tar_center = np.array( trg_geom['center'] )
                 src_center = np.array( src_geom['center'] )
                 conn_dict['transform'] = lambda x : x + (tar_center - src_center)
+            else: # using custom transform
+                self.annotate('Using custom transform in ' + name + ' connection.')
 
         # Create the connections
         topo = topology()
+        if len(self.layer_connections) > 0:
+            self.history.append("#---Parameter dictionaries used for inter-layer connections---")
+        pp = pprint.PrettyPrinter(indent=4, compact=True)
         for c in self.layer_connections:
             name = c['src_lyr'] + c['src_pop'] + '_' + c['trg_lyr'] + c['trg_pop'] # base name of the dictionaries
             print('Creating ' + name + ' connection')
@@ -245,16 +275,14 @@ class ei_network():
             trg_lyr = self.layers[c['trg_lyr']]  # target layer
             src_pop = src_lyr.__getattribute__(c['src_pop'])  # source population (e|i|x)
             trg_pop = trg_lyr.__getattribute__(c['trg_pop'])  # target population (e|i)
-
-            topo.topo_connect(self.net, src_pop, trg_pop, conn_dict, syn_dict)
+            topo.topo_connect(self.net, src_pop, trg_pop, conn_dict, syn_dict) # creating layer!
+            # Place the connection dictionaries in the object's history
+            self.history.append(name+'_conn = ' + pp.pformat(conn_dict) + '\n') 
+            self.history.append(name+'_syn = ' + pp.pformat(syn_dict) + '\n') 
         
+        self.history.append("#()()()()()() Post build() history ()()()()()()")
 
-    def make_sin_pulse(self, t_init, t_end, per, amp): 
-        """ This function returns a function implementing a sinusoidal bump(s). """
-        return lambda t : amp * ( np.sqrt( 0.5 * (1. + 
-                      np.sin( np.pi*( 2.*(t - t_init)/per - 0.5 ) ) ) ) ) if (t_init < t and t < min(t_init+per,t_end)) else 0.
- 
-
+        
     def default_inp_pat(self, pres, rows, columns):
         """ A default set_inp_pat argument for the run() method. 
 
@@ -391,7 +419,7 @@ class ei_network():
 
 
     def basic_plot(self, lyr_name):
-        """ Creates input, activities, and some other optional plots for some units in the given layer.
+        """ Creates input, activities, and other optional plots for some units in the given layer.
 
             Args:
                 lyr_name : A string with the name of one of the layers.
@@ -637,10 +665,12 @@ class ei_network():
             widget = interact(self.update_act_anim, frame=(1,self.n_data))
             return widget
         
+        
     def color_fun(self, activ):
         # given the units activity, maps into a color. activ may be an array.
         activ =  np.maximum(0.1,  activ*np.maximum(np.sign(activ - self.act_thr), 0.))
         return np.outer(activ, np.array([0., .5, .999, .5]))
+
 
     def update_act_anim(self, frame):
         # Each frame advances one simulation step (min_delay time units)
@@ -694,6 +724,7 @@ class ei_network():
             widget = interact(self.update_hist_anim, frame=(1,self.n_data))
             return widget
 
+
     def update_hist_anim(self, frame):
         # Each frame advances one simulation step (min_delay time units)
         idx = frame%self.n_data
@@ -704,7 +735,145 @@ class ei_network():
         self.hist_fig.suptitle('Time: ' + '{:f}'.format(cur_time))
         return 
  
+
+    def double_anim(self, pop, nbins=20, interv=100, slider=False, thr=0.9, pdf=False):
+        """ An animation of both firing rate histograms and unit activities for a given population.
+        
+            pop : list or array with the IDs of the units to visualize.
+            bins = number of bins in the firing rate histogram
+            inter = refresh interval in ms
+            slider = whether to use an interactive slider instead of an animation
+            thr = value at which the dots change color in the unit activity diagram
+            pdf = whether to overlay a plot of the exponential pdf the histogram should approach.
+                 CURRENTLY ONLY SUPPORTED WHEN pop IS THE EXCITATORY POPULATION.
+                  
+        """
+        get_ipython().run_line_magic('matplotlib', 'qt5')
+        
+        self.double_fig = plt.figure(figsize=(16,8))
+        self.n_bins = nbins
+        self.act_thr = thr
+        self.n_data = len(self.all_activs[0])
+        # Histogram figure and axis
+        self.hist_ax = self.double_fig.add_axes([0.02, .04, .47, .92])
+        if pdf: # assuming pop consists of excitatory units
+            if self.e_pars['type'] == unit_types.exp_dist_sig or self.e_pars['type'] == unit_types.exp_dist_sig_thr:
+                c = self.net.units[self.e[0]].c
+            else:
+                c = self.ee_syn['c']
+            # plot the exponential distro on the left axis
+            k = len(pop) * c / (1. - np.exp(-c)) / nbins
+            self.hist_ax.plot(np.linspace(0,1,100), k * np.exp(-c*np.linspace(0,1,100)), 'y')
+            y_lim = round(max(1., np.exp(-c)) * k)  + 5.
+        else:
+            y_lim = len(pop)
+        hist, bins, self.patches = self.hist_ax.hist(self.all_activs[pop,0], bins=nbins, range=(0.,1.001))
+        self.hist_ax.set_ylim(top=y_lim) 
+        # Activity figure and axis
+
+        self.act_ax = self.double_fig.add_axes([.51, .02, .47, .94], frameon=False)
+
+        xcoords = [ u.coordinates[0] for u in [self.net.units[i] for i in pop] ]
+        ycoords = [ u.coordinates[1] for u in [self.net.units[i] for i in pop] ]
+        min_x = min(xcoords) - 0.1;     max_x = max(xcoords) + 0.1
+        min_y = min(ycoords) - 0.1;     max_y = max(ycoords) + 0.1
+        self.act_ax.set_xlim(min_x, max_x), self.act_ax.set_xticks([])
+        self.act_ax.set_ylim(min_y, max_y), self.act_ax.set_yticks([])
+
+        #self.act_ax.set_xlim(-1, 1), self.act_ax.set_xticks([])
+        #self.act_ax.set_ylim(-1, 1), self.act_ax.set_yticks([])
+        #xcoords = [ u.coordinates[0] for u in [self.net.units[i] for i in pop] ]
+        #ycoords = [ u.coordinates[1] for u in [self.net.units[i] for i in pop] ]
+        self.scat = self.act_ax.scatter(xcoords, ycoords, s=20.*self.all_activs[pop,0])
+        
+        self.da_pop = pop
+        # select viewing mode
+        if not slider:
+            animation = FuncAnimation(self.double_fig, self.update_double_anim, 
+                                  interval=interv, save_count=int(round(self.net.sim_time/self.net.min_delay)))    
+            return animation
+        else:
+            from ipywidgets import interact
+            widget = interact(self.update_double_anim, frame=(1,self.n_data))
+            return widget
+    
+
+    def update_double_anim(self, frame):
+        # Each frame advances one simulation step (min_delay time units)
+        idx = frame%self.n_data
+        cur_time = self.net.min_delay*idx
+        # updating histogram
+        binz, valz = np.histogram(self.all_activs[self.da_pop,idx], bins=self.n_bins, range=(0.,1.001))
+        for count, patch in zip(binz, self.patches):
+            patch.set_height(count)
+        # updating activities
+        self.scat.set_sizes(300.*self.all_activs[self.da_pop,idx])
+        self.scat.set_color(self.color_fun(self.all_activs[self.da_pop,idx]))
+        self.double_fig.suptitle('Time: ' + '{:f}'.format(cur_time))
+        return self.hist_ax, self.act_ax,
  
+         
+    def annotate(self, string, make_history=False):
+        """ Append a string to self.notes and optionally to self.history. """
+        self.notes += '# NOTE (' + self.name + ') : ' + string + '\n'
+        if make_history:
+            self.history.append('# (' + self.name + ')'  + string)
+            
+
+    def log(self, name=None, params=True):
+        """ Write the history and notes of the ei_network object in a text file.
+        
+            name : A string with the name and path of the file to be written.
+            params : A boolean. Whether to include the parameter dictionaries of ei_layer objects.
+        """
+        if not name:
+            name = 'ei_network_log' + time.strftime("_%m-%d-%y.txt")
+        with open(name, 'a') as f:
+            f.write('\n')
+            f.write('#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
+            f.write('#---------LOG OF ei_network OBJECT---------\n')
+            f.write('#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
+            f.write('# NOTES #\n')
+            f.write(self.notes)
+            f.write('\n')
+            f.write('# HISTORY #\n')
+            in_dictionaries = False # A flag indicating the entries are parameter dictionaries
+            for entry in self.history:
+                if params:
+                    f.write(entry + '\n')
+                else:
+                    match = re.search("#=#=#=", entry)
+                    if match:
+                        in_dictionaries = not in_dictionaries
+                    if not in_dictionaries:
+                        f.write(entry + '\n')
+            f.write('\n')
+            f.write('#()()()()()()()()()()()()()()()()()()\n')
+            f.write('# ........... Individual layer logs .............')
+            f.close() # TODO: not ideal to open and close the file for each layer...
+            for lay_name in self.layers:
+                self.layers[lay_name].log(name=name, params=params)
+        
+    def save(self, name=None):
+        """ Save the ei_network object as a pickle.
+
+            A draculab network contains lists with functions, so it is not picklable. 
+            But it can be serialized with dill: https://github.com/uqfoundation/dill 
+            
+            After saving, retrieve object using, for example:
+            F = open("ei_network_pickle.pkl", 'rb')
+            ei = dill.load(F)
+            F.close()
+        """
+        if not name:
+            name = 'ei_network' + time.strftime("_%m-%d-%y.pkl")
+        self.history.append('# ei_network object being saved as ' + name)
+        F = open(name, 'wb')
+        dill.dump(self, F)
+        F.close()
+
+
+
 class ei_layer():
     """
         This class is used to create, simulate, and visualize a generic network containing 3
@@ -731,21 +900,9 @@ class ei_layer():
         __init__ : creates parameter dictionaries with the default values.
         set_param : changes a value in a parameter dictionary.
         build : creates units and connects them.
-        run : runs simulations.
-        basic_plot, act_anim, hist_anim, double_anim : result visualization.
-        conn_anim : connections visualization.
         annotate : append a line with text in the ei_layer.notes string.
         log : save the parameter changes and execution history of the network in a text file.
-        save : pickle the object and save it in a file.
-        -------- 
-        make_sin_pulse, input_vector, default_inp_pat, default_inp_fun : auxiliary to 'run'.
-        make_inp_fun : auxiliary to default_inp_fun.
-        H : the Heaviside step function. Auxiliary to make_inp_fun.
-        color_fun : auxiliary to act_anim and double_anim.
-        update_(conn|hist|act|double)_anim : auxiliary to (conn|hist|act|double)_anim.
-        update_weight_anim : auxiliary to conn_anim.
     """
-
 
     def __init__(self, name, net_pars):
         """ Create the parameter dictionaries required to build the excitatory-inhibitory network. 
@@ -1060,83 +1217,14 @@ class ei_layer():
         self.__getattribute__(dictionary)[entry] = value  # set the new value
         self.history.append(dictionary + '[\'' + entry + '\'] = ' + str(value) ) # record assignment
             
-
-  
-        
    
-    def double_anim(self, pop, nbins=20, interv=100, slider=False, thr=0.9, pdf=False):
-        """ An animation of both firing rate histograms and unit activities for a given population.
-        
-            pop : list or array with the IDs of the units to visualize.
-            bins = number of bins in the firing rate histogram
-            inter = refresh interval in ms
-            slider = whether to use an interactive slider instead of an animation
-            thr = value at which the dots change color in the unit activity diagram
-            pdf = whether to overlay a plot of the exponential pdf the histogram should approach.
-                 CURRENTLY ONLY SUPPORTED WHEN pop IS THE EXCITATORY POPULATION.
-                  
-        """
-        get_ipython().run_line_magic('matplotlib', 'qt5')
-        
-        self.double_fig = plt.figure(figsize=(16,8))
-        self.n_bins = nbins
-        self.act_thr = thr
-        self.n_data = len(self.all_activs[0])
-        # Histogram figure and axis
-        self.hist_ax = self.double_fig.add_axes([0.02, .04, .47, .92])
-        if pdf: # assuming pop consists of excitatory units
-            if self.e_pars['type'] == unit_types.exp_dist_sig or self.e_pars['type'] == unit_types.exp_dist_sig_thr:
-                c = self.net.units[self.e[0]].c
-            else:
-                c = self.ee_syn['c']
-            # plot the exponential distro on the left axis
-            k = len(pop) * c / (1. - np.exp(-c)) / nbins
-            self.hist_ax.plot(np.linspace(0,1,100), k * np.exp(-c*np.linspace(0,1,100)), 'y')
-            y_lim = round(max(1., np.exp(-c)) * k)  + 5.
-        else:
-            y_lim = len(pop)
-        hist, bins, self.patches = self.hist_ax.hist(self.all_activs[pop,0], bins=nbins, range=(0.,1.001))
-        self.hist_ax.set_ylim(top=y_lim) 
-        # Activity figure and axis
-        self.act_ax = self.double_fig.add_axes([.51, .02, .47, .94], frameon=False)
-        self.act_ax.set_xlim(-1, 1), self.act_ax.set_xticks([])
-        self.act_ax.set_ylim(-1, 1), self.act_ax.set_yticks([])
-        xcoords = [ u.coordinates[0] for u in [self.net.units[i] for i in pop] ]
-        ycoords = [ u.coordinates[1] for u in [self.net.units[i] for i in pop] ]
-        self.scat = self.act_ax.scatter(xcoords, ycoords, s=20.*self.all_activs[pop,0])
-        
-        self.da_pop = pop
-        # select viewing mode
-        if not slider:
-            animation = FuncAnimation(self.double_fig, self.update_double_anim, 
-                                  interval=interv, save_count=int(round(self.net.sim_time/self.net.min_delay)))    
-            return animation
-        else:
-            from ipywidgets import interact
-            widget = interact(self.update_double_anim, frame=(1,self.n_data))
-            return widget
-    
-    def update_double_anim(self, frame):
-        # Each frame advances one simulation step (min_delay time units)
-        idx = frame%self.n_data
-        cur_time = self.net.min_delay*idx
-        # updating histogram
-        binz, valz = np.histogram(self.all_activs[self.da_pop,idx], bins=self.n_bins, range=(0.,1.001))
-        for count, patch in zip(binz, self.patches):
-            patch.set_height(count)
-        # updating activities
-        self.scat.set_sizes(300.*self.all_activs[self.da_pop,idx])
-        self.scat.set_color(self.color_fun(self.all_activs[self.da_pop,idx]))
-        self.double_fig.suptitle('Time: ' + '{:f}'.format(cur_time))
-        return self.hist_ax, self.act_ax,
-    
-    def annotate(self, string, make_history=True):
-        """ Append a string to self.notes and self.history. """
+    def annotate(self, string, make_history=False):
+        """ Append a string to self.notes and optionally to self.history. """
         self.notes += '# NOTE (' + self.name + ') : ' + string + '\n'
         if make_history:
             self.history.append('# (' + self.name + ')'  + string)
             
-    def log(self, name=None, params=True):
+    def log(self, name=None, params=False):
         """ Write the history and notes of the ei_layer object in a text file.
         
             name : A string with the name and path of the file to be written.
@@ -1146,12 +1234,13 @@ class ei_layer():
             name = self.name + '_log.txt'
         with open(name, 'a') as f:
             f.write('\n')
-            f.write('#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
+            #f.write('#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
             f.write('#---------Log of ' + self.name + ' layer ---------\n')
-            f.write('#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
-            f.write('# NOTES #\n')
-            f.write(self.notes)
-            f.write('\n')
+            #f.write('#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n')
+            if len(self.notes) > 0:
+                f.write('# NOTES #\n')
+                f.write(self.notes)
+                f.write('\n')
             f.write('# HISTORY #\n')
             in_dictionaries = False # A flag indicating the entries are parameter dictionaries
             for entry in self.history:
@@ -1166,21 +1255,4 @@ class ei_layer():
             f.write('\n')
             f.close()
         
-    def save(self, name=None):
-        """ Saving simulation results. 
-            A draculab network contains lists with functions, so it is not picklable. 
-            But it can be serialized with dill: https://github.com/uqfoundation/dill 
-            
-            After saving, retrieve object using, for example:
-            F = open("ei_layer_pickle.pkl", 'rb')
-            ei = dill.load(F)
-            F.close()
-        """
-        if not name:
-            name = self.name + '.pkl'
-        self.history.append('# exp_distro object being saved as ' + name)
-        F = open(name, 'wb')
-        dill.dump(self, F)
-        F.close()
-
 
