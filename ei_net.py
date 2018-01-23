@@ -461,7 +461,7 @@ class ei_net():
         self.inp_pat = set_inp_pat(0, self.x_geom['rows'], self.x_geom['columns'])
         # present input patterns
         for pres in range(n_pres):
-            if self.net_number # != None:
+            if self.net_number: # != None:
                 print('Starting presentation %d at network %d' % (pres, self.net_number))
             else:
                 print('Simulating presentation ' + str(pres), end='\r')
@@ -481,14 +481,14 @@ class ei_net():
             times, activs, plants = self.net.run(pres_time)
             self.all_times.append(times)
             self.all_activs.append(activs)
-            if self.net_number #!= None:
+            if self.net_number: #!= None:
                 print('Presentation %s took %s seconds at network %d.' % (pres, time.time() - pres_start, self.net_number), end='\n')
             else:
                 print('Presentation %s took %s seconds.' % (pres, time.time() - pres_start), end='\n')
 
         self.all_times = np.concatenate(self.all_times)
         self.all_activs = np.concatenate(self.all_activs, axis=1)
-        if self.net_number #!= None:
+        if self.net_number: #!= None:
             print('Total execution time is %s seconds at network %d' % (time.time() - start_time,self.net_number)) 
             print('----------------------')
         else:

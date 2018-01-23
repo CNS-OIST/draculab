@@ -252,6 +252,9 @@ class topology():
         Raises:
             ValueError, NotImplementedError, TypeError, KeyError
 
+        Warnings:
+            UserWarning when zero connections are made.
+
         """
         # TODO: it would be very easy to implement the 'targets' option by reducing the to_list to 
         # those units of a particular type at this point. I don't need that feature now, though.
@@ -383,7 +386,9 @@ class topology():
                     break 
 
         if len(connections) == 0:
-            raise AssertionError('Zero connections created with topo_connect')
+            from warnings import warn
+            warn('Zero connections created with topo_connect', UserWarning)
+            #raise AssertionError('Zero connections created with topo_connect')
 
         # If the coordinates in from_list were transformed, restore them to their original values
         if 'transform' in conn_spec:
@@ -418,7 +423,7 @@ class topology():
             raise ValueError('Unknown delay specification')
 
         # optional setting of weights
-        if 'weights' in conn_spec:
+        if 'weights' in conn_spec and len(connections) > 0:
             max_w = 100. # maximum weight value we'll tolerate
             weights = [] # a list with the weight for each entry in 'connections'
             if 'uniform' in conn_spec['weights']:
@@ -447,10 +452,11 @@ class topology():
             syn_spec['init_w'] = weights
 
         # creating the connections
-        senders = [c[0] for c in connections]
-        receivers = [c[1] for c in connections]
-        conn_dict = {'rule' : 'one_to_one', 'delay' : delays}
-        net.connect(senders, receivers, conn_dict, syn_spec)
+        if len(connections) > 0:
+            senders = [c[0] for c in connections]
+            receivers = [c[1] for c in connections]
+            conn_dict = {'rule' : 'one_to_one', 'delay' : delays}
+            net.connect(senders, receivers, conn_dict, syn_spec)
 
 
  
