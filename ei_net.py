@@ -583,11 +583,11 @@ class ei_net():
         self.unit_fig.suptitle('Time: ' + '{:f}'.format(cur_time))
         return self.ax,
     
+
     def conn_anim(self, source, sink, interv=100, slider=False, weights=True):
         """ An animation to visualize the connectivity of populations. 
     
-            source and sink are lists with the IDs of the units whose connections we'll
-            visualize. They should consist of contiguous, increasing integers. 
+            source and sink are lists with the IDs of the units whose connections we'll visualize. 
             
             Each frame of the animation shows: for a particular unit in source,
             all the neurons in sink that receive connections from it (left plot), and for 
@@ -615,8 +615,7 @@ class ei_net():
         # flattening net.syns, leaving only the source-sink connections 
         self.all_syns = []
         for syn_list in [self.net.syns[i] for i in sink]:
-            syn_list = [s for s in syn_list if s.preID in source]
-            self.all_syns += syn_list
+            self.all_syns.extend([s for s in syn_list if s.preID in source])
     
         # getting lists with the coordinates of all source, sink units
         source_coords = [u.coordinates for u in [self.net.units[i] for i in source]]
@@ -626,6 +625,15 @@ class ei_net():
         sink_x = [c[0] for c in sink_coords]
         sink_y = [c[1] for c in sink_coords]
 
+        # id2src[n] maps the unit with network id 'n' to its index in the 'source' list
+        self.id2src = np.array([1e8 for _ in range(len(self.net.units))], dtype=int) # 1e8 if not in source
+        for src_idx, net_idx in enumerate(source):
+            self.id2src[net_idx] = src_idx
+        # id2snk[n] maps the unit with network id 'n' to its index in the 'sink' list
+        self.id2snk = np.array([1e8 for _ in range(len(self.net.units))], dtype=int) # 1e8 if not in sink
+        for snk_idx, net_idx in enumerate(sink):
+            self.id2snk[net_idx] = snk_idx
+
         # setting colors
         self.std_src = [0., 0.5, 0., 0.5]
         self.std_snk = [0.5, 0., 0., 0.5]
@@ -634,8 +642,8 @@ class ei_net():
 
         # constructing figure, axes, path collections
         self.conn_fig = plt.figure(figsize=(12,7))
-        self.ax1 = self.conn_fig.add_axes([0.0, 0.01, .49, 0.95], frameon=True, aspect=1)
-        self.ax2 = self.conn_fig.add_axes([0.51, 0.01, .49, 0.95], frameon=True, aspect=1)
+        self.ax1 = self.conn_fig.add_axes([0.02, 0.01, .47, 0.95], frameon=True, aspect=1)
+        self.ax2 = self.conn_fig.add_axes([0.51, 0.01, .47, 0.95], frameon=True, aspect=1)
         self.src_col1 = self.ax1.scatter(source_x, source_y, s=2, c=self.std_src)
         self.snk_col1 = self.ax1.scatter(sink_x, sink_y, s=2, c=self.std_snk)
         self.src_col2 = self.ax2.scatter(source_x, source_y, s=2, c=self.std_src)
@@ -649,7 +657,7 @@ class ei_net():
             # extract the weight matrix
             self.w_mat = np.zeros((len(sink), len(source)))
             for syn in self.all_syns:
-                self.w_mat[syn.postID - sink[0], syn.preID - source[0]] = abs(syn.w)
+                self.w_mat[self.id2snk[syn.postID], self.id2src[syn.preID]] = abs(syn.w)
             self.w_mat /= np.amax(self.w_mat) # normalizing (maximum is 1)
             self.cmap = plt.get_cmap('Reds') # getting colormap
             #print(self.w_mat)
@@ -663,7 +671,8 @@ class ei_net():
             from ipywidgets import interact
             widget = interact(update_fun, frame=(1, max(self.len_source, self.len_sink)))
             return widget
-    
+
+
     def update_conn_anim(self, frame): 
         sou_u = frame%self.len_source # source unit whose receivers we'll visualize
         snk_u = frame%self.len_sink # sink unit whose senders we'll visualize
@@ -676,7 +685,8 @@ class ei_net():
         source_sizes[sou_u] = 50
         source_colors[sou_u] = self.big_src
         # getting targets of projections from the unit 'sou_u'
-        targets = [syn.postID - self.sink_0 for syn in self.all_syns if syn.preID == sou_u + self.source_0]
+        #targets = [syn.postID - self.sink_0 for syn in self.all_syns if syn.preID == sou_u + self.source_0]
+        targets = self.id2snk[ [syn.postID for syn in self.all_syns if self.id2src[syn.preID] == sou_u ] ]
         # setting the colors and sizes
         sink_colors[targets] = self.big_snk
         sink_sizes[targets] = 15
@@ -694,7 +704,8 @@ class ei_net():
         sink_sizes[snk_u] = 50
         sink_colors[snk_u] = self.big_snk
         # getting senders of projections to the unit 'snk_u'
-        senders = [syn.preID - self.source_0 for syn in self.all_syns if syn.postID == snk_u + self.sink_0]
+        #senders = [syn.preID - self.source_0 for syn in self.all_syns if syn.postID == snk_u + self.sink_0]
+        senders = self.id2src[ [syn.preID for syn in self.all_syns if self.id2snk[syn.postID] == snk_u] ]
         # setting the colors and sizes
         source_colors[senders] = self.big_src
         source_sizes[senders] = 15

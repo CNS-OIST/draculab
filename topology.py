@@ -225,10 +225,10 @@ class topology():
                                c is a numpy array with the coordinates of the boundary rectangle's center. 
                                x and y are scalars that specify its width and length.
                 'transform' : This is a Python function that maps a coordinate to another coordinate.
-                              When this entry is included, all coordinates C of the units in from_list
-                              will be considered to be transform(C) instead. For the purpose of calculating
-                              delays, the coordinates will not be transformed, and periodic boundaries
-                              will be ignored.
+                              When this entry is included and is callable, all coordinates C of 
+                              the units in from_list will be considered to be transform(C) instead. 
+                              For the purpose of calculating delays, the coordinates will not be transformed, 
+                              and periodic boundaries will be ignored.
                               This is useful when connecting units from different layers, whose containing
                               regions are separate. In this case the transform can put the mean center of the
                               units in from_list on the center of the units in to_list by shifting with the
@@ -260,7 +260,7 @@ class topology():
         # those units of a particular type at this point. I don't need that feature now, though.
 
         # If the coordinates of from_list units need to be transformed, we do it now
-        if 'transform' in conn_spec:
+        if 'transform' in conn_spec and callable(conn_spec['transform']):
             self.orig_coords = [net.units[idx].coordinates for idx in from_list] # used to restore coordinates
             for idx, coord in zip(from_list, self.orig_coords):
                 net.units[idx].coordinates = conn_spec['transform'](coord)
@@ -391,7 +391,7 @@ class topology():
             #raise AssertionError('Zero connections created with topo_connect')
 
         # If the coordinates in from_list were transformed, restore them to their original values
-        if 'transform' in conn_spec:
+        if 'transform' in conn_spec and callable(conn_spec['transform']):
             for idx , coord in zip(from_list, self.orig_coords):
                 net.units[idx].coordinates = coord    
 
@@ -400,7 +400,7 @@ class topology():
             c = conn_spec['delays']['linear']['c']
             a = conn_spec['delays']['linear']['a']
             real_dist = []
-            if 'transform' in conn_spec:
+            if 'transform' in conn_spec and callable(conn_spec['transform']):
                 # If there was a coordinate transform, the distances array calculated above
                 # uses the transformed coordinates. For the purpose of calculating delays,
                 # we want to use the original coordinates.
