@@ -685,7 +685,6 @@ class ei_net():
         source_sizes[sou_u] = 50
         source_colors[sou_u] = self.big_src
         # getting targets of projections from the unit 'sou_u'
-        #targets = [syn.postID - self.sink_0 for syn in self.all_syns if syn.preID == sou_u + self.source_0]
         targets = self.id2snk[ [syn.postID for syn in self.all_syns if self.id2src[syn.preID] == sou_u ] ]
         # setting the colors and sizes
         sink_colors[targets] = self.big_snk
@@ -704,7 +703,6 @@ class ei_net():
         sink_sizes[snk_u] = 50
         sink_colors[snk_u] = self.big_snk
         # getting senders of projections to the unit 'snk_u'
-        #senders = [syn.preID - self.source_0 for syn in self.all_syns if syn.postID == snk_u + self.sink_0]
         senders = self.id2src[ [syn.preID for syn in self.all_syns if self.id2snk[syn.postID] == snk_u] ]
         # setting the colors and sizes
         source_colors[senders] = self.big_src

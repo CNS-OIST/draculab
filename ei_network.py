@@ -380,7 +380,12 @@ class ei_network():
         for name in self.layers:
             lay = self.layers[name]
             if lay.n['x'] > 0:  # If the layer has external input units
-                inp_pat[name] = np.zeros(lay.n['x'])  # initial "null" pattern
+                #inp_pat[name] = np.zeros(lay.n['x'])  # initial "null" pattern
+                # initial conditions come from the input functions
+                if set_inp_pat and (name in set_inp_pat): # if we received a function to set the layer's input pattern
+                    inp_pat[name] = set_inp_pat[name](0, lay.x_geom['rows'], lay.x_geom['columns'])
+                else:
+                    inp_pat[name] = self.default_inp_pat(0, lay.x_geom['rows'], lay.x_geom['columns'])
 
         if self.net_number != None:
             num_str = 'at network ' + str(self.net_number)
