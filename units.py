@@ -147,6 +147,7 @@ class unit():
         Returns the sum of inputs scaled by their weights, assuming there are multiple input ports.
 
         The sum accounts for transmission delays. All ports are treated identically. 
+        The inputs should come from a plant.
         """
         return sum([ syn.w * fun(time-dely, syn.plant_out) for syn,fun,dely in zip(self.net.syns[self.ID], 
                         self.net.act[self.ID], self.net.delays[self.ID]) ])

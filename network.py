@@ -87,7 +87,7 @@ class network():
         Returns: an integer with the ID of the created plant.
 
         Raises:
-            NotImplementedError, ValueError.
+            AssertionError, NotImplementedError, ValueError.
         """
         assert self.sim_time == 0., 'A plant is being created when the simulation time is not zero'
         if n != 1:

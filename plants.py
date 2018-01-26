@@ -10,9 +10,22 @@ from scipy.interpolate import interp1d
 from draculab import plant_models, synapse_types
 
 class plant():
-    """ The parent class of all physical plant models.
+    """ The parent class of all non-unit models that interact with the network.
 
     Derived classes can implement any system that can be modeled with an ODE.
+
+    Objects of the derived classes are basically the same as draculab's units: they receive inputs
+    and they send outputs to and from draculab's units. Moreover, their inputs and outputs are
+    mediated by the same synapse types used by units. But wheras a unit's output can only be a firing 
+    rate, models have multidimensional outputs that can correspond to the the state variables of a 
+    physical model. 
+    
+    By putting the appropriate dynamics in the derivatives() function, a physical plant
+    controlled by the network of units can interact with the network using draculab's synapses and
+    delayed connections.
+
+    The added complexity of connecting the plant's multidimensional inputs and outputs is handled
+    by network.set_plant_inputs() and network.set_plant_outputs().
     """
 
     def __init__(self, ID, params, network):
@@ -42,14 +55,14 @@ class plant():
         self.type = params['type'] # an enum identifying the type of plant being instantiated
         self.dim = params['dimension'] # dimensionality of the state vector
         # The delay of a plant is the maximum delay among the projections it sends. 
-        # Its final value should be set by network.set_plant_outputs(), after the plant is created.
+        # Its final value is set by network.set_plant_outputs(), after the plant is created.
         if 'delay' in params: 
             self.delay = params['delay']
             # delay must be a multiple of net.min_delay. Next line checks that.
             assert (self.delay+1e-6)%self.net.min_delay < 2e-6, ['unit' + str(self.ID) + 
                                                                  ': delay is not a multiple of min_delay']       
         else:  # giving a temporary value
-            self.delay = 2 * self.net.min_delay 
+            self.delay = 2. * self.net.min_delay 
         self.rtol = self.net.rtol # local copies of ODE solver tolerances
         self.atol = self.net.atol
 

@@ -30,6 +30,8 @@ class synapse():
                 'gain' : Extra gain factor. A factor that scales the weight in the method
                          unit.get_sc_input_sum . 
             network: the network where the synapse lives.
+        Raises:
+            AssertionError .
 
         """
         self.preID = params['preID']   # the ID of the presynaptic unit or plant
