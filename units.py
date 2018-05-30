@@ -1424,3 +1424,15 @@ class exp_dist_sig_thr(unit):
         # there is only one state variable (the activity)
         return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
  
+
+class ds_trdc_unit(unit):
+    """ double-sigma unit with threshold-based rate distribution control.
+
+        This is a skeleton.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        this is a skeleton.
+        """
+
