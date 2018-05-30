@@ -147,6 +147,7 @@ class unit():
         Returns the sum of inputs scaled by their weights, assuming there are multiple input ports.
 
         The sum accounts for transmission delays. All ports are treated identically. 
+        The inputs should come from a plant.
         """
         return sum([ syn.w * fun(time-dely, syn.plant_out) for syn,fun,dely in zip(self.net.syns[self.ID], 
                         self.net.act[self.ID], self.net.delays[self.ID]) ])
@@ -442,6 +443,10 @@ class unit():
                 # inh_idx = numpy array with index of all inhibitory units 
                 self.inh_idx = np.array([idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w < 0])
                 self.functions.add(self.upd_exp_scale)
+            elif req is syn_reqs.slide_thresh:  # <----------------------------------
+                if not syn_reqs.balance in self.syn_needs:
+                    raise AssertionError('exp_scale requires the balance requirement to be set')
+                self.functions.add(self.upd_thresh)
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
@@ -796,6 +801,33 @@ class unit():
         """ Update a numpy array containing all the current synaptic inputs """
         self.inp_vector = np.array([ fun(time - dely) for dely,fun in 
                                      zip(self.net.delays[self.ID], self.net.act[self.ID]) ])
+
+
+    def upd_thresh(self, time):
+        """ Updates the threshold of exp_dist_sig_thr units.
+
+            The algorithm is an adpted version of the  one used in exp_rate_dist synapses.
+        """
+        #H = lambda x: 0.5 * (np.sign(x) + 1.)
+        #cdf = lambda x: ( 1. - np.exp(-self.c*min(max(x,0.),1.) ) ) / ( 1. - np.exp(-self.c) )
+        r = self.get_lpf_fast(0)
+        r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
+        exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+        #exp_cdf = cdf(r)
+        error = self.below - self.above - 2.*exp_cdf + 1. 
+
+        self.thresh -= self.tau_thr * error
+        """
+        u = (np.log(r/(1.-r))/self.slope) + self.thresh
+        weights = np.array([syn.w for syn in self.net.syns[self.ID]])
+        I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
+        mu_exc = np.sum( self.inp_vector[self.exc_idx] )
+        fpr = 1. / (self.c * r * (1. - r))
+        ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
+        self.scale_facs[self.exc_idx] += self.tau_scale * (ss_scale/weights[self.exc_idx] - self.scale_facs[self.exc_idx])
+        """
+
+
 
 class source(unit):
     """ The class of units whose activity comes from some Python function.
@@ -1274,7 +1306,7 @@ class exp_dist_sigmoidal(unit):
     A unit where the synaptic weights are scaled to produce an exponential distribution.
     
     This unit has the same activation function as the sigmoidal unit, but the excitatory
-    synatpic weights are scaled to produce an exponential distribution of the firing rates in
+    synaptic weights are scaled to produce an exponential distribution of the firing rates in
     the network, using the same approach as the exp_rate_dist_synapse.
 
     Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
@@ -1334,3 +1366,61 @@ class exp_dist_sigmoidal(unit):
         return ( self.f(self.get_exp_sc_input_sum(t)) - y[0] ) * self.rtau
     
 
+class exp_dist_sig_thr(unit): 
+    """
+    A sigmoidal unit where the threshold is moved to produce an exponential distribution.
+    
+    This unit has the same activation function as the sigmoidal unit, but the thresh
+    parameter is continually adjusted produce an exponential distribution of the firing rates in
+    the network, using the same approach as the exp_rate_dist_synapse and the 
+    exp_dist_sigmoidal units.
+
+    Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
+    Synaptic weights initialized to zero will be considered excitatory.
+    """
+    # The difference with sigmoidal units is the use of the slide_thresh requirement.
+    # This will automatically adjust the threshold at each buffer update.
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function. This value may adapt.
+                'tau' : Time constant of the update dynamics.
+                'tau_thr' : sets the speed of change for the threshold. 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+
+        Raises:
+            AssertionError.
+
+        When c <= 0 the current implementation is not very stable.
+        """
+
+        super(exp_dist_sig_thr, self).__init__(ID, params, network)
+        self.slope = params['slope']    # slope of the sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.tau_thr = params['tau_thr']  # the threshold sliding time constant
+        self.c = params['c']  # The coefficient in the exponential distribution
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.syn_needs.update([syn_reqs.balance, syn_reqs.slide_thresh,
+                               syn_reqs.lpf_fast, syn_reqs.inp_vector])
+        #assert self.type is unit_types.exp_dist_sig_thr, ['Unit ' + str(self.ID) + 
+        #                                                    ' instantiated with the wrong type']
+        
+    def f(self, arg):
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
+        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+    
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
+ 

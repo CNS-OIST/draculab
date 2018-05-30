@@ -30,6 +30,8 @@ class synapse():
                 'gain' : Extra gain factor. A factor that scales the weight in the method
                          unit.get_sc_input_sum . 
             network: the network where the synapse lives.
+        Raises:
+            AssertionError .
 
         """
         self.preID = params['preID']   # the ID of the presynaptic unit or plant
@@ -268,6 +270,52 @@ class anti_covariance_synapse(synapse):
         
         # A forward Euler step with the anti-covariance learning rule 
         self.w = self.w - self.alpha * (post - avg_post) * pre 
+
+
+class anti_cov_pre_synapse(synapse):
+    """ This class implements an anticovariance rule.
+    
+        w' = - lrate * post * (pre - <pre>),
+        where <pre> is a low-pass filtered version of pre with a slow time constant.
+
+        The presynaptic activity includes its corresponding transmission delay.
+        In this implementation, the synaptic weight can't become negative.
+    
+        Presynaptic units require the 'tau_fast' and 'tau_slow' parameters.
+        Postsynaptic units require 'tau_fast'.
+    """
+
+    def __init__(self, params, network):
+        """ The  class constructor.
+
+        Args: 
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+        Raises:
+            AssertionError.
+
+        """
+        super(anti_cov_pre_synapse, self).__init__(params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        # The anti-covaraince rule requires the current pre- and post-synaptic activity
+        # For the presynaptic activity, both fast and slow averages are used
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_slow])
+        assert self.type is synapse_types.anticov_pre, ['Synapse from ' + str(self.preID) + ' to ' +
+                                                     str(self.postID) + ' instantiated with the wrong type']
+    
+    def update(self, time):
+        """ Update the weight according to the anti-covariance learning rule."""
+        post = self.net.units[self.postID].lpf_fast
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+        avg_pre = self.net.units[self.preID].get_lpf_slow(self.delay_steps)
+        
+        # A forward Euler step with the anti-covariance learning rule 
+        self.w = self.w - self.alpha * post * (pre - avg_pre)
+        if self.w < 0.:
+            self.w = 0.
+
 
 class hebb_subsnorm_synapse(synapse):
     """ This class implements a version of the Hebbian rule with substractive normalization.

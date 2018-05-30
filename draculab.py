@@ -20,6 +20,7 @@ class unit_types(Enum):
     custom_sc_fi = 6
     kwta = 7
     exp_dist_sig = 8
+    exp_dist_sig_thr = 9
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -48,6 +49,8 @@ class unit_types(Enum):
             unit_class = kWTA
         elif self == unit_types.exp_dist_sig:
             unit_class = exp_dist_sigmoidal
+        elif self == unit_types.exp_dist_sig_thr:
+            unit_class = exp_dist_sig_thr
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?
@@ -69,6 +72,7 @@ class synapse_types(Enum):
     corr_inh = 11 # Homeostatic inhibition from Vogels et al. 2011
     diff_hebbsnorm = 12 # Differential Hebbian with substractive normalization
     exp_rate_dist = 13 # To create an exponential firing rate distribution
+    anticov_pre = 14  # anticovariance rule using the presynaptic mean activity
     #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
 
     def get_class(self):
@@ -108,6 +112,8 @@ class synapse_types(Enum):
             syn_class = diff_hebb_subsnorm_synapse
         elif self == synapse_types.exp_rate_dist:
             syn_class = exp_rate_dist_synapse
+        elif self == synapse_types.anticov_pre:
+            syn_class = anti_cov_pre_synapse 
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -166,6 +172,7 @@ class syn_reqs(Enum):
     balance = 16 # fraction of inputs above, below, and around the current rate
     exp_scale = 17 # synaptic scaling to produce an exponential firing rate distribution
     inp_vector = 18 # the current "raw" input vector in a numpy array
+    slide_thresh = 19 # An activation threshold that adjusts to produce an exp firing rate distro
 
 
     '''

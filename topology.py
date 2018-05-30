@@ -136,7 +136,7 @@ class topology():
            topology module.
 
         topo_connect() works by first specifing which units to connect, with which weights,
-        and with which delays. Using this it calls the network.connect() method. The same syn_spec
+        and with which delays. Using this it calls the network.connect() method. The received syn_spec
         dictionary is used when calling network.connect(), but the init_w values may be modified. 
         
         Args:
@@ -191,7 +191,8 @@ class topology():
                               will have a delay equal to [c + a*d], where the square brackets indicate that 
                               this value will be transformed to the nearest multiple of the minimum 
                               transmission delay. Notice a=0 implies all delays will have value [c].
-                          When 'edge_wrap'=True, periodic-boundary distance is used to calculate 'd'.
+                          When 'edge_wrap'=True, periodic-boundary distance is used to calculate 'd',
+                          unless the optional 'transform' entry is included.
                 OPTIONAL ENTRIES
                 'allow_autapses' : Can units connect to themselves? Default is True.
                 'allow_multapses' : Can a unit have more than one connection to the same target?
@@ -223,6 +224,15 @@ class topology():
                             >> {'center' : c, 'extent' : [x, y]}.
                                c is a numpy array with the coordinates of the boundary rectangle's center. 
                                x and y are scalars that specify its width and length.
+                'transform' : This is a Python function that maps a coordinate to another coordinate.
+                              When this entry is included and is callable, all coordinates C of 
+                              the units in from_list will be considered to be transform(C) instead. 
+                              For the purpose of calculating delays, the coordinates will not be transformed, 
+                              and periodic boundaries will be ignored.
+                              This is useful when connecting units from different layers, whose containing
+                              regions are separate. In this case the transform can put the mean center of the
+                              units in from_list on the center of the units in to_list by shifting with the
+                              vector (to_center - from_center); moreover, things like reflections can be made.
                 
             syn_spec: A dictionary used to initialize the synapses in the connections.
                 REQUIRED PARAMETERS
@@ -242,9 +252,18 @@ class topology():
         Raises:
             ValueError, NotImplementedError, TypeError, KeyError
 
+        Warnings:
+            UserWarning when zero connections are made.
+
         """
         # TODO: it would be very easy to implement the 'targets' option by reducing the to_list to 
         # those units of a particular type at this point. I don't need that feature now, though.
+
+        # If the coordinates of from_list units need to be transformed, we do it now
+        if 'transform' in conn_spec and callable(conn_spec['transform']):
+            self.orig_coords = [net.units[idx].coordinates for idx in from_list] # used to restore coordinates
+            for idx, coord in zip(from_list, self.orig_coords):
+                net.units[idx].coordinates = conn_spec['transform'](coord)
 
         connections = []  # a list with all the connection pairs as (source,target)
         distances = [] # the distance for the units in each entry of 'connections'
@@ -252,40 +271,35 @@ class topology():
 
         # To handle boundary conditions, we choose an appropriate distance function, and
         # unpack some info that is needed for the case of rectangular masks.
-        if 'edge_wrap' in conn_spec: # if we have periodic boundary conditions
-            if conn_spec['edge_wrap']:
-                if 'boundary' in conn_spec:
-                    ## Ensuring the right type for the boundary arrays
-                    conn_spec['boundary']['extent'] = np.array(conn_spec['boundary']['extent'])
-                    conn_spec['boundary']['center'] = np.array(conn_spec['boundary']['center'])
-                    ## Ensuring that all units are contained within the boundary rectangle
-                    # get the coordinates of all units
-                    all_c = [net.units[idx].coordinates for idx in set(from_list+to_list)]
-                    # set the origin at the lower left corner of the boundary rectangle
-                    shift = conn_spec['boundary']['extent']/2.
-                    llc_c = [ c - conn_spec['boundary']['center'] + shift for c in all_c ]
-                    # check if the largest coordinate is bigger than the extent
-                    for i in range(len(conn_spec['boundary']['center'])): # iterating over dimensions
-                        max_c = max([c[i] for c in llc_c])
-                        if max_c > conn_spec['boundary']['extent'][i]:
-                            raise ValueError('All units should be contained within the boundary rectangle')
-                    ## Assign a distance function with periodic boundary
-                    dist = lambda x,y: self.period_dist(x,y, conn_spec['boundary'])
-                    # creating a dictionary that will be used by filter_ids
-                    if 'rectangular' in conn_spec['mask']: # this case is special when edge_wrap==True
-                        # getting the lower-left and upper-right corners of the boundary rectangle
-                        bound = conn_spec['boundary'].copy()
-                        bound['lower_left'] = conn_spec['boundary']['center'] - conn_spec['boundary']['extent']/2.
-                        bound['upper_right'] = conn_spec['boundary']['center'] + conn_spec['boundary']['extent']/2.
-                        fids_dic = {'edge_wrap':True, 'boundary':bound, 'distance':dist}
-                    else:
-                        fids_dic = {'edge_wrap':True, 'distance':dist}
+        if 'edge_wrap' in conn_spec and conn_spec['edge_wrap']: # if we have periodic boundary conditions
+            if 'boundary' in conn_spec:
+                ## Ensuring the right type for the boundary arrays
+                conn_spec['boundary']['extent'] = np.array(conn_spec['boundary']['extent'])
+                conn_spec['boundary']['center'] = np.array(conn_spec['boundary']['center'])
+                ## Ensuring that all units are contained within the boundary rectangle
+                # get the coordinates of all units
+                all_c = [net.units[idx].coordinates for idx in set(from_list+to_list)]
+                # set the origin at the lower left corner of the boundary rectangle
+                shift = conn_spec['boundary']['extent']/2.
+                llc_c = [ c - (conn_spec['boundary']['center'] - shift) for c in all_c ]
+                # check if the largest coordinate is bigger than the extent
+                for i in range(len(conn_spec['boundary']['center'])): # iterating over dimensions
+                    max_c = max([c[i] for c in llc_c])
+                    if max_c > conn_spec['boundary']['extent'][i]:
+                        raise ValueError('All units should be contained within the boundary rectangle')
+                ## Assign a distance function with periodic boundary
+                dist = lambda x,y: self.period_dist(x,y, conn_spec['boundary'])
+                # creating a dictionary that will be used by filter_ids
+                if 'rectangular' in conn_spec['mask']: # this case is special when edge_wrap==True
+                    # getting the lower-left and upper-right corners of the boundary rectangle
+                    bound = conn_spec['boundary'].copy()
+                    bound['lower_left'] = conn_spec['boundary']['center'] - conn_spec['boundary']['extent']/2.
+                    bound['upper_right'] = conn_spec['boundary']['center'] + conn_spec['boundary']['extent']/2.
+                    fids_dic = {'edge_wrap':True, 'boundary':bound, 'distance':dist}
                 else:
-                    raise KeyError('A boundary attribute is required when edge_wrap is True')
+                    fids_dic = {'edge_wrap':True, 'distance':dist}
             else:
-                # Euclidean distance
-                dist = lambda x,y: np.sqrt( sum( (x-y)*(x-y) ) )
-                fids_dic = {'edge_wrap':False, 'distance':dist}
+                raise AssertionError('A boundary attribute is required when edge_wrap is True')
         else:
             # Euclidean distance
             dist = lambda x,y: np.sqrt( sum( (x-y)*(x-y) ) )
@@ -371,11 +385,32 @@ class topology():
                 if  not ('number_of_connections' in conn_spec):
                     break 
 
+        if len(connections) == 0:
+            from warnings import warn
+            warn('Zero connections created with topo_connect', UserWarning)
+            #raise AssertionError('Zero connections created with topo_connect')
+
+        # If the coordinates in from_list were transformed, restore them to their original values
+        if 'transform' in conn_spec and callable(conn_spec['transform']):
+            for idx , coord in zip(from_list, self.orig_coords):
+                net.units[idx].coordinates = coord    
+
         # setting the delays
         if 'linear' in conn_spec['delays']:
             c = conn_spec['delays']['linear']['c']
             a = conn_spec['delays']['linear']['a']
-            for d in distances:
+            real_dist = []
+            if 'transform' in conn_spec and callable(conn_spec['transform']):
+                # If there was a coordinate transform, the distances array calculated above
+                # uses the transformed coordinates. For the purpose of calculating delays,
+                # we want to use the original coordinates.
+                for conn in connections:
+                    c0 = net.units[conn[0]].coordinates
+                    c1 = net.units[conn[1]].coordinates
+                    real_dist.append( np.sqrt( sum( (c0-c1)*(c0-c1) ) ) )
+            else:
+                real_dist = distances
+            for d in real_dist:
                 # delays must be multiples of net.min_delay
                 dely = c + a*d + 1e-7  # 1e-7 deals with a quirk of the % operator
                 mod = dely % net.min_delay
@@ -388,7 +423,7 @@ class topology():
             raise ValueError('Unknown delay specification')
 
         # optional setting of weights
-        if 'weights' in conn_spec:
+        if 'weights' in conn_spec and len(connections) > 0:
             max_w = 100. # maximum weight value we'll tolerate
             weights = [] # a list with the weight for each entry in 'connections'
             if 'uniform' in conn_spec['weights']:
@@ -417,10 +452,12 @@ class topology():
             syn_spec['init_w'] = weights
 
         # creating the connections
-        senders = [c[0] for c in connections]
-        receivers = [c[1] for c in connections]
-        conn_dict = {'rule' : 'one_to_one', 'delay' : delays}
-        net.connect(senders, receivers, conn_dict, syn_spec)
+        if len(connections) > 0:
+            senders = [c[0] for c in connections]
+            receivers = [c[1] for c in connections]
+            conn_dict = {'rule' : 'one_to_one', 'delay' : delays}
+            net.connect(senders, receivers, conn_dict, syn_spec)
+
 
  
     def filter_ids(self, net, id_list, center, spec, fids_dic):
