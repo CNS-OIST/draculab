@@ -66,8 +66,8 @@ class unit():
         if 'n_ports' in params: self.n_ports = params['n_ports']
         else: self.n_ports = 1
 
-        self.multi_port = False # indicates whether the unit has multi-port support, which 
-                                # means it has customized get_input* functions
+        self.multi_port = False # If True, the port_idx list is created in init_pre_syn_update in
+                                # order to support customized get_mp_input* functions 
 
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
@@ -290,6 +290,9 @@ class unit():
         In addition, for each one of the unit's synapses, init_pre_syn_update will initialize 
         its delay value.
 
+        An extra task done here is to prepare the 'port_idx' list used by units with multiple 
+        input ports.
+
         init_pre_syn_update is called for a unit everytime network.connect() connects it, 
         which may be more than once.
 
@@ -451,6 +454,15 @@ class unit():
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
         self.pre_syn_update = lambda time: [f(time) for f in self.functions]
+
+        # If we require support for multiple input ports, create the port_idx list.
+        # port_idx is a list whose elements are numpy arrays of integers.
+        # port_idx[i] contains the indexes (in net.syns[self.ID], net.delays[self.ID], and net.act[self.ID])
+        # of the synapses whose input port is 'i'.
+        if multi_port is True:
+            self.port_idx = [ [] for _ in range(n_ports) ]
+        for idx, syn in enumerate(net.syns[self.ID]):
+            self.port_idx[syn.port].append(idx) 
 
 
 
@@ -1425,6 +1437,145 @@ class exp_dist_sig_thr(unit):
         return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
  
 
+class double_sigma(unit):
+    """ 
+    Sigmoidal unit with multiple dendritic branches modeled as sigmoidal units.
+
+    This model is inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    Each input belongs to a particular "branch". All inputs from the same branch add 
+    linearly, and the sum is fed into a sigmoidal function that produces the output of the branch. 
+    The output of all the branches is added linearly to produce the total input to the unit, 
+    which is fed into a sigmoidal function to produce the output of the unit.
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+
+    These type of units implement a type of soft constraint satisfaction. According to how
+    the parameters are set, they might activate only when certain input branches receive
+    enough stimulation.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports is no longer optional.
+                'n_ports' : number of inputs ports. Defaults to 1.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope_out' : Slope of the global sigmoidal function.
+                'thresh_out' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a scalar value,
+                            resulting in all values being the same, or it can be a list of length n_ports
+                            specifying the slope for each branch.
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a scalar 
+                            value, resulting in all values being the same, or it can be a list of length 
+                            n_ports specifying the threshold for each branch.
+                        
+                'tau' : Time constant of the update dynamics.
+        Raises:
+            ValueError, NameError
+
+        """
+        # branch_w, slopes, and threshs are inside the branch_params dictionary because if they
+        # were lists then network.create_units would interpret them as values to assign to separate units.
+
+        super(double_sigma, self).__init__(ID, params, network)
+        if not hasattr(self,'n_ports'): 
+            raise NameError( 'Number of ports should be included in the parameters' )
+        self.slope_out = params['slope_out']    # slope of the global sigmoidal function
+        self.thresh_out = params['thresh_out']  # horizontal displacement of the global sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        br_pars = params['branch_params']  # to make the following lines shorter
+        self.br_w = br_pars['branch_w'] # weight factors for all branches
+        if self.n_ports > 1:
+            self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
+     
+        # testing the parameters
+        if self.n_ports != len(self.br_w):
+            raise ValueError('Number of ports should equal the length of the branch_w parameter')
+        if type(br_pars['slopes']) is list: 
+            if len(br_pars['slopes']) == n_ports:
+                self.slopes = br_pars['slopes']    # slope of the local sigmoidal functions
+            else:
+                raise ValueError('Number of ports should equal the length of the slopes parameter')
+        elif type(br_pars['slopes']) == float:
+                self.slopes = [br_pars['slopes']]*self.n_ports
+        else:
+            raise ValueError('Invalid type for slopes parameter')
+        
+        if type(br_pars['threshs']) is list: 
+            if len(br_pars['threshs']) == n_ports:
+                self.threshs= br_pars['threshs']    # threshold of the local sigmoidal functions
+            else:
+                raise ValueError('Number of ports should equal the length of the slopes parameter')
+        elif type(br_pars['threshs']) == float:
+                self.threshs = [br_pars['threshs']]*self.n_ports
+        else:
+            raise ValueError('Invalid type for threshs parameter')
+
+
+
+class double_sigma_nrml(unit):
+    """ A version of double_sigma units where the inptus are normalized.
+
+    Double sigma units are inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    Each input belongs to a particular "branch". All inputs from the same branch
+    add linearly, are normalized, and the normalized sum is fed into a sigmoidal function 
+    that produces the output of the branch. The output of all the branches is added linearly 
+    to produce the total input to the unit, which is fed into a sigmoidal function to produce 
+    the output of the unit.
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+
+    These type of units implement a type of soft constraint satisfaction. According to how
+    the parameters are set, they might activate only when certain input branches receive
+    enough stimulation.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports is no longer optional.
+                'n_ports' : number of inputs ports. Defaults to 1.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope_out' : Slope of the global sigmoidal function.
+                'thresh_out' : Threshold of the global sigmoidal function. 
+                'slope_in' : Slope of the branch sigmoidal functions.
+                'thresh_in' : Threshold of the branch sigmoidal functions. 
+                'tau' : Time constant of the update dynamics.
+                'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                             of branches. Each entry is a positive number, and all entries must add to 1.
+                             The input port corresponding to a branch is the index of its corresponding 
+                             weight in this list, so len(branch_w) = n_ports.
+        """
+
+        super(double_sigma_nrml, self).__init__(ID, params, network)
+        self.slope_out = params['slope_out']    # slope of the global sigmoidal function
+        self.thresh_out = params['thresh_out']  # horizontal displacement of the global sigmoidal
+        self.slope_in = params['slope_in']    # slope of the local sigmoidal functions
+        self.thresh_in = params['thresh_in']  # horizontal displacement of the local sigmoidals
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.br_w = params['branch_w'] # weight factors for all branches
+ 
+
+
 class ds_trdc_unit(unit):
     """ double-sigma unit with threshold-based rate distribution control.
 
@@ -1435,4 +1586,4 @@ class ds_trdc_unit(unit):
 
         this is a skeleton.
         """
-
+        return

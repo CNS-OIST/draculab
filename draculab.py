@@ -21,6 +21,7 @@ class unit_types(Enum):
     kwta = 7
     exp_dist_sig = 8
     exp_dist_sig_thr = 9
+    double_sigma = 10
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -51,6 +52,8 @@ class unit_types(Enum):
             unit_class = exp_dist_sigmoidal
         elif self == unit_types.exp_dist_sig_thr:
             unit_class = exp_dist_sig_thr
+        elif self == unit_types.double_sigma:
+            unit_class = double_sigma
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?

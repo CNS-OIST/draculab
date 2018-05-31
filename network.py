@@ -136,7 +136,7 @@ class network():
         assert (type(n) == int) and (n > 0), 'Number of units must be a positive integer'
         assert self.sim_time == 0., 'Units are being created when the simulation time is not zero'
 
-        # Any entry in 'params' other than 'coordinates', 'type', or 'function'
+        # Any entry in 'params' other than 'coordinates', 'type', 'function', or 'branch_params'
         # should either be a scalar, a list of length 'n', or a numpy array of length 'n'.
         # 'coordinates' should be either a list (with 'n' arrays) or a (1|2|3) array.
         listed = [] # the entries in 'params' specified with a list
@@ -160,6 +160,14 @@ class network():
                         listed.append(par)
                 elif not callable(params[par]):
                     raise TypeError('Incorrect function initialization in create_units')
+            elif par == 'branch_params': # used by the double_sigma family of units
+                if type(params[par]) is dict:
+                    pass
+                elif type(params[par]) is list:
+                    if len(params[par]) == n:
+                        listed.append(par)
+                    else:
+                        raise ValueError('branch_params list has incorrect size')
             elif (type(params[par]) is list) or (type(params[par]) is np.ndarray):
                 if len(params[par]) == n:
                     listed.append(par)
