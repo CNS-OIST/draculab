@@ -142,7 +142,20 @@ class unit():
                     zip(self.net.syns[self.ID], self.net.act[self.ID], self.net.delays[self.ID]) ) )
 
 
-    def get_mp_input_sum(self, time):
+    def get_mp_inputs(self, time):
+        """
+        Returns a list with all the inputs, arranged by input port.
+
+        This method is for units where multi_port = True, and that have a port_idx attribute.
+
+        The i-th element of the returned list is a numpy array containing the raw (not multiplied
+        by the synaptic weight) inputs at port i. The inputs include transmision delays. 
+        """
+        return [ np.array([self.net.act[self.ID][idx](time - self.net.delays[self.ID][idx]) for idx in idx_list]) 
+                 for idx_list in self.port_idx ]
+
+
+    def get_plant_mp_input_sum(self, time):
         """
         Returns the sum of inputs scaled by their weights, assuming there are multiple input ports.
 
@@ -188,6 +201,18 @@ class unit():
         """
         # if you include axo-axonic connections you have to modify the list below
         return [ synapse.get_w(time) for synapse in self.net.syns[self.ID] ]
+
+
+    def get_mp_weights(self, time):
+        """ 
+        Returns a list with the weights corresponding to the list obtained with get_mp_inputs.
+
+        This method is for units where multi_port = True, and that have a port_idx attribute.
+
+        The i-th element of the returned list is a numpy array with the weights of the
+        synapses where port = i.
+        """
+        return [ np.array([self.net.syns[self.ID][idx].w for idx in idx_list]) for idx_list in self.port_idx ]
 
 
     def update(self,time):
@@ -457,12 +482,15 @@ class unit():
 
         # If we require support for multiple input ports, create the port_idx list.
         # port_idx is a list whose elements are numpy arrays of integers.
-        # port_idx[i] contains the indexes (in net.syns[self.ID], net.delays[self.ID], and net.act[self.ID])
+        # port_idx[i] contains the indexes in net.syns[self.ID] (or net.delays[self.ID], or net.act[self.ID])
         # of the synapses whose input port is 'i'.
-        if multi_port is True:
-            self.port_idx = [ [] for _ in range(n_ports) ]
-        for idx, syn in enumerate(net.syns[self.ID]):
-            self.port_idx[syn.port].append(idx) 
+        if self.multi_port is True:
+            self.port_idx = [ [] for _ in range(self.n_ports) ]
+            for idx, syn in enumerate(self.net.syns[self.ID]):
+                if syn.port >= self.n_ports:
+                    raise ValueError('Found a synapse input port larger than or equal to the number of ports')
+                else:
+                    self.port_idx[syn.port].append(idx) 
 
 
 
@@ -1046,7 +1074,11 @@ class linear(unit):
    
 
 class mp_linear(unit):
-    """ Same as the linear unit, but with several input ports; useful for tests."""
+    """ Same as the linear unit, but with several input ports; useful for tests.
+    
+        Current version is only configured to receive inputs from a plant, and to
+        treat inputs at all ports equally.
+    """
 
     def __init__(self, ID, params, network):
         """ The unit constructor.
@@ -1071,7 +1103,7 @@ class mp_linear(unit):
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
-        return (self.get_mp_input_sum(t) - y[0]) * self.rtau
+        return (self.get_plant_mp_input_sum(t) - y[0]) * self.rtau
  
 
 class custom_fi(unit): 
@@ -1473,10 +1505,10 @@ class double_sigma(unit):
                             of branches. Each entry is a positive number, and all entries must add to 1.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
-                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a scalar value,
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value,
                             resulting in all values being the same, or it can be a list of length n_ports
                             specifying the slope for each branch.
-                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a scalar 
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
                             value, resulting in all values being the same, or it can be a list of length 
                             n_ports specifying the threshold for each branch.
                         
@@ -1503,6 +1535,11 @@ class double_sigma(unit):
         # testing the parameters
         if self.n_ports != len(self.br_w):
             raise ValueError('Number of ports should equal the length of the branch_w parameter')
+        elif min(self.br_w) <= 0:
+            raise ValueError('Elements of branch_w should be positive')
+        elif sum(self.br_w) - 1. > 1e-6:
+            raise ValueError('Elements of branch_w should add to 1')
+
         if type(br_pars['slopes']) is list: 
             if len(br_pars['slopes']) == n_ports:
                 self.slopes = br_pars['slopes']    # slope of the local sigmoidal functions

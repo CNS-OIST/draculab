@@ -248,7 +248,10 @@ class network():
                 OPTIONAL PARAMETERS
                 'inp_ports' : input ports of the connections. Either a single integer, or a list.
                             If using a list, its length must match the number of connections being
-                            created, which depends on the conection rule.
+                            created, which depends on the conection rule. The first entries in the
+                            list correspond to the connections from unit 'from_list[0]', the following
+                            to the connections from unit 'from_list[1]', and so on. In practice it is
+                            not recommended to use many input ports in a single call to 'connect'.
                     
         Raises:
             ValueError, TypeError, NotImplementedError.

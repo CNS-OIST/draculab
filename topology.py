@@ -247,7 +247,11 @@ class topology():
                 OPTIONAL PARAMETERS
                 'inp_ports' : input ports of the connections. Either a single integer, or a list.
                             If using a list, its length must match the number of connections being
-                            created, which depends on the conection rule.
+                            created, which depends on the conection rule. The first entries in the
+                            list correspond to the connections from unit 'from_list[0]', the following
+                            to the connections from unit 'from_list[1]', and so on. It is not 
+                            recommended to use several input ports in a single call to 'topo_connect'.
+
                          
         Raises:
             ValueError, NotImplementedError, TypeError, KeyError
