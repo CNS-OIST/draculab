@@ -32,6 +32,7 @@ class ei_net():
         set_param : changes a value in a parameter dictionary.
         build : creates units and connects them.
         run : runs simulations.
+        mr_run : runs simulations for units with multiple input ports.
         basic_plot, act_anim, hist_anim, double_anim : result visualization.
         conn_anim : connections visualization.
         annotate : append a line with text in the ei_net.notes string.
@@ -39,6 +40,7 @@ class ei_net():
         save : pickle the object and save it in a file.
         -------- 
         make_sin_pulse, input_vector, default_inp_pat, default_inp_fun : auxiliary to 'run'.
+        default_mr_inp_pat : auxiliary to mr_run.
         make_inp_fun : auxiliary to default_inp_fun.
         H : the Heaviside step function. Auxiliary to make_inp_fun.
         color_fun : auxiliary to act_anim and double_anim.
@@ -129,6 +131,12 @@ class ei_net():
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
             'omega' : 1.5, # for sq_hebb_subsnorm synapses
+            'n_ports' : 1, # multiport units will alter this
+            'branch_params' : { # for the double_sigma family of units
+                    'branch_w' : [1.],
+                    'slopes' : 1.,
+                    'threshs' : 0. },
+            'phi' : 0.5, # for some of the double_sigma units
             'type' : unit_types.sigmoidal }
         self.i_pars = {'init_val_min' : 0.001,
             'init_val_wid' : 1.,
@@ -147,6 +155,12 @@ class ei_net():
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
             'omega' : 1.5, # for sq_hebb_subsnorm synapses
+            'n_ports' : 1, # multiport units will alter this
+            'branch_params' : { # for the double_sigma family of units
+                    'branch_w' : [1.],
+                    'slopes' : 1.,
+                    'threshs' : 0. },
+            'phi' : 0.5, # for some of the double_sigma units
             'type' : unit_types.sigmoidal }
         self.x_pars = {'type' : unit_types.source,
             'init_val' : 0.,
@@ -216,6 +230,7 @@ class ei_net():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
         self.ei_syn = {'type' : synapse_types.static,
@@ -223,6 +238,7 @@ class ei_net():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
         self.ie_syn = {'type' : synapse_types.static,
@@ -230,6 +246,7 @@ class ei_net():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
         self.ii_syn = {'type' : synapse_types.static,
@@ -237,6 +254,7 @@ class ei_net():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
         self.xe_syn = {'type' : synapse_types.static,
@@ -244,6 +262,7 @@ class ei_net():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
         self.xi_syn = {'type' : synapse_types.static,
@@ -251,6 +270,7 @@ class ei_net():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
         
@@ -424,7 +444,7 @@ class ei_net():
             
             set_inp_pat(pres, rows, columns)
                 # Given a presentation number and the number of rows and columns in the input layer, 
-                # returns an input pattern, which is a 1-D numpy array with the value thate the input 
+                # returns an input pattern, which is a 1-D numpy array with the value that the input 
                 # function should attain during the presentation.
                 # To map a given pair (r,c) to its corresponding entry in the returned vector use:
                 # idx = rows*c + r, 
@@ -494,7 +514,115 @@ class ei_net():
         else:
             print('Total execution time is %s seconds' % (time.time() - start_time)) 
         return self # see rant on multiprocessing    
-    
+
+
+    def default_mr_inp_pat(self, pres, rows, columns, port):
+        """ A default set_mr_inp_pat argument for the mr_run() method. 
+
+            The returned input patterns are random vectors with some unit norm. 
+            Port number is ignored.
+        """
+        n = rows*columns
+        vec = np.zeros(n)
+        k = min(2, n)
+        vec[np.random.choice(n, k, replace=False)] = 1./k
+        return vec
+
+
+    def mr_run(self, n_pres,  pres_time, set_mr_inp_pat=None, set_inp_fun=None):
+        """ Run a simulation, presenting n_pres patterns, each lasting pres_time. 
+        
+            Units may have multiple input ports (multiple receivers or multiple dendritic branches). 
+            All target units should have the same number of ports.
+
+            It is assumed that the grid of input units was connected so that units in column 'p'
+            are the inputs to port 'p' or the e,i populations. Thus, the number of columns should
+            equal the number of distinct ports to be targeted, and the number of rows should equal
+            the number different inputs to provide at each port.
+
+            n_pres : number of pattern presentations to simulate.
+            pres_time : time that each pattern presentation will last.
+
+            At the beginning of each presentation, the method set_mr_inp_pat is called. This creates a new
+            pattern to be presented. Then the set_inp_fun method is called, which sets the functions
+            of the input units based on the new pattern.
+            
+            set_mr_inp_pat(pres, rows, columns, port)
+                # Given a presentation number, the number of rows and columns in the input layer, and
+                # the port where the input should be applied, returns an input pattern, which is a 1-D 
+                # numpy array with the value that the input function should attain during the presentation.
+                # To map a given pair (r,c) to its corresponding entry in the returned vector use:
+                # idx = rows*c + r, 
+                # e.g. input[idx] corresponds to the unit in row r, and column c, with the indexes starting
+                # from 0. This is consistent with the way coordinates are assigned in topology.create_group,
+                # and the 2-D pattern can be recovered with numpy.reshape(input, (rows, columns)).
+                
+            set_inp_fun(prev_inp_pat, cur_inp_pat, init_time, pres_time, inp_units))
+                # Assigns a Python function to each of the input units.
+                # pre_inp_pat : input pattern from the previous presentation (in the format of set_inp_pat).
+                # cur_inp_pat : current input pattern.
+                # init_time : time when the presentation will start.
+                # pres_time : duration of the presentation.
+                # inp_units : a list with the input units (e.g. "x").
+
+            If the set_inp_pat or set_inp_fun arguments are not provided, the class defaults are used.
+            
+            Updates:
+                self.all_times: 1-D numpy array with the times for each data point in all_activs.
+                self.all_activs: 2-D numpy array with the activity of all units at each point in all_times. 
+        """
+        # store a record of this simulation
+        self.history.append('mr_run(n_pres=%d, pres_time=%f, ...)' % (n_pres, pres_time)) 
+        # initialize storage of results
+        self.all_times = []
+        self.all_activs = []
+        # initialize other variables
+        ports = self.x_geom['columns']
+        xrows = self.x_geom['rows']
+        if not set_mr_inp_pat:
+            set_mr_inp_pat = self.default_mr_inp_pat
+        if not set_inp_fun:
+            set_inp_fun = self.default_inp_fun
+        start_time = time.time()
+        inp_units = [self.net.units[i] for i in self.x]
+        self.inp_pat = [set_mr_inp_pat(0, self.x_geom['rows'], self.x_geom['columns'],p) for p in range(ports)]
+        # present input patterns
+        for pres in range(n_pres):
+            if self.net_number: # != None:
+                print('Starting presentation %d at network %d' % (pres, self.net_number))
+            else:
+                print('Simulating presentation ' + str(pres), end='\r')
+            pres_start = time.time()
+            t = self.net.sim_time
+
+            # Creating input pattern
+            prev_pat = self.inp_pat
+            self.inp_pat = [set_mr_inp_pat(pres, self.x_geom['rows'], self.x_geom['columns'],p) for p in range(ports)]
+
+            # Setting input functions
+            for p in range(ports):
+                # this assumes inp_units[idx] is the element (row,col) s.t. idx = xrows*col + row
+                # In other words, each column is an input pattern
+                set_inp_fun(prev_pat[p], self.inp_pat[p], t, pres_time, inp_units[xrows*p:xrows*(p+1)])
+
+            times, activs, plants = self.net.run(pres_time)
+            self.all_times.append(times)
+            self.all_activs.append(activs)
+            if self.net_number: #!= None:
+                print('Presentation %s took %s seconds at network %d.' % (pres, time.time() - pres_start, self.net_number), end='\n')
+            else:
+                print('Presentation %s took %s seconds.' % (pres, time.time() - pres_start), end='\n')
+
+        self.all_times = np.concatenate(self.all_times)
+        self.all_activs = np.concatenate(self.all_activs, axis=1)
+        if self.net_number: #!= None:
+            print('Total execution time is %s seconds at network %d' % (time.time() - start_time,self.net_number)) 
+            print('----------------------')
+        else:
+            print('Total execution time is %s seconds' % (time.time() - start_time)) 
+        return self # see rant on multiprocessing   
+
+
     def basic_plot(self):
         #%matplotlib inline
         # Plot the inputs

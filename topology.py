@@ -89,6 +89,9 @@ class topology():
         """
         if geometry['shape'] == 'sheet':
             if geometry['arrangement'] == 'grid':
+                # a degenerate case
+                if geometry['rows'] == 0 or geometry['columns'] == 0:
+                    return []
                 # generate a list with the coodinates for each point of the grid
                 xbit = geometry['extent'][0]/geometry['columns'] # size of intervals on x-axis
                 ybit = geometry['extent'][1]/geometry['rows']    # size of intervals on y-axis
@@ -237,10 +240,18 @@ class topology():
             syn_spec: A dictionary used to initialize the synapses in the connections.
                 REQUIRED PARAMETERS
                 'type' : a synapse type from the synapse_types enum.
-                'init_w' : Initial weight values. Either a dictionary specifying a distribution, or a
-                        scalar value to be applied for all created synapses. Distributions:
-                        'uniform' - the delay dictionary must also include 'low' and 'high' values.
+                'init_w' : Initial weight values. Either a dictionary specifying a distribution, a
+                        scalar value to be applied for all created synapses, or a list with length equal
+                        to the number of connections to be made. Distributions:
+                        'uniform' : the delay dictionary must also include 'low' and 'high' values.
                         Example: {..., 'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.} }
+                        'equal_norm' : the weight vectors for units in 'to_list' are uniformly sampled
+                                      from the space of vectors with a given norm. The delay
+                                      dictionary must also include the 'norm' parameter.
+                        Example: {..., 'init_w':{'distribution':'equal_norm', 'norm':1.5} }
+                        If using a list to specify the initial weights, the first entries in the
+                        list correspond to the connections from unit 'from_list[0]', the following
+                        to the connections from unit 'from_list[1]', and so on.
                         Notice that these values will be overwritten whenever there is a 'weights'
                         entry in the conn_spec dictionary. When 'weights' is in conn_spec, 'init_w'
                         is not a required parameter.
@@ -262,6 +273,11 @@ class topology():
         """
         # TODO: it would be very easy to implement the 'targets' option by reducing the to_list to 
         # those units of a particular type at this point. I don't need that feature now, though.
+
+        if to_list == [] or from_list == []: # handling a fringe scenario
+            from warnings import warn
+            warn('topo_connect received an empty list as an argument', UserWarning)
+            return
 
         # If the coordinates of from_list units need to be transformed, we do it now
         if 'transform' in conn_spec and callable(conn_spec['transform']):

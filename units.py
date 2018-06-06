@@ -1498,21 +1498,26 @@ class double_sigma(unit):
 
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS 
-                'slope_out' : Slope of the global sigmoidal function.
-                'thresh_out' : Threshold of the global sigmoidal function. 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
                             of branches. Each entry is a positive number, and all entries must add to 1.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
-                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value,
-                            resulting in all values being the same, or it can be a list of length n_ports
-                            specifying the slope for each branch.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
                     'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
-                            value, resulting in all values being the same, or it can be a list of length 
-                            n_ports specifying the threshold for each branch.
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
+                'phi' : -phi is the minimum value of the branche's contribution.
         Raises:
             ValueError, NameError
 
@@ -1523,43 +1528,80 @@ class double_sigma(unit):
         super(double_sigma, self).__init__(ID, params, network)
         if not hasattr(self,'n_ports'): 
             raise NameError( 'Number of ports should be included in the parameters' )
-        self.slope_out = params['slope_out']    # slope of the global sigmoidal function
-        self.thresh_out = params['thresh_out']  # horizontal displacement of the global sigmoidal
+        self.slope = params['slope']    # slope of the global sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the global sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
+        self.phi = params['phi'] # substractive factor for the inner sigmoidals
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         br_pars = params['branch_params']  # to make the following lines shorter
         self.br_w = br_pars['branch_w'] # weight factors for all branches
         if self.n_ports > 1:
             self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
      
-        # testing the parameters
+        # testing and initializing the branch parameters
         if self.n_ports != len(self.br_w):
             raise ValueError('Number of ports should equal the length of the branch_w parameter')
         elif min(self.br_w) <= 0:
             raise ValueError('Elements of branch_w should be positive')
-        elif sum(self.br_w) - 1. > 1e-6:
+        elif sum(self.br_w) - 1. > 1e-4:
             raise ValueError('Elements of branch_w should add to 1')
-
+        #
         if type(br_pars['slopes']) is list: 
             if len(br_pars['slopes']) == n_ports:
                 self.slopes = br_pars['slopes']    # slope of the local sigmoidal functions
             else:
                 raise ValueError('Number of ports should equal the length of the slopes parameter')
-        elif type(br_pars['slopes']) == float:
+        elif type(br_pars['slopes']) == float or type(br_pars['slopes']) == int:
                 self.slopes = [br_pars['slopes']]*self.n_ports
+        elif type(br_pars['slopes']) == dict:
+            if br_pars['slopes']['distribution'] == 'uniform':
+                self.slopes = np.random.uniform(br_pars['slopes']['low'], br_pars['slopes']['high'], self.n_ports)
+            else:
+                raise ValueError('Unknown distribution used to specify branch slopes')
         else:
             raise ValueError('Invalid type for slopes parameter')
-        
+        #
         if type(br_pars['threshs']) is list: 
             if len(br_pars['threshs']) == n_ports:
                 self.threshs= br_pars['threshs']    # threshold of the local sigmoidal functions
             else:
                 raise ValueError('Number of ports should equal the length of the slopes parameter')
-        elif type(br_pars['threshs']) == float:
+        elif type(br_pars['threshs']) == float or type(br_pars['threshs']) == int:
                 self.threshs = [br_pars['threshs']]*self.n_ports
+        elif type(br_pars['threshs']) == dict:
+            if br_pars['threshs']['distribution'] == 'uniform':
+                self.threshs= np.random.uniform(br_pars['threshs']['low'], br_pars['threshs']['high'], self.n_ports)  
+            else:
+                raise ValueError('Unknown distribution used to specify branch thresholds')
         else:
             raise ValueError('Invalid type for threshs parameter')
 
+ 
+    def f(self, thresh, slope, arg):
+        """ The sigmoidal function, with parameters given explicitly."""
+        return 1. / (1. + np.exp(-slope*(arg - thresh)))
+    
+    
+    def get_mp_input_sum(self, time):
+        """ The input function of the double sigma unit. """
+        # The two versions below require almost identical times
+        #
+        # version 1. The big zip
+        return sum( [ o*(self.f(th,sl,np.dot(w,i)) - self.phi) for o,th,sl,w,i in 
+                      zip(self.br_w, self.threshs, self.slopes, 
+                          self.get_mp_weights(time), self.get_mp_inputs(time))  ] )
+        # version 2. The accumulator
+        #ret = 0.
+        #w = self.get_mp_weights(time)
+        #inp = self.get_mp_inputs(time)
+        #for i in range(self.n_ports):
+        #    ret += self.br_w[i] * (self.f(self.threshs[i], self.slopes[i], np.dot(w[i],inp[i]))-self.phi)
+        #return ret
+    
+
+    def derivatives(self, y, t):
+        """ This function returns the derivative of the activity given its current values. """
+        return ( self.f(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
 
 
 class double_sigma_nrml(unit):
@@ -1612,6 +1654,144 @@ class double_sigma_nrml(unit):
         self.br_w = params['branch_w'] # weight factors for all branches
  
 
+class sigma_double_sigma(unit):
+    """ 
+    Sigmoidal with somatic inputs and dendritic branches modeled as sigmoidal units.
+
+    This model is a combination of the sigmoidal and double_sigma models, in recognition that
+    a neuron usually receives inputs directly to the soma.
+
+    There are two types of inputs. Somatic inputs arrive at port 0 (the default port), and are
+    just like inputs to the sigmoidal units. Dendritic inputs arrive at ports with with ID 
+    larger than 0, and are just like inputs to double_sigma units.
+
+    Each dendritic input belongs to a particular "branch". All inputs from the same branch add 
+    linearly, and the sum is fed into a sigmoidal function that produces the output of the branch. 
+    The output of all the branches is added linearly to produce the total input to the unit, 
+    which is fed into a sigmoidal function to produce the output of the unit.
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+
+    These type of units implement a type of soft constraint satisfaction. According to how
+    the parameters are set, they might activate only when certain input branches receive
+    enough stimulation.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports is no longer optional.
+                'n_ports' : number of inputs ports. Defaults to 1.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+        Raises:
+            ValueError, NameError
+
+        """
+        # branch_w, slopes, and threshs are inside the branch_params dictionary because if they
+        # were lists then network.create_units would interpret them as values to assign to separate units.
+
+        super(double_sigma, self).__init__(ID, params, network)
+        if not hasattr(self,'n_ports'): 
+            raise NameError( 'Number of ports should be included in the parameters' )
+        self.slope = params['slope']    # slope of the global sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the global sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        br_pars = params['branch_params']  # to make the following lines shorter
+        self.br_w = br_pars['branch_w'] # weight factors for all branches
+        if self.n_ports > 1:
+            self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
+     
+        # testing and initializing the branch parameters
+        if self.n_ports != len(self.br_w):
+            raise ValueError('Number of ports should equal the length of the branch_w parameter')
+        elif min(self.br_w) <= 0:
+            raise ValueError('Elements of branch_w should be positive')
+        elif sum(self.br_w) - 1. > 1e-4:
+            raise ValueError('Elements of branch_w should add to 1')
+        #
+        if type(br_pars['slopes']) is list: 
+            if len(br_pars['slopes']) == n_ports:
+                self.slopes = br_pars['slopes']    # slope of the local sigmoidal functions
+            else:
+                raise ValueError('Number of ports should equal the length of the slopes parameter')
+        elif type(br_pars['slopes']) == float or type(br_pars['slopes']) == int:
+                self.slopes = [br_pars['slopes']]*self.n_ports
+        elif type(br_pars['slopes']) == dict:
+            if br_pars['slopes']['distribution'] == 'uniform':
+                self.slopes = np.random.uniform(br_pars['slopes']['low'], br_pars['slopes']['high'], self.n_ports)
+            else:
+                raise ValueError('Unknown distribution used to specify branch slopes')
+        else:
+            raise ValueError('Invalid type for slopes parameter')
+        #
+        if type(br_pars['threshs']) is list: 
+            if len(br_pars['threshs']) == n_ports:
+                self.threshs= br_pars['threshs']    # threshold of the local sigmoidal functions
+            else:
+                raise ValueError('Number of ports should equal the length of the slopes parameter')
+        elif type(br_pars['threshs']) == float or type(br_pars['threshs']) == int:
+                self.threshs = [br_pars['threshs']]*self.n_ports
+        elif type(br_pars['threshs']) == dict:
+            if br_pars['threshs']['distribution'] == 'uniform':
+                self.threshs= np.random.uniform(br_pars['threshs']['low'], br_pars['threshs']['high'], self.n_ports)  
+            else:
+                raise ValueError('Unknown distribution used to specify branch thresholds')
+        else:
+            raise ValueError('Invalid type for threshs parameter')
+
+ 
+    def f(self, thresh, slope, arg):
+        """ The sigmoidal function, with parameters given explicitly."""
+        return 1. / (1. + np.exp(-slope*(arg - thresh)))
+    
+    
+    def get_mp_input_sum(self, time):
+        """ The input function of the double sigma unit. """
+        # The two versions below require almost identical times
+        #
+        # version 1. The big zip
+        return sum( [ o*self.f(th,sl,np.dot(w,i)) for o,th,sl,w,i in 
+                      zip(self.br_w, self.threshs, self.slopes, 
+                          self.get_mp_weights(time), self.get_mp_inputs(time))  ] )
+        # version 2. The accumulator
+        #ret = 0.
+        #w = self.get_mp_weights(time)
+        #inp = self.get_mp_inputs(time)
+        #for i in range(self.n_ports):
+        #    ret += self.br_w[i] * self.f(self.threshs[i], self.slopes[i], np.dot(w[i],inp[i]))
+        #return ret
+    
+
+    def derivatives(self, y, t):
+        """ This function returns the derivative of the activity given its current values. """
+        return ( self.f(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+
+
+
 
 class ds_trdc_unit(unit):
     """ double-sigma unit with threshold-based rate distribution control.
@@ -1624,3 +1804,7 @@ class ds_trdc_unit(unit):
         this is a skeleton.
         """
         return
+
+
+
+

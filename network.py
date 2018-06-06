@@ -244,6 +244,9 @@ class network():
                                       from the space of vectors with a given norm. The delay
                                       dictionary must also include the 'norm' parameter.
                         Example: {..., 'init_w':{'distribution':'equal_norm', 'norm':1.5} }
+                        If using a list to specify the initial weights, the first entries in the
+                        list correspond to the connections from unit 'from_list[0]', the following
+                        to the connections from unit 'from_list[1]', and so on.
                 Any other required parameters (e.g. 'lrate') depend on the synapse type.
                 OPTIONAL PARAMETERS
                 'inp_ports' : input ports of the connections. Either a single integer, or a list.
