@@ -22,6 +22,9 @@ class unit_types(Enum):
     exp_dist_sig = 8
     exp_dist_sig_thr = 9
     double_sigma = 10
+    sigma_double_sigma = 11
+    double_sigma_n = 12
+    double_sigma_trdc = 13
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -54,6 +57,12 @@ class unit_types(Enum):
             unit_class = exp_dist_sig_thr
         elif self == unit_types.double_sigma:
             unit_class = double_sigma
+        elif self == unit_types.sigma_double_sigma:
+            unit_class = sigma_double_sigma
+        elif self == unit_types.double_sigma_n:
+            unit_class = double_sigma_normal
+        elif self == unit_types.double_sigma_trdc:
+            unit_class = double_sigma_trdc
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?
@@ -176,14 +185,11 @@ class syn_reqs(Enum):
     exp_scale = 17 # synaptic scaling to produce an exponential firing rate distribution
     inp_vector = 18 # the current "raw" input vector in a numpy array
     slide_thresh = 19 # An activation threshold that adjusts to produce an exp firing rate distro
+    lpf_slow_mp_inp_sum = 20 # slow LPF'd scaled sum of inputs from individual ports
+    mp_inputs = 21 # the multiport inputs, as returned by the get_mp_inputs method
+    balance_mp = 22 # the multiport version of the 'balance' requirement above
 
 
-    '''
-    sum_w = x     # The sum of the weights of all the synapses of the unit  << NOT IMPLEMENTED
-    w_list = x    # A list with the weights of all synapses of the unit   << NOT IMPLEMENTED
-    inputs = x    # A list with all the inputs of the unit   << NOT IMPLEMENTED
-    inp_sum = x  # The sum of all presynaptic inputs   << NOT IMPLEMENTED
-    '''
 
 
 # Importing the classes used by the simulator

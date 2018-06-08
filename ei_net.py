@@ -461,6 +461,10 @@ class ei_net():
                 # inp_units : a list with the input units (e.g. "x").
 
             If the set_inp_pat or set_inp_fun arguments are not provided, the class defaults are used.
+
+            This method can be used with multiport units, as long as all the inputs arrive at the same port.
+            If the x population sends signals to distinct ports in the e or i populations mr_run should
+            be used instead.
             
             Updates:
                 self.all_times: 1-D numpy array with the times for each data point in all_activs.
@@ -532,13 +536,14 @@ class ei_net():
     def mr_run(self, n_pres,  pres_time, set_mr_inp_pat=None, set_inp_fun=None):
         """ Run a simulation, presenting n_pres patterns, each lasting pres_time. 
         
-            Units may have multiple input ports (multiple receivers or multiple dendritic branches). 
+            This method is used instead of 'run' when units have multiple input ports (multiple 
+            receivers or multiple dendritic branches), and the inputs target more than one of them.
             All target units should have the same number of ports.
 
-            It is assumed that the grid of input units was connected so that units in column 'p'
-            are the inputs to port 'p' or the e,i populations. Thus, the number of columns should
-            equal the number of distinct ports to be targeted, and the number of rows should equal
-            the number different inputs to provide at each port.
+            It is assumed that the grid of input units is connected so that units in column 'p' are 
+            the inputs to port 'p' of the e,i populations. Thus, the number of columns should equal 
+            the number of distinct ports to be targeted, and the number of rows should equal the number 
+            of different inputs to provide at each port.
 
             n_pres : number of pattern presentations to simulate.
             pres_time : time that each pattern presentation will last.
