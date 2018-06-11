@@ -66,8 +66,9 @@ class unit():
         if 'n_ports' in params: self.n_ports = params['n_ports']
         else: self.n_ports = 1
 
-        self.multi_port = False # If True, the port_idx list is created in init_pre_syn_update in
-                                # order to support customized get_mp_input* functions 
+        if self.n_ports < 2:
+            self.multi_port = False # If True, the port_idx list is created in init_pre_syn_update in
+                                    # order to support customized get_mp_input* functions 
 
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
@@ -500,6 +501,12 @@ class unit():
                 if (not syn_reqs.balance in self.syn_needs) and (not syn_reqs.balance_mp in self.syn_needs):
                     raise AssertionError('slide_thresh requires the balance(_mp) requirement to be set')
                 self.functions.add(self.upd_thresh)
+            elif req is syn_reqs.slide_thr_shrp:  # <----------------------------------
+                if (not syn_reqs.balance in self.syn_needs) and (not syn_reqs.balance_mp in self.syn_needs):
+                    raise AssertionError('slide_thr_shrp requires the balance(_mp) requirement to be set')
+                if not self.multiport:
+                    raise AssertionError('The slide_thr_shrp is for multiport units only')
+                self.functions.add(self.upd_thr_shrp)
             elif req is syn_reqs.lpf_slow_mp_inp_sum:  # <----------------------------------
                 if not hasattr(self,'tau_slow'): 
                     raise NameError( 'Requirement lpf_slow_mp_inp_sum requires parameter tau_slow, not yet set' )
@@ -717,7 +724,7 @@ class unit():
             the population of units that connect to port 0.
 
         """
-        inputs = self.mp_inputs[0]
+        inputs = self.mp_inputs[self.rdc_port]
         N = len(inputs)
         r = self.buffer[-1] # current rate
         self.above = ( 0.5 * (np.sign(inputs - r) + 1.).sum() ) / N
@@ -895,7 +902,7 @@ class unit():
 
 
     def upd_thresh(self, time):
-        """ Updates the threshold of exp_dist_sig_thr units.
+        """ Updates the threshold of exp_dist_sig_thr units and some other 'trdc' units.
 
             The algorithm is an adapted version of the  one used in exp_rate_dist synapses.
         """
@@ -917,6 +924,26 @@ class unit():
         ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
         self.scale_facs[self.exc_idx] += self.tau_scale * (ss_scale/weights[self.exc_idx] - self.scale_facs[self.exc_idx])
         """
+
+
+def upd_thr_shrp(self, time):
+        """ Updates the threshold of trdc units when input at 'sharpen' port is larger than 0.5 .
+
+            The algorithm is based on upd_thresh.
+        """
+        idxs = port_idx[self.sharpen_port]
+        inps = self.mp_inputs[sharpen_port]
+        ws = [self.net.syns[self.ID][idx] for idx in idxs]
+        sharpen = sum( [w*i for w,i in zip(ws, inps)] )
+            
+        if sharpen > 0.5:
+            r = self.get_lpf_fast(0)
+            r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
+            exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+            error = self.below - self.above - 2.*exp_cdf + 1. 
+            self.thresh -= self.tau_thr * error
+        else:
+            self.thresh += self.thr_tau * (self.thr_fix - self.thresh)
 
 
 
@@ -1520,24 +1547,8 @@ class exp_dist_sig_thr(unit):
         return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
  
 
-class double_sigma(unit):
-    """ 
-    Sigmoidal unit with multiple dendritic branches modeled as sigmoidal units.
-
-    This model is inspired by:
-    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
-
-    Each input belongs to a particular "branch". All inputs from the same branch add 
-    linearly, and the sum is fed into a sigmoidal function that produces the output of the branch. 
-    The output of all the branches is added linearly to produce the total input to the unit, 
-    which is fed into a sigmoidal function to produce the output of the unit.
-
-    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
-
-    These type of units implement a type of soft constraint satisfaction. According to how
-    the parameters are set, they might activate only when certain input branches receive
-    enough stimulation.
-    """
+class double_sigma_base(unit):
+    """ The parent class for units in the double sigma family. """
 
     def __init__(self, ID, params, network):
         """ The unit constructor.
@@ -1545,7 +1556,7 @@ class double_sigma(unit):
         Args:
             ID, params, network: same as in the parent's constructor.
             n_ports is no longer optional.
-                'n_ports' : number of inputs ports. Defaults to 1.
+                'n_ports' : number of inputs ports. 
 
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS 
@@ -1576,7 +1587,7 @@ class double_sigma(unit):
         # branch_w, slopes, and threshs are inside the branch_params dictionary because if they
         # were lists then network.create_units would interpret them as values to assign to separate units.
 
-        super(double_sigma, self).__init__(ID, params, network)
+        super().__init__(ID, params, network)
         if not hasattr(self,'n_ports'): 
             raise NameError( 'Number of ports should be included in the parameters' )
         self.slope = params['slope']    # slope of the global sigmoidal function
@@ -1586,42 +1597,54 @@ class double_sigma(unit):
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         br_pars = params['branch_params']  # to make the following lines shorter
         self.br_w = br_pars['branch_w'] # weight factors for all branches
+        if not hasattr(self,'soma'):
+            self.soma = False   # soma is True for 'sigma_double_sigma'-type units
         if self.n_ports > 1:
             self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
+        else:
+            if self.soma:
+                raise ValueError('double_sigma units with somatic inputs require at least two ports')
+
+        if self.soma:
+            ports = self.n_ports - 1
+            txt = ' minus one '
+        else:
+            ports = self.n_ports
+            txt = ' '
      
         # testing and initializing the branch parameters
-        if self.n_ports != len(self.br_w):
-            raise ValueError('Number of ports should equal the length of the branch_w parameter')
+        if ports != len(self.br_w):
+            raise ValueError('Number of ports'+txt+'should equal the length of the branch_w parameter')
         elif min(self.br_w) <= 0:
             raise ValueError('Elements of branch_w should be positive')
         elif sum(self.br_w) - 1. > 1e-4:
             raise ValueError('Elements of branch_w should add to 1')
         #
         if type(br_pars['slopes']) is list: 
-            if len(br_pars['slopes']) == n_ports:
+            if len(br_pars['slopes']) == ports:
                 self.slopes = br_pars['slopes']    # slope of the local sigmoidal functions
             else:
-                raise ValueError('Number of ports should equal the length of the slopes parameter')
+                raise ValueError('Number of ports'+txt+'should equal the length of the slopes parameter')
         elif type(br_pars['slopes']) == float or type(br_pars['slopes']) == int:
-                self.slopes = [br_pars['slopes']]*self.n_ports
+                self.slopes = [br_pars['slopes']]*ports
         elif type(br_pars['slopes']) == dict:
             if br_pars['slopes']['distribution'] == 'uniform':
-                self.slopes = np.random.uniform(br_pars['slopes']['low'], br_pars['slopes']['high'], self.n_ports)
+                self.slopes = np.random.uniform(br_pars['slopes']['low'], br_pars['slopes']['high'], ports)
             else:
                 raise ValueError('Unknown distribution used to specify branch slopes')
         else:
             raise ValueError('Invalid type for slopes parameter')
         #
         if type(br_pars['threshs']) is list: 
-            if len(br_pars['threshs']) == n_ports:
+            if len(br_pars['threshs']) == ports:
                 self.threshs= br_pars['threshs']    # threshold of the local sigmoidal functions
             else:
-                raise ValueError('Number of ports should equal the length of the slopes parameter')
+                raise ValueError('Number of ports'+txt+'should equal the length of the slopes parameter')
         elif type(br_pars['threshs']) == float or type(br_pars['threshs']) == int:
-                self.threshs = [br_pars['threshs']]*self.n_ports
+                self.threshs = [br_pars['threshs']]*ports
         elif type(br_pars['threshs']) == dict:
             if br_pars['threshs']['distribution'] == 'uniform':
-                self.threshs= np.random.uniform(br_pars['threshs']['low'], br_pars['threshs']['high'], self.n_ports)  
+                self.threshs= np.random.uniform(br_pars['threshs']['low'], br_pars['threshs']['high'], ports)  
             else:
                 raise ValueError('Unknown distribution used to specify branch thresholds')
         else:
@@ -1631,7 +1654,67 @@ class double_sigma(unit):
     def f(self, thresh, slope, arg):
         """ The sigmoidal function, with parameters given explicitly."""
         return 1. / (1. + np.exp(-slope*(arg - thresh)))
-    
+
+    def derivatives(self, y, t):
+        """ This function returns the derivative of the activity given its current values. """
+        return ( self.f(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+
+
+ 
+class double_sigma(double_sigma_base):
+    """ 
+    Sigmoidal unit with multiple dendritic branches modeled as sigmoidal units.
+
+    This model is inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    Each input belongs to a particular "branch". All inputs from the same branch add 
+    linearly, and the sum is fed into a sigmoidal function that produces the output of the branch. 
+    The output of all the branches is added linearly to produce the total input to the unit, 
+    which is fed into a sigmoidal function to produce the output of the unit.
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+
+    These type of units implement a type of soft constraint satisfaction. According to how
+    the parameters are set, they might activate only when certain input branches receive
+    enough stimulation.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports is no longer optional.
+                'n_ports' : number of inputs ports. 
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : -phi is the minimum value of the branches' contribution.
+        Raises:
+            ValueError, NameError
+
+        """
+        super(double_sigma, self).__init__(ID, params, network)
     
     def get_mp_input_sum(self, time):
         """ The input function of the double sigma unit. """
@@ -1648,14 +1731,9 @@ class double_sigma(unit):
         #for i in range(self.n_ports):
         #    ret += self.br_w[i] * (self.f(self.threshs[i], self.slopes[i], np.dot(w[i],inp[i]))-self.phi)
         #return ret
-    
-
-    def derivatives(self, y, t):
-        """ This function returns the derivative of the activity given its current values. """
-        return ( self.f(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
 
 
-class double_sigma_normal(unit):
+class double_sigma_normal(double_sigma_base):
     """ A version of double_sigma units where the inputs are normalized.
 
     Double sigma units are inspired by:
@@ -1680,7 +1758,7 @@ class double_sigma_normal(unit):
         Args:
             ID, params, network: same as in the parent's constructor.
             n_ports and tau_slow are  no longer optional.
-                'n_ports' : number of inputs ports. Defaults to 1.
+                'n_ports' : number of inputs ports. 
                 'tau_slow' : time constant for the slow low-pass filter.
 
             In addition, params should have the following entries.
@@ -1712,68 +1790,14 @@ class double_sigma_normal(unit):
         # branch_w, slopes, and threshs are inside the branch_params dictionary because if they
         # were lists then network.create_units would interpret them as values to assign to separate units.
 
-        super(double_sigma_normal, self).__init__(ID, params, network)
-        if not hasattr(self,'n_ports'): 
-            raise NameError( 'Number of ports should be included in the parameters' )
-        self.slope = params['slope']    # slope of the global sigmoidal function
-        self.thresh = params['thresh']  # horizontal displacement of the global sigmoidal
-        self.tau = params['tau']  # the time constant of the dynamics
-        self.phi = params['phi'] # substractive factor for the inner sigmoidals
-        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
-        br_pars = params['branch_params']  # to make the following lines shorter
-        self.br_w = br_pars['branch_w'] # weight factors for all branches
-        if self.n_ports > 1:
-            self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
+        super().__init__(ID, params, network)
         self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.lpf_slow_mp_inp_sum]) 
      
-        # testing and initializing the branch parameters
-        if self.n_ports != len(self.br_w):
-            raise ValueError('Number of ports should equal the length of the branch_w parameter')
-        elif min(self.br_w) <= 0:
-            raise ValueError('Elements of branch_w should be positive')
-        elif sum(self.br_w) - 1. > 1e-4:
-            raise ValueError('Elements of branch_w should add to 1')
-        #
-        if type(br_pars['slopes']) is list: 
-            if len(br_pars['slopes']) == n_ports:
-                self.slopes = br_pars['slopes']    # slope of the local sigmoidal functions
-            else:
-                raise ValueError('Number of ports should equal the length of the slopes parameter')
-        elif type(br_pars['slopes']) == float or type(br_pars['slopes']) == int:
-                self.slopes = [br_pars['slopes']]*self.n_ports
-        elif type(br_pars['slopes']) == dict:
-            if br_pars['slopes']['distribution'] == 'uniform':
-                self.slopes = np.random.uniform(br_pars['slopes']['low'], br_pars['slopes']['high'], self.n_ports)
-            else:
-                raise ValueError('Unknown distribution used to specify branch slopes')
-        else:
-            raise ValueError('Invalid type for slopes parameter')
-        #
-        if type(br_pars['threshs']) is list: 
-            if len(br_pars['threshs']) == n_ports:
-                self.threshs= br_pars['threshs']    # threshold of the local sigmoidal functions
-            else:
-                raise ValueError('Number of ports should equal the length of the slopes parameter')
-        elif type(br_pars['threshs']) == float or type(br_pars['threshs']) == int:
-                self.threshs = [br_pars['threshs']]*self.n_ports
-        elif type(br_pars['threshs']) == dict:
-            if br_pars['threshs']['distribution'] == 'uniform':
-                self.threshs= np.random.uniform(br_pars['threshs']['low'], br_pars['threshs']['high'], self.n_ports)  
-            else:
-                raise ValueError('Unknown distribution used to specify branch thresholds')
-        else:
-            raise ValueError('Invalid type for threshs parameter')
-
- 
-    def f(self, thresh, slope, arg):
-        """ The sigmoidal function, with parameters given explicitly."""
-        return 1. / (1. + np.exp(-slope*(arg - thresh)))
-    
     
     def get_mp_input_sum(self, time):
         """ The input function of the normalized double sigma unit. """
         # Removing zero or near-zero values from lpf_slow_mp_inp_sum
-        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-4)) for arry in self.lpf_slow_mp_inp_sum]
+        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-2)) for arry in self.lpf_slow_mp_inp_sum]
         #
         # version 1. The big zip
         return sum( [ o*( self.f(th, sl, (np.dot(w,i)-y) / y) - self.phi ) for o,th,sl,y,w,i in 
@@ -1789,15 +1813,8 @@ class double_sigma_normal(unit):
         #return ret
     
 
-    def derivatives(self, y, t):
-        """ This function returns the derivative of the activity given its current values. """
-        return ( self.f(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
 
-
-
-
- 
-class sigma_double_sigma(unit):
+class sigma_double_sigma(double_sigma_base):
     """ 
     Sigmoidal with somatic inputs and dendritic branches modeled as sigmoidal units.
 
@@ -1826,7 +1843,7 @@ class sigma_double_sigma(unit):
         Args:
             ID, params, network: same as in the parent's constructor.
             n_ports is no longer optional.
-                'n_ports' : number of inputs ports. Defaults to 1.
+                'n_ports' : number of inputs ports. 
 
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS 
@@ -1854,68 +1871,9 @@ class sigma_double_sigma(unit):
             ValueError, NameError
 
         """
-        # branch_w, slopes, and threshs are inside the branch_params dictionary because if they
-        # were lists then network.create_units would interpret them as values to assign to separate units.
-
-        super(sigma_double_sigma, self).__init__(ID, params, network)
-        if not hasattr(self,'n_ports'): 
-            raise NameError( 'Number of ports should be included in the parameters' )
-        self.slope = params['slope']    # slope of the global sigmoidal function
-        self.thresh = params['thresh']  # horizontal displacement of the global sigmoidal
-        self.tau = params['tau']  # the time constant of the dynamics
-        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
-        self.phi = params['phi'] # substractive term to the inner sigmoidal
-        br_pars = params['branch_params']  # to make the following lines shorter
-        self.br_w = br_pars['branch_w'] # weight factors for all branches
-        if self.n_ports > 1:
-            self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
-        else:
-            raise ValueError('sigma_double_sigma units require at least two ports')
-     
-        # testing and initializing the branch parameters
-        if self.n_ports-1 != len(self.br_w):
-            raise ValueError('Number of ports minus one should equal the length of the branch_w parameter')
-        elif min(self.br_w) <= 0:
-            raise ValueError('Elements of branch_w should be positive')
-        elif sum(self.br_w) - 1. > 1e-4:
-            raise ValueError('Elements of branch_w should add to 1')
-        #
-        if type(br_pars['slopes']) is list: 
-            if len(br_pars['slopes']) == n_ports-1:
-                self.slopes = br_pars['slopes']    # slope of the local sigmoidal functions
-            else:
-                raise ValueError('Number of ports minus one should equal the length of the slopes parameter')
-        elif type(br_pars['slopes']) == float or type(br_pars['slopes']) == int:
-                self.slopes = [br_pars['slopes']]*(self.n_ports-1)
-        elif type(br_pars['slopes']) == dict:
-            if br_pars['slopes']['distribution'] == 'uniform':
-                self.slopes = np.random.uniform(br_pars['slopes']['low'], br_pars['slopes']['high'], self.n_ports-1)
-            else:
-                raise ValueError('Unknown distribution used to specify branch slopes')
-        else:
-            raise ValueError('Invalid type for slopes parameter')
-        #
-        if type(br_pars['threshs']) is list: 
-            if len(br_pars['threshs']) == n_ports-1:
-                self.threshs= br_pars['threshs']    # threshold of the local sigmoidal functions
-            else:
-                raise ValueError('Number of ports minus one should equal the length of the slopes parameter')
-        elif type(br_pars['threshs']) == float or type(br_pars['threshs']) == int:
-                self.threshs = [br_pars['threshs']]*(self.n_ports-1)
-        elif type(br_pars['threshs']) == dict:
-            if br_pars['threshs']['distribution'] == 'uniform':
-                self.threshs= np.random.uniform(br_pars['threshs']['low'],br_pars['threshs']['high'],self.n_ports-1)
-            else:
-                raise ValueError('Unknown distribution used to specify branch thresholds')
-        else:
-            raise ValueError('Invalid type for threshs parameter')
-
- 
-    def f(self, thresh, slope, arg):
-        """ The sigmoidal function, with parameters given explicitly."""
-        return 1. / (1. + np.exp(-slope*(arg - thresh)))
-    
-    
+        self.soma = True # changes the initialization of the parent class' creator
+        super().__init__(ID, params, network)
+            
     def get_mp_input_sum(self, time):
         """ The input function of the sigma_double_sigma unit. """
         w = self.get_mp_weights(time)
@@ -1933,26 +1891,57 @@ class sigma_double_sigma(unit):
         #return ret
     
 
-    def derivatives(self, y, t):
-        """ This function returns the derivative of the activity given its current values. """
-        return ( self.f(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
-
-
-
-
-class ds_trdc_unit(unit):
+class multiport_trdc_base(unit):
     """ 
-
-        This is a skeleton.
+    The parent class for multiport units with threshold-based rate distribution control. 
+    
+    Based on the distribution of inputs at port 'rdc_port', this unit will use threshold-based rate
+    distribution control. If the unit is part of the population that projects to port 'rdc_port', this 
+    will contribute to produce an exponential distribution of firing rates.
+    
     """
+    # The mechanism for firing-rate distribution control is the same as the one used in the
+    # exp_dist_sig_thr units. The only difference is that the 'balance' synaptic requirement has
+    # been replaced by 'balance_mp', which uses only the inputs at port 'rdc_port'.
+
     def __init__(self, ID, params, network):
         """ The unit constructor.
 
-        this is a skeleton.
-        """
-        return
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. Needs a valuer > 1
+                'tau_fast' : Time constant for the fast low-pass filter.
 
-class double_sigma_trdc(unit):
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold. 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+        Raises:
+            ValueError
+
+        """
+        if hasattr(self, 'unit_initialized') and self.unit_initialized:
+            pass
+        else:    # if the parent constructor hasn't been called
+            super().__init__(ID, params, network)
+
+        if self.n_ports < 2:
+            raise ValueError('Multiple ports required for classes derived from multiport_trdc_base')
+        else:
+            self.multiport = True
+        self.rdc_port = params['rdc_port'] # port for rate distribution control
+        self.tau_thr = params['tau_thr']  # the threshold sliding time constant
+        self.c = params['c']  # The coefficient in the exponential distribution
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thresh, syn_reqs.lpf_fast])
+
+
+
+class double_sigma_trdc(double_sigma_base, multiport_trdc_base):
     """ 
     double-sigma unit with threshold-based rate distribution control.
 
@@ -1964,16 +1953,16 @@ class double_sigma_trdc(unit):
     The output of all the branches is added linearly to produce the total input to the unit, 
     which is fed into a sigmoidal function to produce the output of the unit.
 
-    Based on the distribution of inputs at port 0, this unit will use threshold-based rate
-    distribution control. If the unit is part of the population that projects to port 0, this will
-    contribute to produce an exponential distribution of firing rates.
+    Based on the distribution of inputs at port 'rdc_port', this unit will use threshold-based rate
+    distribution control. If the unit is part of the population that projects to port 'rdc_port', this 
+    will contribute to produce an exponential distribution of firing rates.
 
     The equations of the doulble-sigma unit can be seen in the "double_sigma_unit" tiddler of 
     the programming notes wiki.
     """
-    # The mechanism for firing-rate distribution control is the same as the one used in the
-    # exp_dist_sig_thr units. The only difference is that the 'balance' synaptic requirement has
-    # been replaced by 'balance_mp', which uses only the inputs at port 0.
+    # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+    # mutiport_trdc_base, however, only implements a constructor. This constructor will not
+    # call the unit constructor if unit_initialized=True .
 
     def __init__(self, ID, params, network):
         """ The unit constructor.
@@ -1981,7 +1970,7 @@ class double_sigma_trdc(unit):
         Args:
             ID, params, network: same as in the parent's constructor.
             n_ports and tau_fast are no longer optional.
-                'n_ports' : number of inputs ports. Defaults to 1.
+                'n_ports' : number of inputs ports. 
                 'tau_fast' : Time constant for the fast low-pass filter.
 
             In addition, params should have the following entries.
@@ -2006,6 +1995,7 @@ class double_sigma_trdc(unit):
                         
                 'tau' : Time constant of the update dynamics.
                 'phi' : -phi is the minimum value of the branches' contribution.
+                'rdc_port' : port ID of inputs used for rate distribution control.
                 'tau_thr' : sets the speed of change for the threshold. 
                 'c' : Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
@@ -2015,70 +2005,11 @@ class double_sigma_trdc(unit):
             ValueError, NameError
 
         """
-        # branch_w, slopes, and threshs are inside the branch_params dictionary because if they
-        # were lists then network.create_units would interpret them as values to assign to separate units.
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        multiport_trdc_base.__init__(self, ID, params, network)
 
-        super(double_sigma_trdc, self).__init__(ID, params, network)
-        if not hasattr(self,'n_ports'): 
-            raise NameError( 'Number of ports should be included in the parameters' )
-        self.slope = params['slope']    # slope of the global sigmoidal function
-        self.thresh = params['thresh']  # horizontal displacement of the global sigmoidal
-        self.tau = params['tau']  # the time constant of the dynamics
-        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
-        self.phi = params['phi'] # substractive factor for the inner sigmoidals
-        self.tau_thr = params['tau_thr']  # the threshold sliding time constant
-        self.c = params['c']  # The coefficient in the exponential distribution
-        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thresh, syn_reqs.lpf_fast])
-
-        br_pars = params['branch_params']  # to make the following lines shorter
-        self.br_w = br_pars['branch_w'] # weight factors for all branches
-        if self.n_ports > 1:
-            self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
-     
-        # testing and initializing the branch parameters
-        if self.n_ports != len(self.br_w):
-            raise ValueError('Number of ports should equal the length of the branch_w parameter')
-        elif min(self.br_w) <= 0:
-            raise ValueError('Elements of branch_w should be positive')
-        elif sum(self.br_w) - 1. > 1e-4:
-            raise ValueError('Elements of branch_w should add to 1')
-        #
-        if type(br_pars['slopes']) is list: 
-            if len(br_pars['slopes']) == n_ports:
-                self.slopes = br_pars['slopes']    # slope of the local sigmoidal functions
-            else:
-                raise ValueError('Number of ports should equal the length of the slopes parameter')
-        elif type(br_pars['slopes']) == float or type(br_pars['slopes']) == int:
-                self.slopes = [br_pars['slopes']]*self.n_ports
-        elif type(br_pars['slopes']) == dict:
-            if br_pars['slopes']['distribution'] == 'uniform':
-                self.slopes = np.random.uniform(br_pars['slopes']['low'], br_pars['slopes']['high'], self.n_ports)
-            else:
-                raise ValueError('Unknown distribution used to specify branch slopes')
-        else:
-            raise ValueError('Invalid type for slopes parameter')
-        #
-        if type(br_pars['threshs']) is list: 
-            if len(br_pars['threshs']) == n_ports:
-                self.threshs= br_pars['threshs']    # threshold of the local sigmoidal functions
-            else:
-                raise ValueError('Number of ports should equal the length of the slopes parameter')
-        elif type(br_pars['threshs']) == float or type(br_pars['threshs']) == int:
-                self.threshs = [br_pars['threshs']]*self.n_ports
-        elif type(br_pars['threshs']) == dict:
-            if br_pars['threshs']['distribution'] == 'uniform':
-                self.threshs= np.random.uniform(br_pars['threshs']['low'], br_pars['threshs']['high'], self.n_ports)  
-            else:
-                raise ValueError('Unknown distribution used to specify branch thresholds')
-        else:
-            raise ValueError('Invalid type for threshs parameter')
-
- 
-    def f(self, thresh, slope, arg):
-        """ The sigmoidal function, with parameters given explicitly."""
-        return 1. / (1. + np.exp(-slope*(arg - thresh)))
-    
-    
+            
     def get_mp_input_sum(self, time):
         """ The input function of the double sigma unit. """
         # The two versions below require almost identical times
@@ -2096,10 +2027,310 @@ class double_sigma_trdc(unit):
         #return ret
     
 
-    def derivatives(self, y, t):
-        """ This function returns the derivative of the activity given its current values. """
-        return ( self.f(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+
+class sigma_double_sigma_trdc(double_sigma_base, multiport_trdc_base):
+    """ 
+    sigma_double_sigma unit with threshold-based rate distribution control.
+
+    This model is a combination of the sigmoidal and sigma_double_sigma models, in recognition 
+    that a neuron usually receives inputs directly to the soma.
+
+    There are two types of inputs. Somatic inputs arrive at port 0 (the default port), and are
+    just like inputs to the sigmoidal units. Dendritic inputs arrive at ports with with ID 
+    larger than 0, and are just like inputs to double_sigma units.
+
+    Each dendritic input belongs to a particular "branch". All inputs from the same branch add 
+    linearly, and the sum is fed into a sigmoidal function that produces the output of the branch. 
+    The output of all the branches is added linearly to produce the total input to the unit, 
+    which is fed into a sigmoidal function to produce the output of the unit.
+
+    Based on the distribution of inputs at port 'rdc_port', this unit will use threshold-based rate
+    distribution control. If the unit is part of the population that projects to port 'rdc_port', this 
+    will contribute to produce an exponential distribution of firing rates.
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+    """
+    # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+    # mutiport_trdc_base, however, only implements a constructor. This constructor will not
+    # call the unit constructor if unit_initialized=True .
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports is no longer optional.
+                'n_ports' : number of inputs ports. 
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : -phi is the minimum value of the branches' contribution.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold. 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+
+        Raises:
+            ValueError, NameError
+
+        """
+        self.soma = True # changes the initialization of the parent class' creator
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        multiport_trdc_base.__init__(self, ID, params, network)
+
+            
+    def get_mp_input_sum(self, time):
+        """ Identical to the input function of the sigma_double_sigma unit. """
+        w = self.get_mp_weights(time)
+        inp = self.get_mp_inputs(time)
+        # version 1 is slightly faster
+        #
+        # version 1. The big zip
+        return np.dot(w[0], inp[0]) + sum(
+                    [ o*self.f(th,sl,np.dot(w,i)) for o,th,sl,w,i in 
+                      zip(self.br_w, self.threshs, self.slopes, w[1:], inp[1:]) ] )
+        # version 2. The accumulator
+        #ret = np.dot(w[0], inp[0])
+        #for i in range(1,self.n_ports):
+        #    ret += self.br_w[i-1] * self.f(self.threshs[i-1], self.slopes[i-1], np.dot(w[i],inp[i]))
+        #return ret
+    
+
+class double_sigma_normal_trdc(double_sigma_base, multiport_trdc_base):
+    """ double_sigma units with normalized inputs, and threshold-based rate distro control.
+
+    Double sigma units are inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    Each input belongs to a particular "branch". All inputs from the same branch
+    add linearly, are normalized, and the normalized sum is fed into a sigmoidal function 
+    that produces the output of the branch. The output of all the branches is added linearly 
+    to produce the total input to the unit, which is fed into a sigmoidal function to produce 
+    the output of the unit.
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+
+    Based on the distribution of inputs at port 'rdc_port', this unit will use threshold-based rate
+    distribution control. If the unit is part of the population that projects to port 'rdc_port', this 
+    will contribute to produce an exponential distribution of firing rates.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_slow are  no longer optional.
+                'n_ports' : number of inputs ports. 
+                'tau_slow' : time constant for the slow low-pass filter.
+                'tau_fast' : Time constant for the fast low-pass filter.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : -phi is the minimum value of the branches' contribution.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold. 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+        Raises:
+            ValueError, NameError
+        """
+        # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+        # mutiport_trdc_base, however, only implements a constructor. This constructor will not
+        # call the unit constructor if unit_initialized=True .
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        multiport_trdc_base.__init__(self, ID, params, network)
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum]) 
+     
+    
+    def get_mp_input_sum(self, time):
+        """ The input function of the normalized double sigma unit. """
+        # Removing zero or near-zero values from lpf_slow_mp_inp_sum
+        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-2)) for arry in self.lpf_slow_mp_inp_sum]
+        #
+        # version 1. The big zip
+        return sum( [ o*( self.f(th, sl, (np.dot(w,i)-y) / y) - self.phi ) for o,th,sl,y,w,i in 
+                     zip(self.br_w, self.threshs, self.slopes, lpf_inp_sum,
+                         self.get_mp_weights(time), self.get_mp_inputs(time))  ] )
+         
+
+class sharpen_base(unit):
+    """ 
+    The parent class for units with switchable threshold-based rate distribution control. 
+    
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use threshold-based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
+    to a default value called "thr_fix", with time constant "thr_tau".
+    
+    """
+    # The only difference with multiport_trdc_base is the use of the slide_thr_shrp instead of slide_thresh
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. Needs a valuer > 1
+                'tau_fast' : Time constant for the fast low-pass filter.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold. 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'thr_tau' : time constant for decay of threshold to its default value.
+                'sharpen_port' : port ID where the inputs controlling trdc arrive.
+        Raises:
+            ValueError
+
+        """
+        if hasattr(self, 'unit_initialized') and self.unit_initialized:
+            pass
+        else:    # if the parent constructor hasn't been called
+            super().__init__(ID, params, network)
+
+        if self.n_ports < 2:
+            raise ValueError('Multiple ports required for classes derived from sharpen_base')
+        else:
+            self.multiport = True
+        self.rdc_port = params['rdc_port'] # port for rate distribution control
+        self.tau_thr = params['tau_thr']  # the threshold sliding time constant
+        self.c = params['c']  # The coefficient in the exponential distribution
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thr_shrp, syn_reqs.lpf_fast])
 
 
 
+class double_sigma_sharp(double_sigma_base, sharpen_base):
+    """ 
+    double-sigma unit with threshold-based rate distribution control controled by a 'sharpen' port.
 
+    The double-sigma model is inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    Each input belongs to a particular "branch". All inputs from the same branch add 
+    linearly, and the sum is fed into a sigmoidal function that produces the output of the branch. 
+    The output of all the branches is added linearly to produce the total input to the unit, 
+    which is fed into a sigmoidal function to produce the output of the unit.
+
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use threshold-based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
+    to a default value called "thr_fix", with time constant "thr_tau".
+
+    The equations of the doulble-sigma unit can be seen in the "double_sigma_unit" tiddler of 
+    the programming notes wiki.
+    """
+    # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+    # mutiport_trdc_base, however, only implements a constructor. This constructor will not
+    # call the unit constructor if unit_initialized=True .
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. Should be larger than 1.
+                'tau_fast' : Time constant for the fast low-pass filter.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : -phi is the minimum value of the branches' contribution.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold. 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'thr_tau' : time constant for decay of threshold to its default value.
+                'sharpen_port' : port ID where the inputs controlling trdc arrive.
+
+        """
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        multiport_trdc_base.__init__(self, ID, params, network)
+        self.thr_fix = params['thr_fix']
+        self.thr_tau = params['thr_tau']
+
+            
+    def get_mp_input_sum(self, time):
+        """ The input function of the double sigma unit. """
+        # The two versions below require almost identical times
+        #
+        # version 1. The big zip
+        return sum( [ o*(self.f(th,sl,np.dot(w,i)) - self.phi) for o,th,sl,w,i in 
+                      zip(self.br_w, self.threshs, self.slopes, 
+                          self.get_mp_weights(time), self.get_mp_inputs(time))  ] )
+ 

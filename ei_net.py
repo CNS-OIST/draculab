@@ -137,6 +137,10 @@ class ei_net():
                     'slopes' : 1.,
                     'threshs' : 0. },
             'phi' : 0.5, # for some of the double_sigma units
+            'rdc_port' : 0, # for multiport units with rate distribution control
+            'thr_fix' = 0.1, # for the "sharpening" units
+            'thr_tau' = 0.05, # for the "sharpening" units
+            'sharpen_port' = 1, # for the "sharpening" units
             'type' : unit_types.sigmoidal }
         self.i_pars = {'init_val_min' : 0.001,
             'init_val_wid' : 1.,
@@ -161,6 +165,10 @@ class ei_net():
                     'slopes' : 1.,
                     'threshs' : 0. },
             'phi' : 0.5, # for some of the double_sigma units
+            'rdc_port' : 0, # for multiport units with rate distribution control
+            'thr_fix' = 0.1, # for the "sharpening" units
+            'thr_tau' = 0.05, # for the "sharpening" units
+            'sharpen_port' = 1, # for the "sharpening" units
             'type' : unit_types.sigmoidal }
         self.x_pars = {'type' : unit_types.source,
             'init_val' : 0.,

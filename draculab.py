@@ -25,6 +25,9 @@ class unit_types(Enum):
     sigma_double_sigma = 11
     double_sigma_n = 12
     double_sigma_trdc = 13
+    sds_trdc = 14
+    ds_n_trdc = 15
+    ds_sharp = 16
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -63,6 +66,12 @@ class unit_types(Enum):
             unit_class = double_sigma_normal
         elif self == unit_types.double_sigma_trdc:
             unit_class = double_sigma_trdc
+        elif self == unit_types.sds_trdc:
+            unit_class = sigma_double_sigma_trdc
+        elif self == unit_types.ds_n_trdc:
+            unit_class = double_sigma_normal_trdc
+        elif self == unit_types.ds_sharp:
+            unit_class = double_sigma_sharp
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?
@@ -188,6 +197,7 @@ class syn_reqs(Enum):
     lpf_slow_mp_inp_sum = 20 # slow LPF'd scaled sum of inputs from individual ports
     mp_inputs = 21 # the multiport inputs, as returned by the get_mp_inputs method
     balance_mp = 22 # the multiport version of the 'balance' requirement above
+    slide_thr_shrp = 23 # move threshold to produce exp rate distro if 'sharpen' input > 0.5
 
 
 
