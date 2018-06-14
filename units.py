@@ -319,7 +319,7 @@ class unit():
         An extra task done here is to prepare the 'port_idx' list used by units with multiple 
         input ports.
 
-        init_pre_syn_update is called for a unit everytime network.connect() connects it, 
+        init_pre_syn_update is called for a unit everytime network.connect() connects the unit, 
         which may be more than once.
 
         Raises:
@@ -502,8 +502,8 @@ class unit():
                     raise AssertionError('slide_thresh requires the balance(_mp) requirement to be set')
                 self.functions.add(self.upd_thresh)
             elif req is syn_reqs.slide_thr_shrp:  # <----------------------------------
-                if (not syn_reqs.balance in self.syn_needs) and (not syn_reqs.balance_mp in self.syn_needs):
-                    raise AssertionError('slide_thr_shrp requires the balance(_mp) requirement to be set')
+                if not syn_reqs.balance_mp in self.syn_needs:
+                    raise AssertionError('slide_thr_shrp requires the balance_mp requirement to be set')
                 if not self.multiport:
                     raise AssertionError('The slide_thr_shrp is for multiport units only')
                 self.functions.add(self.upd_thr_shrp)
@@ -926,14 +926,14 @@ class unit():
         """
 
 
-def upd_thr_shrp(self, time):
+    def upd_thr_shrp(self, time):
         """ Updates the threshold of trdc units when input at 'sharpen' port is larger than 0.5 .
 
             The algorithm is based on upd_thresh.
         """
-        idxs = port_idx[self.sharpen_port]
-        inps = self.mp_inputs[sharpen_port]
-        ws = [self.net.syns[self.ID][idx] for idx in idxs]
+        idxs = self.port_idx[self.sharpen_port]
+        inps = self.mp_inputs[self.sharpen_port]
+        ws = [self.net.syns[self.ID][idx].w for idx in idxs]
         sharpen = sum( [w*i for w,i in zip(ws, inps)] )
             
         if sharpen > 0.5:
@@ -943,7 +943,7 @@ def upd_thr_shrp(self, time):
             error = self.below - self.above - 2.*exp_cdf + 1. 
             self.thresh -= self.tau_thr * error
         else:
-            self.thresh += self.thr_tau * (self.thr_fix - self.thresh)
+            self.thresh += self.tau_thr * (self.thr_fix - self.thresh)
 
 
 
@@ -1513,7 +1513,7 @@ class exp_dist_sig_thr(unit):
                 'slope' : Slope of the sigmoidal function.
                 'thresh' : Threshold of the sigmoidal function. This value may adapt.
                 'tau' : Time constant of the update dynamics.
-                'tau_thr' : sets the speed of change for the threshold. 
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
                 'c' : Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
                     larger values make small firing rates more probable. 
@@ -1529,7 +1529,7 @@ class exp_dist_sig_thr(unit):
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
-        self.tau_thr = params['tau_thr']  # the threshold sliding time constant
+        self.tau_thr = params['tau_thr']  # the reciprocal of the threshold sliding time constant
         self.c = params['c']  # The coefficient in the exponential distribution
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         self.syn_needs.update([syn_reqs.balance, syn_reqs.slide_thresh,
@@ -1580,6 +1580,9 @@ class double_sigma_base(unit):
                         
                 'tau' : Time constant of the update dynamics.
                 'phi' : -phi is the minimum value of the branches' contribution.
+
+            For units where the number of ports exceeds the number of branches, the
+            'extra_ports' variable should be created, so that n_ports = len(branch_w) + extra_ports.
         Raises:
             ValueError, NameError
 
@@ -1597,23 +1600,20 @@ class double_sigma_base(unit):
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         br_pars = params['branch_params']  # to make the following lines shorter
         self.br_w = br_pars['branch_w'] # weight factors for all branches
-        if not hasattr(self,'soma'):
-            self.soma = False   # soma is True for 'sigma_double_sigma'-type units
+        if not hasattr(self, 'extra_ports'): # for models with more ports than branches
+            self.extra_ports = 0
         if self.n_ports > 1:
             self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
-        else:
-            if self.soma:
-                raise ValueError('double_sigma units with somatic inputs require at least two ports')
 
-        if self.soma:
-            ports = self.n_ports - 1
-            txt = ' minus one '
+        if self.extra_ports > 0:
+            n_branches = self.n_ports - self.extra_ports
+            txt = ' minus ' + str(self.extra_ports) + ' '
         else:
-            ports = self.n_ports
+            n_branches = self.n_ports
             txt = ' '
      
         # testing and initializing the branch parameters
-        if ports != len(self.br_w):
+        if n_branches != len(self.br_w):
             raise ValueError('Number of ports'+txt+'should equal the length of the branch_w parameter')
         elif min(self.br_w) <= 0:
             raise ValueError('Elements of branch_w should be positive')
@@ -1621,30 +1621,30 @@ class double_sigma_base(unit):
             raise ValueError('Elements of branch_w should add to 1')
         #
         if type(br_pars['slopes']) is list: 
-            if len(br_pars['slopes']) == ports:
+            if len(br_pars['slopes']) == n_branches:
                 self.slopes = br_pars['slopes']    # slope of the local sigmoidal functions
             else:
                 raise ValueError('Number of ports'+txt+'should equal the length of the slopes parameter')
         elif type(br_pars['slopes']) == float or type(br_pars['slopes']) == int:
-                self.slopes = [br_pars['slopes']]*ports
+                self.slopes = [br_pars['slopes']]*n_branches
         elif type(br_pars['slopes']) == dict:
             if br_pars['slopes']['distribution'] == 'uniform':
-                self.slopes = np.random.uniform(br_pars['slopes']['low'], br_pars['slopes']['high'], ports)
+                self.slopes = np.random.uniform(br_pars['slopes']['low'], br_pars['slopes']['high'], n_branches)
             else:
                 raise ValueError('Unknown distribution used to specify branch slopes')
         else:
             raise ValueError('Invalid type for slopes parameter')
         #
         if type(br_pars['threshs']) is list: 
-            if len(br_pars['threshs']) == ports:
+            if len(br_pars['threshs']) == n_branches:
                 self.threshs= br_pars['threshs']    # threshold of the local sigmoidal functions
             else:
                 raise ValueError('Number of ports'+txt+'should equal the length of the slopes parameter')
         elif type(br_pars['threshs']) == float or type(br_pars['threshs']) == int:
-                self.threshs = [br_pars['threshs']]*ports
+                self.threshs = [br_pars['threshs']]*n_branches
         elif type(br_pars['threshs']) == dict:
             if br_pars['threshs']['distribution'] == 'uniform':
-                self.threshs= np.random.uniform(br_pars['threshs']['low'], br_pars['threshs']['high'], ports)  
+                self.threshs= np.random.uniform(br_pars['threshs']['low'], br_pars['threshs']['high'], n_branches)  
             else:
                 raise ValueError('Unknown distribution used to specify branch thresholds')
         else:
@@ -1871,7 +1871,7 @@ class sigma_double_sigma(double_sigma_base):
             ValueError, NameError
 
         """
-        self.soma = True # changes the initialization of the parent class' creator
+        self.extra_ports = 1 # Used by the parent class' creator
         super().__init__(ID, params, network)
             
     def get_mp_input_sum(self, time):
@@ -1916,7 +1916,7 @@ class multiport_trdc_base(unit):
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS 
                 'rdc_port' : port ID of inputs used for rate distribution control.
-                'tau_thr' : sets the speed of change for the threshold. 
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
                 'c' : Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
                     larger values make small firing rates more probable. 
@@ -1935,7 +1935,7 @@ class multiport_trdc_base(unit):
         else:
             self.multiport = True
         self.rdc_port = params['rdc_port'] # port for rate distribution control
-        self.tau_thr = params['tau_thr']  # the threshold sliding time constant
+        self.tau_thr = params['tau_thr']  # the reciprocal of the threshold sliding time constant
         self.c = params['c']  # The coefficient in the exponential distribution
         self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thresh, syn_reqs.lpf_fast])
 
@@ -1996,7 +1996,7 @@ class double_sigma_trdc(double_sigma_base, multiport_trdc_base):
                 'tau' : Time constant of the update dynamics.
                 'phi' : -phi is the minimum value of the branches' contribution.
                 'rdc_port' : port ID of inputs used for rate distribution control.
-                'tau_thr' : sets the speed of change for the threshold. 
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant).
                 'c' : Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
                     larger values make small firing rates more probable. 
@@ -2085,7 +2085,7 @@ class sigma_double_sigma_trdc(double_sigma_base, multiport_trdc_base):
                 'tau' : Time constant of the update dynamics.
                 'phi' : -phi is the minimum value of the branches' contribution.
                 'rdc_port' : port ID of inputs used for rate distribution control.
-                'tau_thr' : sets the speed of change for the threshold. 
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
                 'c' : Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
                     larger values make small firing rates more probable. 
@@ -2095,7 +2095,7 @@ class sigma_double_sigma_trdc(double_sigma_base, multiport_trdc_base):
             ValueError, NameError
 
         """
-        self.soma = True # changes the initialization of the parent class' creator
+        self.extra_ports = 1 # Used by the parent class' creator
         double_sigma_base.__init__(self, ID, params, network)
         self.unit_initialized = True  # to avoid calling the unit constructor twice
         multiport_trdc_base.__init__(self, ID, params, network)
@@ -2170,7 +2170,7 @@ class double_sigma_normal_trdc(double_sigma_base, multiport_trdc_base):
                 'tau' : Time constant of the update dynamics.
                 'phi' : -phi is the minimum value of the branches' contribution.
                 'rdc_port' : port ID of inputs used for rate distribution control.
-                'tau_thr' : sets the speed of change for the threshold. 
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
                 'c' : Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
                     larger values make small firing rates more probable. 
@@ -2223,13 +2223,12 @@ class sharpen_base(unit):
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS 
                 'rdc_port' : port ID of inputs used for rate distribution control.
-                'tau_thr' : sets the speed of change for the threshold. 
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
                 'c' : Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
                     larger values make small firing rates more probable. 
                     Shouldn't be set to zero (causes zero division in the cdf function).
                 'thr_fix' : default value of the threshold (when no distribution control is applied)
-                'thr_tau' : time constant for decay of threshold to its default value.
                 'sharpen_port' : port ID where the inputs controlling trdc arrive.
         Raises:
             ValueError
@@ -2238,6 +2237,7 @@ class sharpen_base(unit):
         if hasattr(self, 'unit_initialized') and self.unit_initialized:
             pass
         else:    # if the parent constructor hasn't been called
+            self.extra_ports = 1 # Used by the parent class' creator
             super().__init__(ID, params, network)
 
         if self.n_ports < 2:
@@ -2245,9 +2245,13 @@ class sharpen_base(unit):
         else:
             self.multiport = True
         self.rdc_port = params['rdc_port'] # port for rate distribution control
-        self.tau_thr = params['tau_thr']  # the threshold sliding time constant
+        self.tau_thr = params['tau_thr']  # the reciprocal of the threshold sliding time constant
         self.c = params['c']  # The coefficient in the exponential distribution
+        self.thr_fix = params['thr_fix']  # the value where the threshold returns
+        self.sharpen_port = params['sharpen_port']
         self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thr_shrp, syn_reqs.lpf_fast])
+        # next line is for debugging
+        #self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thresh, syn_reqs.lpf_fast])
 
 
 
@@ -2267,13 +2271,15 @@ class double_sigma_sharp(double_sigma_base, sharpen_base):
     sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
     will use threshold-based rate distribution control to produce an exponential distribution of firing 
     rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
-    to a default value called "thr_fix", with time constant "thr_tau".
+    to a default value called "thr_fix", with a rate set by "tau_thr".
+
+    The inputs at the sharpen port will not contribute to the activation of the unit. 
 
     The equations of the doulble-sigma unit can be seen in the "double_sigma_unit" tiddler of 
     the programming notes wiki.
     """
     # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
-    # mutiport_trdc_base, however, only implements a constructor. This constructor will not
+    # sharpen_base, however, only implements a constructor. This constructor will not
     # call the unit constructor if unit_initialized=True .
 
     def __init__(self, ID, params, network):
@@ -2308,29 +2314,34 @@ class double_sigma_sharp(double_sigma_base, sharpen_base):
                 'tau' : Time constant of the update dynamics.
                 'phi' : -phi is the minimum value of the branches' contribution.
                 'rdc_port' : port ID of inputs used for rate distribution control.
-                'tau_thr' : sets the speed of change for the threshold. 
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
                 'c' : Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
                     larger values make small firing rates more probable. 
                     Shouldn't be set to zero (causes zero division in the cdf function).
                 'thr_fix' : default value of the threshold (when no distribution control is applied)
-                'thr_tau' : time constant for decay of threshold to its default value.
                 'sharpen_port' : port ID where the inputs controlling trdc arrive.
 
         """
+        self.extra_ports = 1 # Used by the double_sigma_base creator
         double_sigma_base.__init__(self, ID, params, network)
         self.unit_initialized = True  # to avoid calling the unit constructor twice
-        multiport_trdc_base.__init__(self, ID, params, network)
-        self.thr_fix = params['thr_fix']
-        self.thr_tau = params['thr_tau']
+        sharpen_base.__init__(self, ID, params, network)
 
             
     def get_mp_input_sum(self, time):
-        """ The input function of the double sigma unit. """
-        # The two versions below require almost identical times
-        #
-        # version 1. The big zip
+        """ The input function of the double sigma sharp unit. """
+        # First we should remove the inputs at the 'sharpen' port
+        weights = self.get_mp_weights(time)
+        inputs = self.get_mp_inputs(time)
+        del weights[self.sharpen_port]
+        del inputs[self.sharpen_port]
+
         return sum( [ o*(self.f(th,sl,np.dot(w,i)) - self.phi) for o,th,sl,w,i in 
-                      zip(self.br_w, self.threshs, self.slopes, 
-                          self.get_mp_weights(time), self.get_mp_inputs(time))  ] )
+                      zip(self.br_w, self.threshs, self.slopes, weights, inputs) ] )
  
+
+
+
+
+

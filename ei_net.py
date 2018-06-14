@@ -126,7 +126,7 @@ class ei_net():
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_slow' : 1, # 1 s for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
-            'tau_thr' : 0.001, # for exp_dist_sig_thr units
+            'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units 
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
@@ -138,9 +138,8 @@ class ei_net():
                     'threshs' : 0. },
             'phi' : 0.5, # for some of the double_sigma units
             'rdc_port' : 0, # for multiport units with rate distribution control
-            'thr_fix' = 0.1, # for the "sharpening" units
-            'thr_tau' = 0.05, # for the "sharpening" units
-            'sharpen_port' = 1, # for the "sharpening" units
+            'thr_fix' : 0.1, # for the "sharpening" units
+            'sharpen_port' : 1, # for the "sharpening" units
             'type' : unit_types.sigmoidal }
         self.i_pars = {'init_val_min' : 0.001,
             'init_val_wid' : 1.,
@@ -154,7 +153,7 @@ class ei_net():
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_slow' : 1, # 1 s for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
-            'tau_thr' : 0.001, # for exp_dist_sig_thr units
+            'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
@@ -166,9 +165,8 @@ class ei_net():
                     'threshs' : 0. },
             'phi' : 0.5, # for some of the double_sigma units
             'rdc_port' : 0, # for multiport units with rate distribution control
-            'thr_fix' = 0.1, # for the "sharpening" units
-            'thr_tau' = 0.05, # for the "sharpening" units
-            'sharpen_port' = 1, # for the "sharpening" units
+            'thr_fix' : 0.1, # for the "sharpening" units
+            'sharpen_port' : 1, # for the "sharpening" units
             'type' : unit_types.sigmoidal }
         self.x_pars = {'type' : unit_types.source,
             'init_val' : 0.,
@@ -367,7 +365,9 @@ class ei_net():
                 for sid,s in enumerate(which_syns[uid]):
                     self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
         # If there are exp_dist_sig_thr units, create some units to track the thresholds
-        if self.e_pars['type'] == unit_types.exp_dist_sig_thr or self.i_pars['type'] == unit_types.exp_dist_sig_thr:
+        trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
+                  unit_types.ds_n_trdc, unit_types.ds_sharp]
+        if self.e_pars['type'] in trdc_u or self.i_pars['type'] in trdc_u:
             self.thr_track = self.net.create(self.n['w_track'], self.wt_pars)
             def thresh_tracker(u):
                 return lambda x: self.net.units[u].thresh
@@ -670,7 +670,9 @@ class ei_net():
             plt.title('Some synaptic scale factors')
 
         # Plot the evolution of the thresholds
-        if self.e_pars['type'] == unit_types.exp_dist_sig_thr or self.i_pars['type'] == unit_types.exp_dist_sig_thr:
+        trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
+                  unit_types.ds_n_trdc, unit_types.ds_sharp]
+        if self.e_pars['type'] in trdc_u or self.i_pars['type'] in trdc_u:
             thr_fig = plt.figure(figsize=(10,5))
             thresholds = np.transpose([self.all_activs[self.thr_track[i]] for i in range(self.n['w_track'])])
             plt.plot(self.all_times, thresholds, linewidth=1)

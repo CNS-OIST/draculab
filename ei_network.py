@@ -28,7 +28,7 @@ class ei_network():
            The created connection and synapse dictionaries have standardized names:
            <sending_layer>(e|i|x)_<receiving_layer>(e|i)_(conn|syn) .
         4) The user configures the parameter dictionaries for the inter-layer connections using
-           ei_network.set_params. Unconfigured parameters will receive the default values.
+           ei_network.set_param. Unconfigured parameters will receive the default values.
         5) The user calls ei_network.build method, which creates a draculab network with all the
            units and connections specified so far.
         6) The user runs simulations with ei_network.run .
@@ -139,6 +139,7 @@ class ei_network():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
 
@@ -147,6 +148,7 @@ class ei_network():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
 
@@ -155,6 +157,7 @@ class ei_network():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
 
@@ -437,7 +440,7 @@ class ei_network():
                 * Synaptic scale factors for the units in layer.tracked
                   (if using exp_dist_sig units and layer.n['w_track'] > 0)
                 * Thresholds for the units in layer.tracked
-                  (if using exp_dist_sig_thr units and layer.n['w_track'] > 0)
+                  (if using trdc units and layer.n['w_track'] > 0)
         """
         #%matplotlib inline
         # Plot the inputs
@@ -473,7 +476,9 @@ class ei_network():
                 plt.plot(self.all_times, factors, linewidth=1)
                 plt.title('Some synaptic scale factors')
             # Plot the evolution of the thresholds
-            if layer.e_pars['type'] == unit_types.exp_dist_sig_thr or layer.i_pars['type'] == unit_types.exp_dist_sig_thr:
+            trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
+                      unit_types.ds_n_trdc, unit_types.ds_sharp]
+            if layer.e_pars['type'] in trdc_u or layer.i_pars['type'] in trdc_u:
                 thr_fig = plt.figure(figsize=(10,5))
                 thresholds = np.transpose([self.all_activs[layer.thr_track[i]] for i in range(layer.n['w_track'])])
                 plt.plot(self.all_times, thresholds, linewidth=1)
@@ -703,16 +708,18 @@ class ei_network():
             nbins : number of bins in the histogram
             pdf: include a plot of the exponential PDF?
                  Used when visualizing exp_dist_sig units or exp_rate_dist synapses.
-                 CURRENTLY ONLY SUPPORTED WHEN pop IS THE EXCITATORY POPULATION.
+                 CURRENTLY ONLY SUPPORTED WHEN pop IS HOMOGENOUS
         """
         get_ipython().run_line_magic('matplotlib', 'qt5')
         # notebook or qt5 
         self.hist_fig = plt.figure(figsize=(10,10))
         if pdf: # assuming pop consists of excitatory units
-            if self.e_pars['type'] == unit_types.exp_dist_sig or self.e_pars['type'] == unit_types.exp_dist_sig_thr:
-                c = self.net.units[self.e[0]].c
+            trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
+                      unit_types.ds_n_trdc, unit_types.ds_sharp]
+            if self.net.units[pop[0]].type in trdc_u:
+                c = self.net.units[pop[0]].c
             else:
-                c = self.ee_syn['c']
+                c = self.e_syn['c']
             # plot the exponential distro on the same figure
             k = len(pop) * c / (1. - np.exp(-c)) / nbins
             plt.plot(np.linspace(0,1,100), k * np.exp(-c*np.linspace(0,1,100)))
@@ -757,7 +764,7 @@ class ei_network():
             slider = whether to use an interactive slider instead of an animation
             thr = value at which the dots change color in the unit activity diagram
             pdf = whether to overlay a plot of the exponential pdf the histogram should approach.
-                 CURRENTLY ONLY SUPPORTED WHEN pop IS THE EXCITATORY POPULATION.
+                 CURRENTLY ONLY SUPPORTED WHEN pop IS THE HOMOGENEOUS
                   
         """
         get_ipython().run_line_magic('matplotlib', 'qt5')
@@ -768,11 +775,13 @@ class ei_network():
         self.n_data = len(self.all_activs[0])
         # Histogram figure and axis
         self.hist_ax = self.double_fig.add_axes([0.02, .04, .47, .92])
-        if pdf: # assuming pop consists of excitatory units
-            if self.e_pars['type'] == unit_types.exp_dist_sig or self.e_pars['type'] == unit_types.exp_dist_sig_thr:
-                c = self.net.units[self.e[0]].c
+        if pdf: # assuming pop consists of units of the same type
+            trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
+                      unit_types.ds_n_trdc, unit_types.ds_sharp]
+            if self.net.units[pop[0]].type in trdc_u:
+                c = self.net.units[pop[0]].c
             else:
-                c = self.ee_syn['c']
+                c = self.e_syn['c']
             # plot the exponential distro on the left axis
             k = len(pop) * c / (1. - np.exp(-c)) / nbins
             self.hist_ax.plot(np.linspace(0,1,100), k * np.exp(-c*np.linspace(0,1,100)), 'y')
@@ -984,11 +993,20 @@ class ei_layer():
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_slow' : 1, # 1 s for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
-            'tau_thr' : 0.001, # for exp_dist_sig_thr units
+            'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units 
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
             'omega' : 1.5, # for sq_hebb_subsnorm synapses
+            'n_ports' : 1, # multiport units will alter this
+            'branch_params' : { # for the double_sigma family of units
+                    'branch_w' : [1.],
+                    'slopes' : 1.,
+                    'threshs' : 0. },
+            'phi' : 0.5, # for some of the double_sigma units
+            'rdc_port' : 0, # for multiport units with rate distribution control
+            'thr_fix' : 0.1, # for the "sharpening" units
+            'sharpen_port' : 1, # for the "sharpening" units
             'type' : unit_types.sigmoidal }
         self.i_pars = {'init_val_min' : 0.001,
             'init_val_wid' : 1.,
@@ -1002,11 +1020,20 @@ class ei_layer():
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_slow' : 1, # 1 s for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
-            'tau_thr' : 0.001, # for exp_dist_sig_thr units
+            'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
             'omega' : 1.5, # for sq_hebb_subsnorm synapses
+            'n_ports' : 1, # multiport units will alter this
+            'branch_params' : { # for the double_sigma family of units
+                    'branch_w' : [1.],
+                    'slopes' : 1.,
+                    'threshs' : 0. },
+            'phi' : 0.5, # for some of the double_sigma units
+            'rdc_port' : 0, # for multiport units with rate distribution control
+            'thr_fix' : 0.1, # for the "sharpening" units
+            'sharpen_port' : 1, # for the "sharpening" units
             'type' : unit_types.sigmoidal }
         self.x_pars = {'type' : unit_types.source,
             'init_val' : 0.,
@@ -1076,6 +1103,7 @@ class ei_layer():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
         self.ei_syn = {'type' : synapse_types.static,
@@ -1083,6 +1111,7 @@ class ei_layer():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
         self.ie_syn = {'type' : synapse_types.static,
@@ -1090,6 +1119,7 @@ class ei_layer():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
         self.ii_syn = {'type' : synapse_types.static,
@@ -1097,6 +1127,7 @@ class ei_layer():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
         self.xe_syn = {'type' : synapse_types.static,
@@ -1104,6 +1135,7 @@ class ei_layer():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
         self.xi_syn = {'type' : synapse_types.static,
@@ -1111,6 +1143,7 @@ class ei_layer():
             'omega' : 1.,  # for sq_hebb_subsnorm synapses 
             'input_type' : 'pred',  # for input_correlation synapses
             'des_act' : 0.4, # for homeo_inhib, and corr_homeo_inhib synapses
+            'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
         
@@ -1206,7 +1239,9 @@ class ei_layer():
                     for sid,s in enumerate(which_syns[uid]):
                         self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
             # If there are exp_dist_sig_thr units, create some units to track the thresholds
-            if self.e_pars['type'] == unit_types.exp_dist_sig_thr or self.i_pars['type'] == unit_types.exp_dist_sig_thr:
+            trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
+                      unit_types.ds_n_trdc, unit_types.ds_sharp]
+            if self.e_pars['type'] in trdc_u or self.i_pars['type'] in trdc_u:
                 self.thr_track = self.net.create(self.n['w_track'], self.wt_pars)
                 def thresh_tracker(u):
                     return lambda x: self.net.units[u].thresh
