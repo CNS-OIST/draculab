@@ -37,7 +37,6 @@ class unit():
         Raises:
             AssertionError.
         """
-
         self.ID = ID # unit's unique identifier
         # Copying parameters from dictionary
         # Inside the class there are no dictionaries to avoid their retrieval operations
@@ -943,7 +942,7 @@ class unit():
             error = self.below - self.above - 2.*exp_cdf + 1. 
             self.thresh -= self.tau_thr * error
         else:
-            self.thresh += self.tau_thr * (self.thr_fix - self.thresh)
+            self.thresh += self.tau_fix * (self.thr_fix - self.thresh)
 
 
 
@@ -1590,7 +1589,7 @@ class double_sigma_base(unit):
         # branch_w, slopes, and threshs are inside the branch_params dictionary because if they
         # were lists then network.create_units would interpret them as values to assign to separate units.
 
-        super().__init__(ID, params, network)
+        unit.__init__(self, ID, params, network)
         if not hasattr(self,'n_ports'): 
             raise NameError( 'Number of ports should be included in the parameters' )
         self.slope = params['slope']    # slope of the global sigmoidal function
@@ -1928,7 +1927,7 @@ class multiport_trdc_base(unit):
         if hasattr(self, 'unit_initialized') and self.unit_initialized:
             pass
         else:    # if the parent constructor hasn't been called
-            super().__init__(ID, params, network)
+            unit.__init__(ID, params, network)
 
         if self.n_ports < 2:
             raise ValueError('Multiple ports required for classes derived from multiport_trdc_base')
@@ -2190,7 +2189,7 @@ class double_sigma_normal_trdc(double_sigma_base, multiport_trdc_base):
     def get_mp_input_sum(self, time):
         """ The input function of the normalized double sigma unit. """
         # Removing zero or near-zero values from lpf_slow_mp_inp_sum
-        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-2)) for arry in self.lpf_slow_mp_inp_sum]
+        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
         #
         # version 1. The big zip
         return sum( [ o*( self.f(th, sl, (np.dot(w,i)-y) / y) - self.phi ) for o,th,sl,y,w,i in 
@@ -2206,7 +2205,7 @@ class sharpen_base(unit):
     sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
     will use threshold-based rate distribution control to produce an exponential distribution of firing 
     rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
-    to a default value called "thr_fix", with time constant "thr_tau".
+    to a default value called "thr_fix", with time constant reciprocal to "tau_fix".
     
     """
     # The only difference with multiport_trdc_base is the use of the slide_thr_shrp instead of slide_thresh
@@ -2229,6 +2228,7 @@ class sharpen_base(unit):
                     larger values make small firing rates more probable. 
                     Shouldn't be set to zero (causes zero division in the cdf function).
                 'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
                 'sharpen_port' : port ID where the inputs controlling trdc arrive.
         Raises:
             ValueError
@@ -2238,7 +2238,7 @@ class sharpen_base(unit):
             pass
         else:    # if the parent constructor hasn't been called
             self.extra_ports = 1 # Used by the parent class' creator
-            super().__init__(ID, params, network)
+            unit.__init__(ID, params, network)
 
         if self.n_ports < 2:
             raise ValueError('Multiple ports required for classes derived from sharpen_base')
@@ -2248,6 +2248,7 @@ class sharpen_base(unit):
         self.tau_thr = params['tau_thr']  # the reciprocal of the threshold sliding time constant
         self.c = params['c']  # The coefficient in the exponential distribution
         self.thr_fix = params['thr_fix']  # the value where the threshold returns
+        self.tau_fix = params['tau_fix']  # the speed of the threshold's return to thr_fix
         self.sharpen_port = params['sharpen_port']
         self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thr_shrp, syn_reqs.lpf_fast])
         # next line is for debugging
@@ -2271,7 +2272,7 @@ class double_sigma_sharp(double_sigma_base, sharpen_base):
     sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
     will use threshold-based rate distribution control to produce an exponential distribution of firing 
     rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
-    to a default value called "thr_fix", with a rate set by "tau_thr".
+    to a default value called "thr_fix", with a rate set by "tau_fix".
 
     The inputs at the sharpen port will not contribute to the activation of the unit. 
 
@@ -2320,6 +2321,7 @@ class double_sigma_sharp(double_sigma_base, sharpen_base):
                     larger values make small firing rates more probable. 
                     Shouldn't be set to zero (causes zero division in the cdf function).
                 'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
                 'sharpen_port' : port ID where the inputs controlling trdc arrive.
 
         """
@@ -2341,6 +2343,269 @@ class double_sigma_sharp(double_sigma_base, sharpen_base):
                       zip(self.br_w, self.threshs, self.slopes, weights, inputs) ] )
  
 
+
+class sigma_double_sigma_sharp(double_sigma_base, sharpen_base):
+    """ 
+    sigma_double_sigma unit with switchable threshold-based rate distribution control.
+
+    There are two types of inputs. Somatic inputs arrive at port 0 (the default port), and are
+    just like inputs to the sigmoidal units. Dendritic inputs arrive at ports with with ID 
+    larger than 0, and are just like inputs to double_sigma units.
+
+    Each dendritic input belongs to a particular "branch". All inputs from the same branch add 
+    linearly, and the sum is fed into a sigmoidal function that produces the output of the branch. 
+    The output of all the branches is added linearly to produce the total input to the unit, 
+    which is fed into a sigmoidal function to produce the output of the unit.
+
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use threshold-based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
+    to a default value called "thr_fix", with a rate set by "tau_fix".
+   
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+    """
+    # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+    # sharpen_base, however, only implements a constructor. This constructor will not
+    # call the unit constructor if unit_initialized=True .
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports is no longer optional.
+                'n_ports' : number of inputs ports. 
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : -phi is the minimum value of the branches' contribution.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
+                'sharpen_port' : port ID where the inputs controlling trdc arrive.
+
+
+        """
+        self.extra_ports = 2 # One for the soma, one for 'sharpen_port'
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        sharpen_base.__init__(self, ID, params, network)
+
+            
+    def get_mp_input_sum(self, time):
+        """ Identical to the input function of the sigma_double_sigma unit. """
+        w = self.get_mp_weights(time)
+        inp = self.get_mp_inputs(time)
+        del w[self.sharpen_port]
+        del inp[self.sharpen_port]
+        return np.dot(w[0], inp[0]) + sum(
+                    [ o*self.f(th,sl,np.dot(w,i)) for o,th,sl,w,i in 
+                      zip(self.br_w, self.threshs, self.slopes, w[1:], inp[1:]) ] )
+ 
+
+class double_sigma_normal_sharp(double_sigma_base, sharpen_base):
+    """ double_sigma units with normalized inputs and switchable threshold-based rate distro control.
+
+    Double sigma units are inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    Each input belongs to a particular "branch". All inputs from the same branch
+    add linearly, are normalized, and the normalized sum is fed into a sigmoidal function 
+    that produces the output of the branch. The output of all the branches is added linearly 
+    to produce the total input to the unit, which is fed into a sigmoidal function to produce 
+    the output of the unit.
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use threshold-based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
+    to a default value called "thr_fix", with a rate set by "tau_fix".
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_slow are  no longer optional.
+                'n_ports' : number of inputs ports. 
+                'tau_slow' : time constant for the slow low-pass filter.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : -phi is the minimum value of the branches' contribution.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
+                'sharpen_port' : port ID where the inputs controlling trdc arrive.
+
+
+        """
+        # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+        # sharpen_base, however, only implements a constructor. This constructor will not
+        # call the unit constructor if unit_initialized=True .
+        self.extra_ports = 1 # The sharpen port        
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        sharpen_base.__init__(self, ID, params, network)
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum]) 
+     
+    
+    def get_mp_input_sum(self, time):
+        """ The input function of the normalized double sigma unit. """
+        # Removing zero or near-zero values from lpf_slow_mp_inp_sum
+        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
+        w = self.get_mp_weights(time)
+        inp = self.get_mp_inputs(time)
+        del w[self.sharpen_port]
+        del inp[self.sharpen_port]
+         
+        return sum( [ o*( self.f(th, sl, (np.dot(w,i)-y) / y) - self.phi ) for o,th,sl,y,w,i in 
+                     zip(self.br_w, self.threshs, self.slopes, lpf_inp_sum, w, inp)  ] )
+ 
+
+
+class sigma_double_sigma_normal_sharp(double_sigma_base, sharpen_base):
+    """ sigma_double_sigma units with  normalized branch inputs, and switchable threshold-based rate distro control.
+
+    Double sigma units are inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    There are two types of inputs. Somatic inputs arrive at port 0 (the default port), and are
+    just like inputs to the sigmoidal units. Dendritic inputs arrive at ports with with ID 
+    larger than 0, and are just like inputs to double_sigma units.
+
+    Each dendritic input belongs to a particular "branch". All inputs from the same branch
+    add linearly, are normalized, and the normalized sum is fed into a sigmoidal function 
+    that produces the output of the branch. The output of all the branches is added linearly 
+    to produce the total input to the unit, which is fed into a sigmoidal function to produce 
+    the output of the unit.
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use threshold-based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
+    to a default value called "thr_fix", with a rate set by "tau_fix".
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_slow are  no longer optional.
+                'n_ports' : number of inputs ports. 
+                'tau_slow' : time constant for the slow low-pass filter.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : -phi is the minimum value of the branches' contribution.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
+                'sharpen_port' : port ID where the inputs controlling trdc arrive.
+
+
+        """
+        # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+        # sharpen_base, however, only implements a constructor. This constructor will not
+        # call the unit constructor if unit_initialized=True .
+        self.extra_ports = 2 # The soma and the sharpen port        
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        sharpen_base.__init__(self, ID, params, network)
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum]) 
+     
+    
+    def get_mp_input_sum(self, time):
+        """ The input function of the normalized double sigma unit. """
+        # Removing zero or near-zero values from lpf_slow_mp_inp_sum
+        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
+        w = self.get_mp_weights(time)
+        inp = self.get_mp_inputs(time)
+        del w[self.sharpen_port]
+        del inp[self.sharpen_port]
+         
+        return np.dot(w[0], inp[0]) + sum( [ o*( self.f(th, sl, (np.dot(w,i)-y) / y) - self.phi ) 
+               for o,th,sl,y,w,i in zip(self.br_w, self.threshs, self.slopes, lpf_inp_sum[1:], w[1:], inp[1:]) ] )
+ 
 
 
 

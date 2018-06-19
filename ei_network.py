@@ -114,6 +114,7 @@ class ei_network():
             'weights' :{'uniform' : {'low': 0.01, 'high' : 0.5}},
             'allow_autapses' : True,
             'allow_multapses' : False,
+            'dist_dim' : 'all',
             'edge_wrap' : True }
 
         self.i_conn = {'connection_type' : 'divergent',
@@ -123,6 +124,7 @@ class ei_network():
             'weights' :{'uniform' : {'low': -0.5, 'high' : -0.01}},
             'allow_autapses' : True,
             'allow_multapses' : False,
+            'dist_dim' : 'all',
             'edge_wrap' : True }
 
         self.x_conn = {'connection_type' : 'divergent',
@@ -132,6 +134,7 @@ class ei_network():
             'weights' :{'uniform' : {'low': 0.01, 'high' : 0.5}},
             'allow_autapses' : True,
             'allow_multapses' : False,
+            'dist_dim' : 'all',
             'edge_wrap' : True }
         
         self.e_syn = {'type' : synapse_types.static,  # synapses from excitatory units
@@ -477,7 +480,8 @@ class ei_network():
                 plt.title('Some synaptic scale factors')
             # Plot the evolution of the thresholds
             trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
-                      unit_types.ds_n_trdc, unit_types.ds_sharp]
+                      unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, 
+                      unit_types.ds_n_sharp, unit_types.sds_n_sharp]
             if layer.e_pars['type'] in trdc_u or layer.i_pars['type'] in trdc_u:
                 thr_fig = plt.figure(figsize=(10,5))
                 thresholds = np.transpose([self.all_activs[layer.thr_track[i]] for i in range(layer.n['w_track'])])
@@ -715,7 +719,8 @@ class ei_network():
         self.hist_fig = plt.figure(figsize=(10,10))
         if pdf: # assuming pop consists of excitatory units
             trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
-                      unit_types.ds_n_trdc, unit_types.ds_sharp]
+                      unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, 
+                      unit_types.ds_n_sharp, unit_types.sds_n_sharp]
             if self.net.units[pop[0]].type in trdc_u:
                 c = self.net.units[pop[0]].c
             else:
@@ -777,7 +782,8 @@ class ei_network():
         self.hist_ax = self.double_fig.add_axes([0.02, .04, .47, .92])
         if pdf: # assuming pop consists of units of the same type
             trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
-                      unit_types.ds_n_trdc, unit_types.ds_sharp]
+                      unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, 
+                      unit_types.ds_n_sharp, unit_types.sds_n_sharp]
             if self.net.units[pop[0]].type in trdc_u:
                 c = self.net.units[pop[0]].c
             else:
@@ -1006,6 +1012,7 @@ class ei_layer():
             'phi' : 0.5, # for some of the double_sigma units
             'rdc_port' : 0, # for multiport units with rate distribution control
             'thr_fix' : 0.1, # for the "sharpening" units
+            'tau_fix' : 0.1, # for the "sharpening" units
             'sharpen_port' : 1, # for the "sharpening" units
             'type' : unit_types.sigmoidal }
         self.i_pars = {'init_val_min' : 0.001,
@@ -1033,6 +1040,7 @@ class ei_layer():
             'phi' : 0.5, # for some of the double_sigma units
             'rdc_port' : 0, # for multiport units with rate distribution control
             'thr_fix' : 0.1, # for the "sharpening" units
+            'tau_fix' : 0.1, # for the "sharpening" units
             'sharpen_port' : 1, # for the "sharpening" units
             'type' : unit_types.sigmoidal }
         self.x_pars = {'type' : unit_types.source,
@@ -1240,7 +1248,8 @@ class ei_layer():
                         self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
             # If there are exp_dist_sig_thr units, create some units to track the thresholds
             trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
-                      unit_types.ds_n_trdc, unit_types.ds_sharp]
+                      unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, 
+                      unit_types.ds_n_sharp, unit_types.sds_n_sharp]
             if self.e_pars['type'] in trdc_u or self.i_pars['type'] in trdc_u:
                 self.thr_track = self.net.create(self.n['w_track'], self.wt_pars)
                 def thresh_tracker(u):

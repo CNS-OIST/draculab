@@ -236,6 +236,13 @@ class topology():
                               regions are separate. In this case the transform can put the mean center of the
                               units in from_list on the center of the units in to_list by shifting with the
                               vector (to_center - from_center); moreover, things like reflections can be made.
+                'dist_dim' : This option alters the distance function between coordinates, so that only
+                              a single dimension is considered. 
+                                * If the value is 'x' then the distance between coordinates will depend 
+                                  exclusively on their horizontal distance (e.g. the distance in the first 
+                                  entry of the coordinate). 
+                                * If the value is 'y' the distance will depend on vertical distance.
+                                * If the value is 'all' the option will be ignored (normal distance).
                 
             syn_spec: A dictionary used to initialize the synapses in the connections.
                 REQUIRED PARAMETERS
@@ -324,6 +331,16 @@ class topology():
             # Euclidean distance
             dist = lambda x,y: np.sqrt( sum( (x-y)*(x-y) ) )
             fids_dic = {'edge_wrap':False, 'distance':dist}
+
+        # handling the case when the 'dist_dim' option is used
+        if 'dist_dim' in conn_spec and conn_spec['dist_dim'] != 'all':
+            base_dist = dist
+            if conn_spec['dist_dim'] == 'x':
+                dist = lambda x, y: base_dist(np.array([x[0]]+[0]*(len(x)-1)),np.array([y[0]]+[0]*(len(y)-1)))
+            elif conn_spec['dist_dim'] == 'y':
+                dist = lambda x, y: base_dist(np.array([0, x[1]]+[0]*(len(x)-2)),np.array([0, y[1]]+[0]*(len(y)-2)))
+            else:
+                raise ValueError('Invalid value for the dist_dim option')
 
         # setting some default values in conn_spec
         if not 'allow_autapses' in conn_spec: conn_spec['allow_autapses'] = True

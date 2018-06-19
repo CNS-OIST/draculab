@@ -139,6 +139,7 @@ class ei_net():
             'phi' : 0.5, # for some of the double_sigma units
             'rdc_port' : 0, # for multiport units with rate distribution control
             'thr_fix' : 0.1, # for the "sharpening" units
+            'tau_fix' : 0.1, # for the "sharpening" units
             'sharpen_port' : 1, # for the "sharpening" units
             'type' : unit_types.sigmoidal }
         self.i_pars = {'init_val_min' : 0.001,
@@ -166,6 +167,7 @@ class ei_net():
             'phi' : 0.5, # for some of the double_sigma units
             'rdc_port' : 0, # for multiport units with rate distribution control
             'thr_fix' : 0.1, # for the "sharpening" units
+            'tau_fix' : 0.1, # for the "sharpening" units
             'sharpen_port' : 1, # for the "sharpening" units
             'type' : unit_types.sigmoidal }
         self.x_pars = {'type' : unit_types.source,
@@ -366,7 +368,8 @@ class ei_net():
                     self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
         # If there are exp_dist_sig_thr units, create some units to track the thresholds
         trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
-                  unit_types.ds_n_trdc, unit_types.ds_sharp]
+                  unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, 
+                  unit_types.ds_n_sharp, unit_types.sds_n_sharp]
         if self.e_pars['type'] in trdc_u or self.i_pars['type'] in trdc_u:
             self.thr_track = self.net.create(self.n['w_track'], self.wt_pars)
             def thresh_tracker(u):
@@ -671,7 +674,8 @@ class ei_net():
 
         # Plot the evolution of the thresholds
         trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
-                  unit_types.ds_n_trdc, unit_types.ds_sharp]
+                  unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, 
+                  unit_types.ds_n_sharp, unit_types.sds_n_sharp]
         if self.e_pars['type'] in trdc_u or self.i_pars['type'] in trdc_u:
             thr_fig = plt.figure(figsize=(10,5))
             thresholds = np.transpose([self.all_activs[self.thr_track[i]] for i in range(self.n['w_track'])])
