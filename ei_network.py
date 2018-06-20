@@ -48,6 +48,7 @@ class ei_network():
         save : pickle the object and save it in a file.
         -------- 
         default_inp_pat, default_inp_fun : auxiliary to 'run'.
+        make_transform: auxiliary to 'build'.
         make_inp_fun : auxiliary to default_inp_fun.
         H : the Heaviside step function. Auxiliary to make_inp_fun.
         color_fun : auxiliary to act_anim and double_anim.
@@ -227,6 +228,12 @@ class ei_network():
         self.history.append(dictionary + '[\'' + entry + '\'] = ' + str(value) ) # record assignment
             
 
+    def make_transform(self, tar_center, src_center):
+        """ Auxiliary to build, to avoid scoping problems.
+            https://eev.ee/blog/2011/04/24/gotcha-python-scoping-closures/
+        """
+        return lambda x : x + (tar_center - src_center)
+
     def build(self):
         """ Configure the draculab network. """
         # Store record of network being built
@@ -263,7 +270,8 @@ class ei_network():
                 # center of the rectangle for the receiving population
                 tar_center = np.array( trg_geom['center'] )
                 src_center = np.array( src_geom['center'] )
-                conn_dict['transform'] = lambda x : x + (tar_center - src_center)
+                #conn_dict['transform'] = lambda x : x + (tar_center - src_center) # EVIL BUG FROM HELL!!!
+                conn_dict['transform'] = self.make_transform(tar_center, src_center)
             else: # using custom transform
                 name = c['src_lyr'] + c['src_pop'] + '_' + c['trg_lyr'] + c['trg_pop'] # base name of the dictionaries
                 self.annotate('Using custom transform in ' + name + ' connection.')
