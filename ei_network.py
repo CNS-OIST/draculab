@@ -290,10 +290,10 @@ class ei_network():
             trg_lyr = self.layers[c['trg_lyr']]  # target layer
             src_pop = src_lyr.__getattribute__(c['src_pop'])  # source population (e|i|x)
             trg_pop = trg_lyr.__getattribute__(c['trg_pop'])  # target population (e|i)
-            topo.topo_connect(self.net, src_pop, trg_pop, conn_dict, syn_dict) # creating layer!
             # Place the connection dictionaries in the object's history
             self.history.append(name+'_conn = ' + pp.pformat(conn_dict) + '\n') 
             self.history.append(name+'_syn = ' + pp.pformat(syn_dict) + '\n') 
+            topo.topo_connect(self.net, src_pop, trg_pop, conn_dict, syn_dict) # creating layer!
         
         self.history.append("#()()()()()() Post build() history ()()()()()()")
 
