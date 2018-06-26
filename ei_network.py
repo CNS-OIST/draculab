@@ -506,7 +506,7 @@ class ei_network():
             plt.plot(self.all_times, weights, linewidth=1)
             plt.title('Some synaptic weights')
             # Plot the evolution of the synaptic scale factors
-            if layer.e_pars['type'] == unit_types.exp_dist_sig and layer.i_pars['type'] == unit_types.exp_dist_sig:
+            if layer.e_pars['type'] == unit_types.exp_dist_sig or layer.i_pars['type'] == unit_types.exp_dist_sig:
                 sc_fig = plt.figure(figsize=(10,5))
                 factors = np.transpose([self.all_activs[layer.sc_track[i]] for i in range(layer.n['w_track'])])
                 plt.plot(self.all_times, factors, linewidth=1)
@@ -1272,7 +1272,7 @@ class ei_layer():
                 for sid,s in enumerate(which_syns[uid]):
                     self.net.units[self.w_track[uid*n_syns+sid]].set_function(self.net.syns[u][s].get_w)
             # If there are exp_dist_sigmoidal units, create some units to track their scale factors
-            if self.e_pars['type'] == unit_types.exp_dist_sig and self.i_pars['type'] == unit_types.exp_dist_sig:
+            if self.e_pars['type'] == unit_types.exp_dist_sig or self.i_pars['type'] == unit_types.exp_dist_sig:
                 self.sc_track = self.net.create(self.n['w_track'], self.wt_pars)
                 def scale_tracker(u,s):
                     return lambda x: self.net.units[u].scale_facs[s]

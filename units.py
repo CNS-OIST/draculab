@@ -1485,7 +1485,81 @@ class exp_dist_sigmoidal(unit):
         """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
         return ( self.f(self.get_exp_sc_input_sum(t)) - y[0] ) * self.rtau
+
+class sig_ssrdc_sharp(unit): 
+    """
+    The synaptic weights are scaled to produce an exponential distribution when input at port 1 > 0.5 .
     
+    In other words, this is the same as the exp_dist_sigmoidal unit, but there is an extra port
+    that controls whether or not the synaptic scaling is applied.
+
+    Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
+    Synaptic weights initialized to zero will be considered excitatory.
+    """
+    # The visible difference with sigmoidal units.derivatives is that this unit type
+    # calls get_exp_sc_input_sum() instead of get_input_sum(), and this causes the 
+    # excitatory inputs to be scaled using an 'exp_scale' factor. The exp_scale
+    # factor is calculated by the upd_exp_scale function, which is called every update
+    # thanks to the exp_scale synaptic requirement.
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function.
+                'tau' : Time constant of the update dynamics.
+                'tau_scale' : sets the speed of change for the scaling factor
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
+
+        Raises:
+            ValueError
+
+        The actual values used for scaling are calculated in unit.upd_exp_scale() .
+        Values around Kp=0.1, tau_scale=0.1 are usually appropriate when c >= 1 .
+        When c <= 0 the current implementation is not very stable.
+        """
+
+        unit.__init__(self, ID, params, network)
+        if self.n_ports != 2:
+            raise ValueError('sig_ssrdc_sharp units are expected to have 2 ports')
+        self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
+        self.slope = params['slope']    # slope of the sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.tau_scale = params['tau_scale']  # the scaling time constant
+        self.Kp = params['Kp']  # gain for synaptic scaling
+        self.c = params['c']  # The coefficient in the exponential distribution
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        
+        self.syn_needs.update([syn_reqs.balance, syn_reqs.exp_scale, 
+                               syn_reqs.lpf_fast, syn_reqs.inp_vector])
+        
+    def f(self, arg):
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
+        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+    
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+
+    def get_mp_input_sum(self, time):
+        """ The input function of the sig_ssrdc_sharp unit. """
+        weights = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        if np.dot(weights[1], inps[1]) > 0.5:
+            return self.f(sum( [sc * w * i for sc, w, i in zip(self.scale_facs, weights[0], inps[0]) ] ) )
+        else:
+            return self.f( np.dot(weights[0], inps[0]) )
+            
 
 class exp_dist_sig_thr(unit): 
     """
