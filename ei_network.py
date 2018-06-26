@@ -79,8 +79,9 @@ class ei_network():
         self.history.append('np.random.seed(%d)'  % (seed))
 
         self.net_number = net_number
-        if net_number:
+        if self.net_number != None: 
             self.history.append('# parallel runner assigned this network the number ' + str(net_number))
+            self.inp_hist = {} # to produce an optional lists with the ID of all the inputs presented. See run()
 
         # DEFAULT PARAMETER DICTIONARY FOR THE NETWORK
         self.net_params = {'min_delay' : 0.005, 
@@ -350,11 +351,14 @@ class ei_network():
             Args:
                 n_pres : number of pattern presentations to simulate.
                 pres_time : time that each pattern presentation will last.
-                set_inp_pat : a dictionary with the methods that set the input patterns to be presented
-                              to each layer. At the beginning of each presentation, the method 
+                set_inp_pat : a dictionary with the methods that set the patterns to appear at the source
+                              units of each layer. At the beginning of each presentation, the method 
                               set_inp_pat['name'] (if present) is called for the layer with the given name. 
                               This, together with set_inp_fun, creates a new pattern to be presented. 
-                              The set_inp_pat method has the following specifications.
+                              When we have a multiprocess simulation (e.g. the network has a number ID), the
+                              function that gets the input pattern will have an extra argument (net_number), and
+                              will return an extra integer.
+                              When there is no net_number, the set_inp_pat method has the following specifications:
                         set_inp_pat(pres, rows, columns)
                             # Given a presentation number and the number of rows and columns in the input layer, 
                             # returns an input pattern, which is a 1-D numpy array with the value that the input 
@@ -364,6 +368,12 @@ class ei_network():
                             # e.g. input[idx] corresponds to the unit in row r, and column c, with the indexes starting
                             # from 0. This is consistent with the way coordinates are assigned in topology.create_group,
                             # and the 2-D pattern can be recovered with numpy.reshape(input, (rows, columns)).
+                              When there is a net_number, set_inp_pat is called as:
+                        set_inp_pat(pres, rows, columns, net_number)
+                            # Returns a 2-tuple with two elements. The first is an input pattern as above. The
+                            # second is an integer that serves as an ID for this input.
+                            # The arguments are the same as above, with the addition of net_number, which specifies 
+                            # that the input pattern to be returned should correspond to the network with 'net_number' ID.
                 set_inp_fun : a dictionary with the methods that instantiate Python functions providing the input
                               patterns selected with set_inp_pat. The functions should follow these specifications:
                         set_inp_fun(prev_inp_pat, cur_inp_pat, init_time, pres_time, inp_units))
@@ -381,6 +391,11 @@ class ei_network():
                 self.all_times: 1-D numpy array with the times for each data point in all_activs.
                 self.all_activs: 2-D numpy array with the activity of all units at each point in all_times. 
         """
+        # set_inp_pat has the net_number argument for multiprocess simulations because in this case
+        # it is hard to keep a record of the input ID's at the mp_net_runner object. Thus, ei_network.run
+        # keeps a record of the presented input ID's in inp_hist, using the extra value returned by
+        # set_inp_pat. This history of inputs is then used in mp_net_runner scripts to analyze the results
+        # of the simulation without a need to use the raw input signals.
 
         # store a record of this simulation
         self.history.append('run(n_pres=%d, pres_time=%f, ...)' % (n_pres, pres_time)) 
@@ -396,13 +411,18 @@ class ei_network():
             if lay.n['x'] > 0:  # If the layer has external input units
                 #inp_pat[name] = np.zeros(lay.n['x'])  # initial "null" pattern
                 # initial conditions come from the input functions
-                if set_inp_pat and (name in set_inp_pat): # if we received a function to set the layer's input pattern
-                    inp_pat[name] = set_inp_pat[name](0, lay.x_geom['rows'], lay.x_geom['columns'])
+                if set_inp_pat != None and (name in set_inp_pat): # if we received a function to set the layer's input pattern
+                    if self.net_number != None: # if multiprocess simulation
+                        (inp_pat[name], inp_id) = set_inp_pat[name](0, lay.x_geom['rows'], 
+                                                                    lay.x_geom['columns'], self.net_number)
+                        self.inp_hist[name] = []
+                    else:
+                        inp_pat[name] = set_inp_pat[name](0, lay.x_geom['rows'], lay.x_geom['columns'])
                 else:
                     inp_pat[name] = self.default_inp_pat(0, lay.x_geom['rows'], lay.x_geom['columns'])
 
         if self.net_number != None:
-            num_str = 'at network ' + str(self.net_number)
+            num_str = ' at network ' + str(self.net_number)
         else:
             num_str = ''
         # present input patterns
@@ -415,8 +435,13 @@ class ei_network():
                 lay = self.layers[name]
                 prev_pat[name] = inp_pat[name]
                 inp_units = [self.net.units[i] for i in lay.x]
-                if set_inp_pat and (name in set_inp_pat): # if we received a function to set the layer's input pattern
-                    inp_pat[name] = set_inp_pat[name](pres, lay.x_geom['rows'], lay.x_geom['columns'])
+                if set_inp_pat != None and (name in set_inp_pat): # if we received a function to set the layer's input pattern
+                    if self.net_number != None: # if it's a multiprocess simulation
+                        (inp_pat[name], inp_id) = set_inp_pat[name](pres, lay.x_geom['rows'], 
+                                                                   lay.x_geom['columns'], self.net_number)
+                        self.inp_hist[name].append(inp_id)
+                    else:
+                        inp_pat[name] = set_inp_pat[name](pres, lay.x_geom['rows'], lay.x_geom['columns'])
                 else:
                     inp_pat[name] = self.default_inp_pat(pres, lay.x_geom['rows'], lay.x_geom['columns'])
                 # Setting input functions
