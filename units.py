@@ -748,10 +748,26 @@ class unit():
         u = (np.log(r/(1.-r))/self.slope) + self.thresh
         weights = np.array([syn.w for syn in self.net.syns[self.ID]])
         I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
-        mu_exc = np.sum( self.inp_vector[self.exc_idx] )
+        mu_exc = np.maximum( np.sum( self.inp_vector[self.exc_idx] ), 0.001 )
         fpr = 1. / (self.c * r * (1. - r))
         ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
-        self.scale_facs[self.exc_idx] += self.tau_scale * (ss_scale/weights[self.exc_idx] - self.scale_facs[self.exc_idx])
+        #ss_scale = (u - I + self.Kp * error) / mu_exc
+        #self.scale_facs[self.exc_idx] += self.tau_scale * (ss_scale/np.maximum(weights[self.exc_idx],.05) - 
+        #                                                    self.scale_facs[self.exc_idx])
+        # ------------ soft weight-bounded version ------------
+        # soft weight bounding implies that the scale factors follow the logistic differential 
+        # equation. This equation has the form x' = r (a - x) x, and has a solution
+        # x(t) = a x(0) / [ x(0) + (a - x(0))*exp(-a r t) ] .
+        # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
+        # We can use this analytical solution to updte the scale factors on each update.
+        a = ss_scale / np.maximum(weights[self.exc_idx],.001)
+        x0 = self.scale_facs[self.exc_idx]
+        t = self.net.min_delay
+        self.scale_facs[self.exc_idx] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
+        #self.scale_facs[self.exc_idx] += self.tau_scale * self.scale_facs[self.exc_idx] * (
+        #                                 ss_scale/np.maximum(weights[self.exc_idx],.05) - 
+        #                                 self.scale_facs[self.exc_idx] )
+
 
         # PID version with moving bin
         ######################################################################

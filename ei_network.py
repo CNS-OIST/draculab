@@ -1275,7 +1275,10 @@ class ei_layer():
             if self.e_pars['type'] == unit_types.exp_dist_sig or self.i_pars['type'] == unit_types.exp_dist_sig:
                 self.sc_track = self.net.create(self.n['w_track'], self.wt_pars)
                 def scale_tracker(u,s):
-                    return lambda x: self.net.units[u].scale_facs[s]
+                    if hasattr(self.net.units[u], 'scale_facs'):
+                        return lambda x: self.net.units[u].scale_facs[s]
+                    else:
+                        return lambda x: 1.
                 for uid,u in enumerate(which_u):
                     for sid,s in enumerate(which_syns[uid]):
                         self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
