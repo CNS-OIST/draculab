@@ -755,11 +755,11 @@ class unit():
         #self.scale_facs[self.exc_idx] += self.tau_scale * (ss_scale/np.maximum(weights[self.exc_idx],.05) - 
         #                                                    self.scale_facs[self.exc_idx])
         # ------------ soft weight-bounded version ------------
-        # soft weight bounding implies that the scale factors follow the logistic differential 
+        # Soft weight bounding implies that the scale factors follow the logistic differential 
         # equation. This equation has the form x' = r (a - x) x, and has a solution
         # x(t) = a x(0) / [ x(0) + (a - x(0))*exp(-a r t) ] .
         # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
-        # We can use this analytical solution to updte the scale factors on each update.
+        # We can use this analytical solution to update the scale factors on each update.
         a = ss_scale / np.maximum(weights[self.exc_idx],.001)
         x0 = self.scale_facs[self.exc_idx]
         t = self.net.min_delay
