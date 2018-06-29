@@ -492,9 +492,11 @@ class unit():
                 self.scale_facs= np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
                 # exc_idx = numpy array with index of all excitatory units in the input vector
                 self.exc_idx = [idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w >= 0]
-                self.exc_idx = np.array(self.exc_idx)
+                # ensure the integer data type; otherwise you can't index numpy arrays
+                self.exc_idx = np.array(self.exc_idx, dtype='uint32')
                 # inh_idx = numpy array with index of all inhibitory units 
-                self.inh_idx = np.array([idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w < 0])
+                self.inh_idx = [idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w < 0]
+                self.inh_idx = np.array(self.inh_idx, dtype='uint32')
                 self.functions.add(self.upd_exp_scale)
             elif req is syn_reqs.slide_thresh:  # <----------------------------------
                 if (not syn_reqs.balance in self.syn_needs) and (not syn_reqs.balance_mp in self.syn_needs):
