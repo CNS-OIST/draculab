@@ -399,34 +399,39 @@ class ei_network():
 
         # store a record of this simulation
         self.history.append('run(n_pres=%d, pres_time=%f, ...)' % (n_pres, pres_time)) 
-        # initialize storage of results
-        self.all_times = []
-        self.all_activs = []
-        # initialize other variables
+        # initialize input patterns and storage of results 
+        run_activs = []  # will contain all the input activities for this call to run()
         start_time = time.time() # to keep track of how long the simulation lasts
         prev_pat = {} # dictionary to store the previous input patterns
         inp_pat = {} # dictionary to store the current input patterns
-        for name in self.layers:
-            lay = self.layers[name]
-            if lay.n['x'] > 0:  # If the layer has external input units
-                #inp_pat[name] = np.zeros(lay.n['x'])  # initial "null" pattern
-                # initial conditions come from the input functions
-                if set_inp_pat != None and (name in set_inp_pat): # if we received a function to set the layer's input pattern
-                    if self.net_number != None: # if multiprocess simulation
-                        (inp_pat[name], inp_id) = set_inp_pat[name](0, lay.x_geom['rows'], 
-                                                                    lay.x_geom['columns'], self.net_number)
-                        self.inp_hist[name] = []
+
+        if not hasattr(self, 'all_times') or not hasattr(self, 'all_activs'): # if it's the first call to run()
+            self.all_times = np.array([])  # a times vector that persists through multiple runs
+            self.all_activs = np.tile([], (len(self.net.units),1))
+            self.present = 0 # a presentation number that persists through multiple runs
+            for name in self.layers:
+                lay = self.layers[name]
+                if lay.n['x'] > 0:  # If the layer has external input units
+                    #inp_pat[name] = np.zeros(lay.n['x'])  # initial "null" pattern
+                    # initial conditions come from the input functions
+                    if set_inp_pat != None and (name in set_inp_pat): # if we received a function to set the layer's input pattern
+                        if self.net_number != None: # if multiprocess simulation
+                            (inp_pat[name], inp_id) = set_inp_pat[name](self.present, lay.x_geom['rows'], 
+                                                                        lay.x_geom['columns'], self.net_number)
+                            self.inp_hist[name] = []
+                        else:
+                            inp_pat[name] = set_inp_pat[name](self.present, lay.x_geom['rows'], lay.x_geom['columns'])
                     else:
-                        inp_pat[name] = set_inp_pat[name](0, lay.x_geom['rows'], lay.x_geom['columns'])
-                else:
-                    inp_pat[name] = self.default_inp_pat(0, lay.x_geom['rows'], lay.x_geom['columns'])
+                        inp_pat[name] = self.default_inp_pat(self.present, lay.x_geom['rows'], lay.x_geom['columns'])
+        else: # if not the first run
+            inp_pat = self.last_pat
 
         if self.net_number != None:
             num_str = ' at network ' + str(self.net_number)
         else:
             num_str = ''
         # present input patterns
-        for pres in range(n_pres):
+        for pres in [self.present + p for p in range(n_pres)]:
             print('Starting presentation ' + str(pres) + num_str)
             pres_start = time.time() # to keep track of how long the presentation lasts
             t = self.net.sim_time
@@ -451,12 +456,17 @@ class ei_network():
                     self.default_inp_fun(prev_pat[name], inp_pat[name], t, pres_time, inp_units)
             # Simulating
             times, activs, plants = self.net.run(pres_time)
-            self.all_times.append(times)
-            self.all_activs.append(activs)
+            #self.all_times.append(times) # deprecated...
+            #self.all_activs.append(activs)
+            self.all_times = np.append(self.all_times, times)
+            run_activs.append(activs)
             print('Presentation %s took %s seconds ' % (pres, time.time() - pres_start) + num_str, end='\n')
 
-        self.all_times = np.concatenate(self.all_times)
-        self.all_activs = np.concatenate(self.all_activs, axis=1)
+        self.present += n_pres   # number of input presentations so far
+        self.last_pat = inp_pat  # used to initialize inp_pat and prev_pat in the next run
+        #self.all_times = np.concatenate(self.all_times) # deprecated ...
+        #self.all_activs = np.concatenate(self.all_activs, axis=1)
+        self.all_activs = np.append(self.all_activs, np.concatenate(run_activs, axis=1), axis=1)
         print('Total execution time is %s seconds ' % (time.time() - start_time) + num_str) 
         print('----------------------')
 
