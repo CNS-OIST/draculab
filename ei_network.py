@@ -240,11 +240,16 @@ class ei_network():
         # Store record of network being built
         self.history.append('#()()()()()()()()()()()()()()()()()()')
         self.history.append('build()')
+        if self.net_number != None: # a string to display for multiprocess simulations
+            num_str = ' at network ' + str(self.net_number)
+        else:
+            num_str = ''
 
         # Build the layers
         for name in self.layers:
-            print('Building layer ' + name)
+            print('Building layer ' + name + num_str, end="\n")
             self.layers[name].build(self.net)
+        print('\n')
 
         # Create the parameter dictionaries for the inter-layer connections
         for c in self.layer_connections:
@@ -284,7 +289,7 @@ class ei_network():
         pp = pprint.PrettyPrinter(indent=4, compact=True)
         for c in self.layer_connections:
             name = c['src_lyr'] + c['src_pop'] + '_' + c['trg_lyr'] + c['trg_pop'] # base name of the dictionaries
-            print('Creating ' + name + ' connection')
+            print('Creating ' + name + ' connection' + num_str, end='\n')
             conn_dict = self.__getattribute__(name+'_conn')  # The connection dictionary
             syn_dict = self.__getattribute__(name+'_syn')  # The synapse dictionary
             src_lyr = self.layers[c['src_lyr']]  # source layer
