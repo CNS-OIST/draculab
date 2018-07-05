@@ -797,7 +797,7 @@ class unit():
         # First APCTP version (12/13/17)
         ######################################################################
         u = (np.log(r/(1.-r))/self.slope) + self.thresh
-        rdc_inputs = np.array(self.mp_inputs[self.rdc_port])
+        rdc_inputs = self.mp_inputs[self.rdc_port]
         rdc_weights = self.get_mp_weights(time)[self.rdc_port]
         I = u - np.dot(rdc_weights, rdc_inputs)
         mu_exc = np.maximum( np.sum( rdc_inputs[self.exc_idx] ), 0.001 )
