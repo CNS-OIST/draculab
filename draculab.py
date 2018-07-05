@@ -210,6 +210,7 @@ class syn_reqs(Enum):
     mp_inputs = 21 # the multiport inputs, as returned by the get_mp_inputs method
     balance_mp = 22 # the multiport version of the 'balance' requirement above
     slide_thr_shrp = 23 # move threshold to produce exp rate distro if 'sharpen' input > 0.5
+    exp_scale_mp = 24 # scale factors to produce exp distro in multiport units
 
 
 

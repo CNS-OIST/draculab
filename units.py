@@ -490,14 +490,27 @@ class unit():
                 if not syn_reqs.balance in self.syn_needs:
                     raise AssertionError('exp_scale requires the balance requirement to be set')
                 self.scale_facs= np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
-                # exc_idx = numpy array with index of all excitatory units in the input vector
-                self.exc_idx = [idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w >= 0]
+                # exc_idx = numpy array with index of all excitatory units in the input vector 
+                self.exc_idx = [ idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w >= 0]
                 # ensure the integer data type; otherwise you can't index numpy arrays
                 self.exc_idx = np.array(self.exc_idx, dtype='uint32')
                 # inh_idx = numpy array with index of all inhibitory units 
                 self.inh_idx = [idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w < 0]
                 self.inh_idx = np.array(self.inh_idx, dtype='uint32')
                 self.functions.add(self.upd_exp_scale)
+            elif req is syn_reqs.exp_scale_mp:  # <----------------------------------
+                if not syn_reqs.balance_mp in self.syn_needs:
+                    raise AssertionError('exp_scale requires the balance_mp requirement to be set')
+                self.scale_facs= np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
+                # exc_idx = numpy array with index of all excitatory units in the input vector at rdc port
+                self.exc_idx = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
+                                 for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
+                # ensure the integer data type; otherwise you can't index numpy arrays
+                self.exc_idx = np.array(self.exc_idx, dtype='uint32')
+                # inh_idx = numpy array with index of all inhibitory units 
+                #self.inh_idx = [idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w < 0]
+                #self.inh_idx = np.array(self.inh_idx, dtype='uint32')
+                self.functions.add(self.upd_exp_scale_mp)
             elif req is syn_reqs.slide_thresh:  # <----------------------------------
                 if (not syn_reqs.balance in self.syn_needs) and (not syn_reqs.balance_mp in self.syn_needs):
                     raise AssertionError('slide_thresh requires the balance(_mp) requirement to be set')
@@ -716,7 +729,7 @@ class unit():
 
 
     def upd_balance_mp(self, time):
-        """ Updates two numbers called  below, and above.
+        """ Updates two numbers called  below, and above. Used in units with multiple input ports.
 
             below = fraction of inputs with rate lower than this unit.
             above = fraction of inputs with rate higher than this unit.
@@ -724,6 +737,7 @@ class unit():
             Those numbers are useful to produce a given firing rate distribtuion among
             the population of units that connect to port 0.
 
+            This is the same as upd_balance, but ports other than the rdc_port are ignored.
         """
         inputs = self.mp_inputs[self.rdc_port]
         N = len(inputs)
@@ -735,7 +749,7 @@ class unit():
     def upd_exp_scale(self, time):
         """ Updates the synaptic scaling factor used in exp_dist_sigmoidal units.
 
-            The algorithm is a multiplicative version of the  one used in exp_rate_dist syanpases.
+            The algorithm is a multiplicative version of the  one used in exp_rate_dist synapses.
         """
         #H = lambda x: 0.5 * (np.sign(x) + 1.)
         #cdf = lambda x: ( 1. - np.exp(-self.c*min(max(x,0.),1.) ) ) / ( 1. - np.exp(-self.c) )
@@ -771,142 +785,44 @@ class unit():
         #                                 self.scale_facs[self.exc_idx] )
 
 
-        # PID version with moving bin
+    def upd_exp_scale_mp(self, time):
+        """ Updates the synaptic scaling factor used in multiport ssrdc units.
+
+        """
+        r = self.get_lpf_fast(0)
+        r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
+        exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+        error = self.below - self.above - 2.*exp_cdf + 1. 
+
+        # First APCTP version (12/13/17)
         ######################################################################
-        # handling of the edges is a bit hacky
-        """
-        rwid = 0.1
-        N = len(self.inp_vector)
-        gain = 10.
-        if r > 1.-rwid:
-            #above = ( 0.5 * (np.sign(self.inp_vector - (1.-rwid)) + 1.).sum() ) / N
-            above = ( H( self.inp_vector - (1.-rwid) ).sum() ) / N
-            #cdf_diff = 1. - ( ( 1. - np.exp(-self.c*(1.-rwid))) / ( 1. - np.exp(-self.c) ) )
-            cdf_diff = 1. - cdf(1. - rwid)
-            error = gain *(cdf_diff - above)
-        elif r < rwid:
-            #below = ( 0.5 * (np.sign(rwid - self.inp_vector) + 1.).sum() ) / N
-            below = ( H(rwid - self.inp_vector).sum() ) / N
-            #cdf_diff = ( 1. - np.exp(-self.c*rwid) ) / ( 1. - np.exp(-self.c) )
-            cdf_diff = cdf(rwid)
-            error = gain * (below - cdf_diff) 
-        else:
-            #above = ( 0.5 * (np.sign(self.inp_vector - r - rwid/2.) + 1.).sum() ) / N
-            above = ( H( self.inp_vector - r - rwid/2. ).sum() ) / N
-            #below = ( 0.5 * (np.sign(r - self.inp_vector - rwid/2.) + 1.).sum() ) / N
-            below = ( H( r - self.inp_vector - rwid/2. ).sum() ) / N
-            center = 1. - above - below
-            #cdf_right =  ( 1. - np.exp(-self.c*(r + rwid/2.))) / ( 1. - np.exp(-self.c) ) 
-            cdf_right = 1. - cdf(r + rwid/2.)
-            #cdf_left =  ( 1. - np.exp(-self.c*(r - rwid/2.))) / ( 1. - np.exp(-self.c) ) 
-            cdf_left = cdf(r - rwid/2.)
-            left_extra = below - cdf_left
-            right_extra = above - (1. - cdf_right)
-            center_extra = center - (cdf_right - cdf_left)
-
-            #assert abs(center_extra+left_extra+right_extra) < 1e-4, 'extras do not add to 1'
-
-            if center > 1/N:
-                error = gain * center * (left_extra - right_extra)
-            else:
-                error = 0.
-        """
-        """
-        center = ( H( self.inp_vector - r - rwid/2.) * H( r - self.inp_vector - rwid/2.) ).sum() 
-        cdf_center = N * ( cdf(r + rwid/2.) - cdf(r - rwid/2.) )
-        extra = center - cdf_center
-        errorB =   (0.4 - r) * extra
-        error = error + errorB
-        #error = errorB
-
-        self.delta_w += self.net.min_delay * error
-        p = self.Kp * error
-        d = self.Kd * ( r - self.get_lpf_mid(0) ) # approximatig (d error)/dt with dr/dt
-        i = self.Ki * self.delta_w
-
+        u = (np.log(r/(1.-r))/self.slope) + self.thresh
+        rdc_inputs = np.array(self.mp_inputs[self.rdc_port])
+        rdc_weights = self.get_mp_weights(time)[self.rdc_port]
+        I = u - np.dot(rdc_weights, rdc_inputs)
+        mu_exc = np.maximum( np.sum( rdc_inputs[self.exc_idx] ), 0.001 )
         fpr = 1. / (self.c * r * (1. - r))
-        modif = max( min( fpr * (p + d + i), 1. ), -.99 )
-        self.scale_facs[self.exc_idx] += self.wscale*( 1. +  modif - self.scale_facs[self.exc_idx] ) 
-
-        #weights = np.array([syn.w for syn in self.net.syns[self.ID]])
-        #self.scale_facs[self.exc_idx] += self.wscale*( 1. +  modif * weights[self.exc_idx]  
-        #                                               - self.scale_facs[self.exc_idx] )
-        """
-
-        # PID version
-        ######################################################################
-        # handling of the edges is a bit hacky
-        """
-        rwid = 0.1
-        N = len(self.inp_vector)
-        gain = 10.
-
-        if r > 1.-rwid:
-            above = ( 0.5 * (np.sign(self.inp_vector - (1.-rwid)) + 1.).sum() ) / N
-            cdf_diff = 1. - ( ( 1. - np.exp(-self.c*(1.-rwid))) / ( 1. - np.exp(-self.c) ) )
-            error = gain *(cdf_diff - above)
-        elif r < rwid:
-            below = ( 0.5 * (np.sign(rwid - self.inp_vector) + 1.).sum() ) / N
-            cdf_diff = ( 1. - np.exp(-self.c*rwid) ) / ( 1. - np.exp(-self.c) )
-            error = gain * (below - cdf_diff) 
-        self.delta_w += self.net.min_delay * error
-        #p = self.Kp * np.sign(error)
-        p = self.Kp * error
-        #d = self.Kd * abs( r - self.get_lpf_mid(0) ) # approximatig (d error)/dt with dr/dt
-        d = self.Kd * ( r - self.get_lpf_mid(0) ) # approximatig (d error)/dt with dr/dt
-        i = self.Ki * np.sign(self.delta_w)
-
-        fpr = 1. / (self.c * r * (1. - r))
-        modif = max( min( fpr * (p + d + i), 1. ), -.99 )
-        weights = np.array([syn.w for syn in self.net.syns[self.ID]])
-        #self.scale_facs[self.exc_idx] = 1. + (modif / weights[self.exc_idx])
-        self.scale_facs[self.exc_idx] += self.wscale*( 1. +  modif * weights[self.exc_idx]  
-                                                       - self.scale_facs[self.exc_idx] )
-        """
-
-        ######################################################################
-        # Version with "integrative" modifier
-        """
-        #self.delta_w += self.wscale * ( self.below - self.above - 2.*exp_cdf + 1. )
-
-        # Version with gradual fixed modifier
-        self.delta_w = self.delta_w + self.wscale * ( self.below - self.above - 2.*exp_cdf + 1. - self.delta_w)
-
-        # Version with instant fixed modifier
-        #self.delta_w = self.wscale * ( self.below - self.above - 2.*exp_cdf + 1. )
-
-        fpr = 1. / (self.c * r * (1. - r))
-        #fpr = np.minimum( fpr, 20. )
-        #ss_scale = 1. / (1. + np.exp(-4.*(self.delta_w*fpr - 1.)))
-        ss_scale = 0.5 + 1. / (1. + np.exp(-self.sslope*(self.delta_w*fpr)))
-        #ss_scale = 1. + fpr * self.delta_w
-        self.exp_scale = self.exp_scale + self.wscale * (ss_scale - self.exp_scale)
-        self.scale_facs[self.exc_idx] = self.exp_scale 
-        """
-
-        ######################################################################
-        #u = (np.log(r/(1.-r))/self.slope) + self.thresh
-        #mu = self.get_lpf_mid_inp_sum() 
-        #exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
-        #left_extra = self.below - exp_cdf
-        #right_extra = self.above - (1. - exp_cdf)
-        #ss_scale = (u + self.wscale * (left_extra - right_extra)) / (r * mu)
-        #self.delta_w += self.wscale * ( self.below - self.above - 2.*exp_cdf + 1. )
-        # The factor has a different impact depending on the gain we have at the current point along 
-        # the f-I curve. Assuming sigmoidal units we can multipliy by the reciprocal of the derivative
-        #fpr = 1. / (self.c * r * (1. - r))
-        #fpr = np.minimum( fpr, 50. )
-        #self.exp_scale = 1. + self.delta_w*fpr
-        #s_scale =  1. / (1. + np.exp(-4.*(self.delta_w*fpr - 1.)))
-        #elf.exp_scale = 0.99*self.exp_scale + 0.01*ss_scale
-        #self.exp_scale = self.exp_scale + self.wscale * (left_extra - right_extra)
-        #weights = np.array([syn.w for syn in self.net.syns[self.ID]])
-        #elf.scale_facs[self.exc_idx] = self.exp_scale 
-        #self.scale_facs[self.exc_idx] = np.maximum( 
-        #                                np.minimum( 
-        #                                self.exp_scale / weights[self.exc_idx], 2.), 0.1) 
+        ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
+        #ss_scale = (u - I + self.Kp * error) / mu_exc
+        #self.scale_facs[self.exc_idx] += self.tau_scale * (ss_scale/np.maximum(weights[self.exc_idx],.05) - 
+        #                                                    self.scale_facs[self.exc_idx])
+        # ------------ soft weight-bounded version ------------
+        # Soft weight bounding implies that the scale factors follow the logistic differential 
+        # equation. This equation has the form x' = r (a - x) x, and has a solution
+        # x(t) = a x(0) / [ x(0) + (a - x(0))*exp(-a r t) ] .
+        # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
+        # We can use this analytical solution to update the scale factors on each update.
+        a = ss_scale / np.maximum(rdc_weights[self.exc_idx],.001)
+        x0 = self.scale_facs[self.exc_idx]
+        t = self.net.min_delay
+        self.scale_facs[self.exc_idx] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
+        #self.scale_facs[self.exc_idx] += self.tau_scale * self.scale_facs[self.exc_idx] * (
+        #                                 ss_scale/np.maximum(weights[self.exc_idx],.05) - 
+        #                                 self.scale_facs[self.exc_idx] )
 
 
+
+        
     def upd_inp_vector(self, time):
         """ Update a numpy array containing all the current synaptic inputs """
         self.inp_vector = np.array([ fun(time - dely) for dely,fun in 
@@ -1509,13 +1425,15 @@ class sig_ssrdc_sharp(unit):
     The synaptic weights are scaled to produce an exponential distribution when input at port 1 > 0.5 .
     
     In other words, this is the same as the exp_dist_sigmoidal unit, but there is an extra port
-    that controls whether or not the synaptic scaling is applied.
+    that controls whether or not the synaptic scaling is applied. Normal inputs must arrive at
+    port 0, and the input that signals whether to apply rate distribution control should be 
+    at port 1.
 
     Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
     Synaptic weights initialized to zero will be considered excitatory.
     """
     # The visible difference with sigmoidal units.derivatives is that this unit type
-    # calls get_exp_sc_input_sum() instead of get_input_sum(), and this causes the 
+    # calls get_mp_input_sum() instead of get_input_sum(), and this causes the 
     # excitatory inputs to be scaled using an 'exp_scale' factor. The exp_scale
     # factor is calculated by the upd_exp_scale function, which is called every update
     # thanks to the exp_scale synaptic requirement.
@@ -1544,7 +1462,6 @@ class sig_ssrdc_sharp(unit):
         Values around Kp=0.1, tau_scale=0.1 are usually appropriate when c >= 1 .
         When c <= 0 the current implementation is not very stable.
         """
-
         unit.__init__(self, ID, params, network)
         if self.n_ports != 2:
             raise ValueError('sig_ssrdc_sharp units are expected to have 2 ports')
@@ -1556,8 +1473,9 @@ class sig_ssrdc_sharp(unit):
         self.Kp = params['Kp']  # gain for synaptic scaling
         self.c = params['c']  # The coefficient in the exponential distribution
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.rdc_port = 0 # other input ports will be ignored 
         
-        self.syn_needs.update([syn_reqs.balance, syn_reqs.exp_scale, 
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.exp_scale_mp, 
                                syn_reqs.lpf_fast, syn_reqs.inp_vector])
         
     def f(self, arg):
@@ -1574,9 +1492,9 @@ class sig_ssrdc_sharp(unit):
         weights = self.get_mp_weights(time)
         inps = self.get_mp_inputs(time)
         if np.dot(weights[1], inps[1]) > 0.5:
-            return self.f(sum( [sc * w * i for sc, w, i in zip(self.scale_facs, weights[0], inps[0]) ] ) )
+            return sum( [sc * w * i for sc, w, i in zip(self.scale_facs, weights[0], inps[0]) ] ) 
         else:
-            return self.f( np.dot(weights[0], inps[0]) )
+            return np.dot(weights[0], inps[0]) 
             
 
 class exp_dist_sig_thr(unit): 
