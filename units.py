@@ -396,7 +396,7 @@ class unit():
                     raise NameError( 'the mp_inputs requirement is for multiport units with a port_idx list' )
                 self.mp_inputs = [] 
                 for prt_lst in self.port_idx:
-                    self.mp_inputs.append([self.init_val for _ in range(len(prt_lst))])
+                    self.mp_inputs.append(np.array([self.init_val for _ in range(len(prt_lst))]))
                 self.functions.add(self.upd_mp_inputs)
             elif req is syn_reqs.inp_avg:  # <----------------------------------
                 self.snorm_list = []  # a list with all the presynaptic units
@@ -502,14 +502,15 @@ class unit():
                 if not syn_reqs.balance_mp in self.syn_needs:
                     raise AssertionError('exp_scale requires the balance_mp requirement to be set')
                 self.scale_facs= np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
-                # exc_idx = numpy array with index of all excitatory units in the input vector at rdc port
-                self.exc_idx = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
-                                 for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
+                # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
+                self.exc_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
+                                     for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
                 # ensure the integer data type; otherwise you can't index numpy arrays
-                self.exc_idx = np.array(self.exc_idx, dtype='uint32')
-                # inh_idx = numpy array with index of all inhibitory units 
-                #self.inh_idx = [idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w < 0]
-                #self.inh_idx = np.array(self.inh_idx, dtype='uint32')
+                self.exc_idx_rdc = np.array(self.exc_idx_rdc, dtype='uint32')
+                # inh_idx_rdc = numpy array with index of all inhibitory units at the rdc port
+                self.inh_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
+                                     for i in self.port_idx[self.rdc_port]]) if syn.w < 0 ]
+                self.inh_idx_rdc = np.array(self.inh_idx_rdc, dtype='uint32')
                 self.functions.add(self.upd_exp_scale_mp)
             elif req is syn_reqs.slide_thresh:  # <----------------------------------
                 if (not syn_reqs.balance in self.syn_needs) and (not syn_reqs.balance_mp in self.syn_needs):
@@ -761,8 +762,9 @@ class unit():
 
         # First APCTP version (12/13/17)
         ######################################################################
-        u = (np.log(r/(1.-r))/self.slope) + self.thresh
+        #u = (np.log(r/(1.-r))/self.slope) + self.thresh  # this u lags, so I changed it
         weights = np.array([syn.w for syn in self.net.syns[self.ID]])
+        u = np.dot(self.inp_vector[self.exc_idx], weights[self.exc_idx])
         I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
         mu_exc = np.maximum( np.sum( self.inp_vector[self.exc_idx] ), 0.001 )
         fpr = 1. / (self.c * r * (1. - r))
@@ -796,29 +798,30 @@ class unit():
 
         # First APCTP version (12/13/17)
         ######################################################################
-        u = (np.log(r/(1.-r))/self.slope) + self.thresh
+        #u = (np.log(r/(1.-r))/self.slope) + self.thresh
         rdc_inputs = self.mp_inputs[self.rdc_port]
         rdc_weights = self.get_mp_weights(time)[self.rdc_port]
+        u = np.dot(rdc_inputs[self.exc_idx_rdc], rdc_weights[self.exc_idx_rdc])
         I = u - np.dot(rdc_weights, rdc_inputs)
-        mu_exc = np.maximum( np.sum( rdc_inputs[self.exc_idx] ), 0.001 )
+        mu_exc = np.maximum( np.sum( rdc_inputs[self.exc_idx_rdc] ), 0.001 )
         fpr = 1. / (self.c * r * (1. - r))
         ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
         #ss_scale = (u - I + self.Kp * error) / mu_exc
-        #self.scale_facs[self.exc_idx] += self.tau_scale * (ss_scale/np.maximum(weights[self.exc_idx],.05) - 
-        #                                                    self.scale_facs[self.exc_idx])
+        #self.scale_facs[self.exc_idxrdc] += self.tau_scale * (ss_scale/np.maximum(weights[self.exc_idx_rdc],.05) - 
+        #                                                    self.scale_facs[self.exc_idx_rdc])
         # ------------ soft weight-bounded version ------------
         # Soft weight bounding implies that the scale factors follow the logistic differential 
         # equation. This equation has the form x' = r (a - x) x, and has a solution
         # x(t) = a x(0) / [ x(0) + (a - x(0))*exp(-a r t) ] .
         # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
         # We can use this analytical solution to update the scale factors on each update.
-        a = ss_scale / np.maximum(rdc_weights[self.exc_idx],.001)
-        x0 = self.scale_facs[self.exc_idx]
+        a = ss_scale / np.maximum(rdc_weights[self.exc_idx_rdc],.001)
+        x0 = self.scale_facs[self.exc_idx_rdc]
         t = self.net.min_delay
-        self.scale_facs[self.exc_idx] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
-        #self.scale_facs[self.exc_idx] += self.tau_scale * self.scale_facs[self.exc_idx] * (
-        #                                 ss_scale/np.maximum(weights[self.exc_idx],.05) - 
-        #                                 self.scale_facs[self.exc_idx] )
+        self.scale_facs[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
+        #self.scale_facs[self.exc_idx_rdc] += self.tau_scale * self.scale_facs[self.exc_idx_rdc] * (
+        #                                 ss_scale/np.maximum(weights[self.exc_idx_rdc],.05) - 
+        #                                 self.scale_facs[self.exc_idx_rdc] )
 
 
 
