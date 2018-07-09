@@ -489,6 +489,8 @@ class unit():
             elif req is syn_reqs.exp_scale:  # <----------------------------------
                 if not syn_reqs.balance in self.syn_needs:
                     raise AssertionError('exp_scale requires the balance requirement to be set')
+                if not syn_reqs.lpf_fast in self.syn_needs:
+                    raise AssertionError('exp_scale requires the lpf_fast requirement to be set')
                 self.scale_facs= np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
                 # exc_idx = numpy array with index of all excitatory units in the input vector 
                 self.exc_idx = [ idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w >= 0]
@@ -500,7 +502,9 @@ class unit():
                 self.functions.add(self.upd_exp_scale)
             elif req is syn_reqs.exp_scale_mp:  # <----------------------------------
                 if not syn_reqs.balance_mp in self.syn_needs:
-                    raise AssertionError('exp_scale requires the balance_mp requirement to be set')
+                    raise AssertionError('exp_scale_mp requires the balance_mp requirement to be set')
+                if not syn_reqs.lpf_fast in self.syn_needs:
+                    raise AssertionError('exp_scale_mp requires the lpf_fast requirement to be set')
                 self.scale_facs= np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
                 # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
                 self.exc_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
@@ -529,6 +533,28 @@ class unit():
                     raise AssertionError('lpf_slow_mp_inp_sum requires the mp_inputs requirement')
                 self.lpf_slow_mp_inp_sum = [ 0.2 for _ in range(self.n_ports) ]
                 self.functions.add(self.upd_lpf_slow_mp_inp_sum)
+            elif req is syn_reqs.slide_thr_hr:  # <----------------------------------
+                if not syn_reqs.mp_inputs in self.syn_needs:
+                    raise AssertionError('slide_thr_hr requires the mp_inputs requirement to be set')
+                if not self.multi_port:
+                    raise AssertionError('The slide_thr_hr requirment is for multiport units only')
+                self.functions.add(self.upd_slide_thr_hr)
+            elif req is syn_reqs.syn_scale_hr:  # <----------------------------------
+                if not syn_reqs.mp_inputs in self.syn_needs:
+                    raise AssertionError('syn_scale_hr requires the mp_inputs requirement to be set')
+                if not self.multi_port:
+                    raise AssertionError('The syn_scale_hr requirment is for multiport units only')
+                if not syn_reqs.lpf_fast in self.syn_needs:
+                    raise AssertionError('syn_scale_hr requires the lpf_fast requirement to be set')
+                # exc_idx_hr = numpy array with index of all excitatory units at hr port
+                self.exc_idx_hr = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
+                                     for i in self.port_idx[self.hr_port]]) if syn.w >= 0 ]
+                # ensure the integer data type; otherwise you can't index numpy arrays
+                self.exc_idx_hr = np.array(self.exc_idx_hr, dtype='uint32')
+                #self.scale_facs = np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
+                self.scale_facs_hr = np.tile(1., len(self.port_idx[hr_port])) # array with scale factors
+                self.functions.add(self.upd_syn_scale_hr)
+
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
@@ -802,7 +828,9 @@ class unit():
         rdc_inputs = self.mp_inputs[self.rdc_port]
         rdc_weights = self.get_mp_weights(time)[self.rdc_port]
         u = np.dot(rdc_inputs[self.exc_idx_rdc], rdc_weights[self.exc_idx_rdc])
-        I = u - np.dot(rdc_weights, rdc_inputs)
+        I = u - np.dot(rdc_weights, rdc_inputs)  # THIS MAY NOT GENERALIZE WHEN YOU HAVE
+                                                # INPUTS AT MANY PORTS!!!!
+        # I = u - self.get_mp_input_sum(time)  # CONSIDER THIS INSTEAD
         mu_exc = np.maximum( np.sum( rdc_inputs[self.exc_idx_rdc] ), 0.001 )
         fpr = 1. / (self.c * r * (1. - r))
         ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
@@ -880,6 +908,39 @@ class unit():
             self.thresh -= self.tau_thr * error
         else:
             self.thresh += self.tau_fix * (self.thr_fix - self.thresh)
+
+
+    def upd_slide_thr_hr(self, time):
+        """ Updates the threshold of units with 'rate harmonization'. """
+        inputs = self.mp_inputs[self.hr_port]
+        mean_inp = np.mean(inputs) 
+        r = self.get_lpf_fast(0)
+        self.thresh -= self.tau_thr * ( mean_inp - r )
+
+
+    def upd_syn_scale_hr(self, time):
+        """ Update the synaptic scale for units with 'rate harmonization'. 
+            
+            The scaling factors in self.scale_facs correspond to the excitatory synapses
+            at the port hr_port. 
+        """
+        # Other than the 'error', it's all as in upd_exp_scale_mp
+        inputs = self.mp_inputs[self.hr_port]
+        mean_inp = np.mean(inputs) 
+        r = self.get_lpf_fast(0)
+        error =  mean_inp - r
+
+        hr_inputs = self.mp_inputs[self.hr_port]
+        hr_weights = self.get_mp_weights(time)[self.hr_port]
+        u = np.dot(hr_inputs[self.exc_idx_hr], hr_weights[self.exc_idx_hr])
+        I = u - self.get_mp_input_sum(time) 
+        mu_exc = np.maximum( np.sum( hr_inputs[self.exc_idx_hr] ), 0.001 )
+        fpr = 1. / (self.c * r * (1. - r))
+        ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
+        a = ss_scale / np.maximum(hr_weights[self.exc_idx_hr],.001)
+        x0 = self.scale_facs[self.exc_idx_hr]
+        t = self.net.min_delay
+        self.scale_facs[self.exc_idx_hr] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
 
 
 
@@ -1479,7 +1540,7 @@ class sig_ssrdc_sharp(unit):
         self.rdc_port = 0 # other input ports will be ignored 
         
         self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.exp_scale_mp, 
-                               syn_reqs.lpf_fast, syn_reqs.inp_vector])
+                               syn_reqs.lpf_fast]) # I got rid of inp_vector and haven't tested yet
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
@@ -1940,7 +2001,7 @@ class multiport_trdc_base(unit):
         if hasattr(self, 'unit_initialized') and self.unit_initialized:
             pass
         else:    # if the parent constructor hasn't been called
-            unit.__init__(ID, params, network)
+            unit.__init__(self, ID, params, network)
 
         if self.n_ports < 2:
             raise ValueError('Multiple ports required for classes derived from multiport_trdc_base')
@@ -2071,8 +2132,9 @@ class sigma_double_sigma_trdc(double_sigma_base, multiport_trdc_base):
 
         Args:
             ID, params, network: same as in the parent's constructor.
-            n_ports is no longer optional.
+            n_ports and tau_fast are no longer optional.
                 'n_ports' : number of inputs ports. 
+                'tau_fast' : Time constant for the fast low-pass filter.
 
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS 
@@ -2154,7 +2216,7 @@ class double_sigma_normal_trdc(double_sigma_base, multiport_trdc_base):
 
         Args:
             ID, params, network: same as in the parent's constructor.
-            n_ports and tau_slow are  no longer optional.
+            n_ports, tau_fast, and tau_slow are  no longer optional.
                 'n_ports' : number of inputs ports. 
                 'tau_slow' : time constant for the slow low-pass filter.
                 'tau_fast' : Time constant for the fast low-pass filter.
@@ -2251,7 +2313,7 @@ class sharpen_base(unit):
             pass
         else:    # if the parent constructor hasn't been called
             self.extra_ports = 1 # Used by the parent class' creator
-            unit.__init__(ID, params, network)
+            unit.__init__(self, ID, params, network)
 
         if self.n_ports < 2:
             raise ValueError('Multiple ports required for classes derived from sharpen_base')
@@ -2387,8 +2449,9 @@ class sigma_double_sigma_sharp(double_sigma_base, sharpen_base):
 
         Args:
             ID, params, network: same as in the parent's constructor.
-            n_ports is no longer optional.
+            n_ports and tau_fast are no longer optional.
                 'n_ports' : number of inputs ports. 
+                'tau_fast' : time constant for the fast low-pass filter
 
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS 
@@ -2467,9 +2530,10 @@ class double_sigma_normal_sharp(double_sigma_base, sharpen_base):
 
         Args:
             ID, params, network: same as in the parent's constructor.
-            n_ports and tau_slow are  no longer optional.
+            n_ports, tau_fast, and tau_slow are  no longer optional.
                 'n_ports' : number of inputs ports. 
                 'tau_slow' : time constant for the slow low-pass filter.
+                'tau_fast' : time constant for the fast low-pass filter
 
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS 
@@ -2559,9 +2623,10 @@ class sigma_double_sigma_normal_sharp(double_sigma_base, sharpen_base):
 
         Args:
             ID, params, network: same as in the parent's constructor.
-            n_ports and tau_slow are  no longer optional.
+            n_ports, tau_fast and tau_slow are  no longer optional.
                 'n_ports' : number of inputs ports. 
                 'tau_slow' : time constant for the slow low-pass filter.
+                'tau_fast' : time constant for the fast low-pass filter
 
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS 
@@ -2620,6 +2685,147 @@ class sigma_double_sigma_normal_sharp(double_sigma_base, sharpen_base):
                for o,th,sl,y,w,i in zip(self.br_w, self.threshs, self.slopes, lpf_inp_sum[1:], w[1:], inp[1:]) ] )
  
 
+class sliding_threshold_harmonic_rate_sigmoidal(unit):
+    """ Sigmoidal unit that slides its threshold in order to produce a harmonic pattern of firing rates.
 
+    What this means is that the threshold will adjust by following a gradient that comes from
+    the discrete Laplacian operator applied to the directed graph where the nodes are the units, and
+    the edges come from their connections.
+
+    In practice this means that ther firing rate of the unit will be adjusted so it approaches the mean 
+    firing rate of its inputs. 
+
+    It is expected that one input port will have the inputs to be used for the rate harmonization,
+    usually the internal connections, and another port will have the external inputs, which are
+    ignored for rate harmonization. Thus, the number of ports should be at least 2, and the port
+    whose inputs are used to harmonize the rate hare in the hr_port parameter.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are  no longer optional.
+                'n_ports' : number of inputs ports. At least two ports are required.
+                'tau_fast' : time constant for the fast low-pass filter
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Initial threshold of the sigmoidal function
+                'tau' : Time constant of the update dynamics.
+                'hr_port' : port whose inputs will be used to harmonize the rate
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+        Raises:
+            ValueError
+        """
+        if params['n_ports'] < 2:
+            raise ValueError('At least two ports whould be used with the st_hr_sig units')
+        else:
+            self.multi_port = True
+        unit.__init__(self, ID, params, network)  # the parent's constructor
+        self.hr_port = params['hr_port'] # port for rate distribution control
+        self.tau_thr = params['tau_thr']  # the reciprocal of the threshold sliding time constant
+        self.slope = params['slope']    # slope of the sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.slide_thr_hr, syn_reqs.lpf_fast])
+
+    def f(self, arg):
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
+        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+    
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+
+    def get_mp_input_sum(self, time):
+        """ The input function of st_hr_sig unit. """
+        weights = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        return sum([np.dot(weights[prt], inps[prt]) for prt in range(self.n_ports)])
+     
+
+
+class synaptic_scaling_harmonic_rate_sigmoidal(unit): 
+    """
+    The synaptic weights are scaled to produce a harmonic pattern of firing rates.
+    
+    The weights of all excitatory inputs at the 'hr_port' port will adjust by following a gradient 
+    that comes from the discrete Laplacian operator applied to the directed graph where the nodes are 
+    the units, and the edges come from their connections.
+
+    In practice this means that ther firing rate of the unit will be adjusted so it approaches the mean 
+    firing rate of its inputs. 
+
+    It is expected that one input port will have the inputs to be used for the rate harmonization,
+    usually the internal connections, and another port will have the external inputs, which are
+    ignored for rate harmonization. Thus, the number of ports should be at least 2, and the port
+    whose inputs are used to harmonize the rate hare in the hr_port parameter.
+ 
+    Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
+    Synaptic weights initialized to zero will be considered excitatory.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are  no longer optional.
+                'n_ports' : number of inputs ports. At least two ports are required.
+                'tau_fast' : time constant for the fast low-pass filter
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function.
+                'tau' : Time constant of the update dynamics.
+                'tau_scale' : sets the speed of change for the scaling factor
+                'Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
+                'hr_port' : port whose inputs will be used to harmonize the rate
+
+        Raises:
+            ValueError
+
+        The actual values used for scaling are calculated in unit.upd_syn_scale_hr(), which updates
+        the array self.scale_facs .
+        """
+        if params['n_ports'] < 2:
+            raise ValueError('At least two ports whould be used with the ss_hr_sig units')
+        else:
+            self.multi_port = True
+        unit.__init__(self, ID, params, network)
+        self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
+        self.slope = params['slope']    # slope of the sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.tau_scale = params['tau_scale']  # the scaling time constant
+        self.Kp = params['Kp']  # gain for synaptic scaling
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.hr_port = params['hr_port'] # port for rate distribution control
+        
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.syn_scal_hr, syn_reqs.lpf_fast])
+        
+    def f(self, arg):
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
+        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+    
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+
+    def get_mp_input_sum(self, time):
+        """ The input function of the sig_ssrdc_sharp unit. """
+        weights = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        NOT ADAPTED YET!!!
+        if np.dot(weights[1], inps[1]) > 0.5:
+            return sum( [sc * w * i for sc, w, i in zip(self.scale_facs, weights[0], inps[0]) ] ) 
+        else:
+            return np.dot(weights[0], inps[0]) 
+            
 
 

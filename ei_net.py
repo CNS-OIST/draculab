@@ -126,7 +126,7 @@ class ei_net():
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_slow' : 1, # 1 s for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
-            'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc units
+            'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc or hr units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units 
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
@@ -138,6 +138,7 @@ class ei_net():
                     'threshs' : 0. },
             'phi' : 0.5, # for some of the double_sigma units
             'rdc_port' : 0, # for multiport units with rate distribution control
+            'hr_port' : 0, # for harmonic rate units
             'thr_fix' : 0.1, # for the "sharpening" units
             'tau_fix' : 0.1, # for the "sharpening" units
             'sharpen_port' : 1, # for the "sharpening" units
@@ -154,7 +155,7 @@ class ei_net():
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_slow' : 1, # 1 s for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
-            'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc units
+            'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc or hr units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units
             'Kp' : 0.05, # for exp_dist_sigmoidal units
             'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
@@ -166,6 +167,7 @@ class ei_net():
                     'threshs' : 0. },
             'phi' : 0.5, # for some of the double_sigma units
             'rdc_port' : 0, # for multiport units with rate distribution control
+            'hr_port' : 0, # for harmonic rate units
             'thr_fix' : 0.1, # for the "sharpening" units
             'tau_fix' : 0.1, # for the "sharpening" units
             'sharpen_port' : 1, # for the "sharpening" units

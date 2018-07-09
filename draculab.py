@@ -32,6 +32,8 @@ class unit_types(Enum):
     ds_n_sharp = 18
     sds_n_sharp = 19
     sig_ssrdc_sharp = 20
+    st_hr_sig = 21
+    ss_hr_sig = 22
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -84,6 +86,10 @@ class unit_types(Enum):
             unit_class = sigma_double_sigma_normal_sharp
         elif self == unit_types.sig_ssrdc_sharp:
             unit_class = sig_ssrdc_sharp
+        elif self == unit_types.st_hr_sig:
+            unit_class = sliding_threshold_harmonic_rate_sigmoidal
+        elif self == unit_types.ss_hr_sig:
+            unit_class = synaptic_scaling_harmonic_rate_sigmoidal
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?
@@ -211,6 +217,8 @@ class syn_reqs(Enum):
     balance_mp = 22 # the multiport version of the 'balance' requirement above
     slide_thr_shrp = 23 # move threshold to produce exp rate distro if 'sharpen' input > 0.5
     exp_scale_mp = 24 # scale factors to produce exp distro in multiport units
+    slide_thr_hr = 25 # Sliding threshold that produces "harmonic" rate patterns (multiport units)
+    syn_scale_hr = 26 # Synaptic scaling that produces "harmonic" rate patterns (multiport units)
 
 
 
