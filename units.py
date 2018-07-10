@@ -552,7 +552,7 @@ class unit():
                 # ensure the integer data type; otherwise you can't index numpy arrays
                 self.exc_idx_hr = np.array(self.exc_idx_hr, dtype='uint32')
                 #self.scale_facs = np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
-                self.scale_facs_hr = np.tile(1., len(self.port_idx[hr_port])) # array with scale factors
+                self.scale_facs_hr = np.tile(1., len(self.port_idx[self.hr_port])) # array with scale factors
                 self.functions.add(self.upd_syn_scale_hr)
 
             else:  # <----------------------------------------------------------------------
@@ -935,12 +935,11 @@ class unit():
         u = np.dot(hr_inputs[self.exc_idx_hr], hr_weights[self.exc_idx_hr])
         I = u - self.get_mp_input_sum(time) 
         mu_exc = np.maximum( np.sum( hr_inputs[self.exc_idx_hr] ), 0.001 )
-        fpr = 1. / (self.c * r * (1. - r))
-        ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
+        ss_scale = (u - I + self.Kp * error) / mu_exc
         a = ss_scale / np.maximum(hr_weights[self.exc_idx_hr],.001)
-        x0 = self.scale_facs[self.exc_idx_hr]
+        x0 = self.scale_facs_hr[self.exc_idx_hr]
         t = self.net.min_delay
-        self.scale_facs[self.exc_idx_hr] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
+        self.scale_facs_hr[self.exc_idx_hr] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
 
 
 
@@ -2806,7 +2805,7 @@ class synaptic_scaling_harmonic_rate_sigmoidal(unit):
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         self.hr_port = params['hr_port'] # port for rate distribution control
         
-        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.syn_scal_hr, syn_reqs.lpf_fast])
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.syn_scale_hr, syn_reqs.lpf_fast])
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
@@ -2821,11 +2820,12 @@ class synaptic_scaling_harmonic_rate_sigmoidal(unit):
         """ The input function of the sig_ssrdc_sharp unit. """
         weights = self.get_mp_weights(time)
         inps = self.get_mp_inputs(time)
-        NOT ADAPTED YET!!!
-        if np.dot(weights[1], inps[1]) > 0.5:
-            return sum( [sc * w * i for sc, w, i in zip(self.scale_facs, weights[0], inps[0]) ] ) 
-        else:
-            return np.dot(weights[0], inps[0]) 
-            
+        acc_sum = 0.
+        for port in range(self.n_ports):
+            if port == self.hr_port:
+                acc_sum += sum( [sc * w * i for sc, w, i in zip(self.scale_facs_hr, weights[port], inps[port]) ] ) 
+            else:
+                acc_sum += np.dot(weights[port], inps[port]) 
+        return acc_sum 
 
 
