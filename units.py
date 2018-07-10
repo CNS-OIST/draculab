@@ -505,7 +505,7 @@ class unit():
                     raise AssertionError('exp_scale_mp requires the balance_mp requirement to be set')
                 if not syn_reqs.lpf_fast in self.syn_needs:
                     raise AssertionError('exp_scale_mp requires the lpf_fast requirement to be set')
-                self.scale_facs= np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
+                self.scale_facs_rdc = np.tile(1., len(self.port_idx[self.rdc_port])) # array with scale factors
                 # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
                 self.exc_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
                                      for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
@@ -778,12 +778,9 @@ class unit():
 
             The algorithm is a multiplicative version of the  one used in exp_rate_dist synapses.
         """
-        #H = lambda x: 0.5 * (np.sign(x) + 1.)
-        #cdf = lambda x: ( 1. - np.exp(-self.c*min(max(x,0.),1.) ) ) / ( 1. - np.exp(-self.c) )
         r = self.get_lpf_fast(0)
         r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
         exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
-        #exp_cdf = cdf(r)
         error = self.below - self.above - 2.*exp_cdf + 1. 
 
         # First APCTP version (12/13/17)
@@ -793,9 +790,9 @@ class unit():
         u = np.dot(self.inp_vector[self.exc_idx], weights[self.exc_idx])
         I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
         mu_exc = np.maximum( np.sum( self.inp_vector[self.exc_idx] ), 0.001 )
-        fpr = 1. / (self.c * r * (1. - r))
-        ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
-        #ss_scale = (u - I + self.Kp * error) / mu_exc
+        #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
+        #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
+        ss_scale = (u - I + self.Kp * error) / mu_exc
         #self.scale_facs[self.exc_idx] += self.tau_scale * (ss_scale/np.maximum(weights[self.exc_idx],.05) - 
         #                                                    self.scale_facs[self.exc_idx])
         # ------------ soft weight-bounded version ------------
@@ -828,13 +825,13 @@ class unit():
         rdc_inputs = self.mp_inputs[self.rdc_port]
         rdc_weights = self.get_mp_weights(time)[self.rdc_port]
         u = np.dot(rdc_inputs[self.exc_idx_rdc], rdc_weights[self.exc_idx_rdc])
-        I = u - np.dot(rdc_weights, rdc_inputs)  # THIS MAY NOT GENERALIZE WHEN YOU HAVE
-                                                # INPUTS AT MANY PORTS!!!!
-        # I = u - self.get_mp_input_sum(time)  # CONSIDER THIS INSTEAD
+        #I = u - np.dot(rdc_weights, rdc_inputs)  # THIS MAY NOT GENERALIZE WHEN YOU HAVE
+                                                 # INPUTS AT MANY PORTS!!!!
+        I = u - self.get_mp_input_sum(time)     # USE THIS INSTEAD
         mu_exc = np.maximum( np.sum( rdc_inputs[self.exc_idx_rdc] ), 0.001 )
-        fpr = 1. / (self.c * r * (1. - r))
-        ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
-        #ss_scale = (u - I + self.Kp * error) / mu_exc
+        #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
+        #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc # adjusting for sigmoidal's slope
+        ss_scale = (u - I + self.Kp * error) / mu_exc
         #self.scale_facs[self.exc_idxrdc] += self.tau_scale * (ss_scale/np.maximum(weights[self.exc_idx_rdc],.05) - 
         #                                                    self.scale_facs[self.exc_idx_rdc])
         # ------------ soft weight-bounded version ------------
@@ -844,13 +841,9 @@ class unit():
         # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
         # We can use this analytical solution to update the scale factors on each update.
         a = ss_scale / np.maximum(rdc_weights[self.exc_idx_rdc],.001)
-        x0 = self.scale_facs[self.exc_idx_rdc]
+        x0 = self.scale_facs_rdc[self.exc_idx_rdc]
         t = self.net.min_delay
-        self.scale_facs[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
-        #self.scale_facs[self.exc_idx_rdc] += self.tau_scale * self.scale_facs[self.exc_idx_rdc] * (
-        #                                 ss_scale/np.maximum(weights[self.exc_idx_rdc],.05) - 
-        #                                 self.scale_facs[self.exc_idx_rdc] )
-
+        self.scale_facs_rdc[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
 
 
         
@@ -870,25 +863,12 @@ class unit():
 
             The algorithm is an adapted version of the  one used in exp_rate_dist synapses.
         """
-        #H = lambda x: 0.5 * (np.sign(x) + 1.)
-        #cdf = lambda x: ( 1. - np.exp(-self.c*min(max(x,0.),1.) ) ) / ( 1. - np.exp(-self.c) )
         r = self.get_lpf_fast(0)
         r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
         exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
-        #exp_cdf = cdf(r)
         error = self.below - self.above - 2.*exp_cdf + 1. 
-
         self.thresh -= self.tau_thr * error
-        """
-        u = (np.log(r/(1.-r))/self.slope) + self.thresh
-        weights = np.array([syn.w for syn in self.net.syns[self.ID]])
-        I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
-        mu_exc = np.sum( self.inp_vector[self.exc_idx] )
-        fpr = 1. / (self.c * r * (1. - r))
-        ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
-        self.scale_facs[self.exc_idx] += self.tau_scale * (ss_scale/weights[self.exc_idx] - self.scale_facs[self.exc_idx])
-        """
-
+        
 
     def upd_thr_shrp(self, time):
         """ Updates the threshold of trdc units when input at 'sharpen' port is larger than 0.5 .
@@ -921,7 +901,7 @@ class unit():
     def upd_syn_scale_hr(self, time):
         """ Update the synaptic scale for units with 'rate harmonization'. 
             
-            The scaling factors in self.scale_facs correspond to the excitatory synapses
+            The scaling factors in self.scale_facs_hr correspond to the excitatory synapses
             at the port hr_port. 
         """
         # Other than the 'error', it's all as in upd_exp_scale_mp
@@ -1555,10 +1535,81 @@ class sig_ssrdc_sharp(unit):
         weights = self.get_mp_weights(time)
         inps = self.get_mp_inputs(time)
         if np.dot(weights[1], inps[1]) > 0.5:
-            return sum( [sc * w * i for sc, w, i in zip(self.scale_facs, weights[0], inps[0]) ] ) 
+            return sum( [sc * w * i for sc, w, i in zip(self.scale_facs_rdc, weights[0], inps[0]) ] ) 
         else:
             return np.dot(weights[0], inps[0]) 
-            
+
+
+class sig_ssrdc(unit):
+    """
+    A sigmoidal unit where the synaptic weights are scaled to produce an exponential distribution. 
+    
+    This is a multiport version of the exp_dist_sigmoidal unit. Only the inputs received at the
+    rdc port will be considered for the purpose of rate distribution control, which allows to
+    ignore inputs from source units.
+
+    Synaptic scaling happens at excitatory inputs in the rdc port.
+    Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
+    Synaptic weights initialized to zero will be considered excitatory.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function.
+                'tau' : Time constant of the update dynamics.
+                'tau_scale' : sets the speed of change for the scaling factor
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
+                'rdc_port' : port ID of inputs used for rate distribution control.
+
+        Raises:
+            ValueError
+
+        The actual values used for scaling are calculated in unit.upd_exp_scale_mp() .
+        """
+        unit.__init__(self, ID, params, network)
+        if self.n_ports < 2:
+            raise ValueError('sig_ssrdc units need at least 2 ports')
+        self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
+        self.slope = params['slope']    # slope of the sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.tau_scale = params['tau_scale']  # the scaling time constant
+        self.Kp = params['Kp']  # gain for synaptic scaling
+        self.c = params['c']  # The coefficient in the exponential distribution
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.rdc_port = params['rdc_port'] # port for rate distribution control
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.exp_scale_mp, syn_reqs.lpf_fast]) 
+        
+    def f(self, arg):
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
+        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+    
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+
+    def get_mp_input_sum(self, time):
+        """ The input function of the sig_ssrdc unit. """
+        weights = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        acc_sum = 0.
+        for port in range(self.n_ports):
+            if port == self.rdc_port:
+                acc_sum += np.sum(self.scale_facs_rdc * weights[port] * inps[port])
+            else:
+                acc_sum += np.dot(weights[port], inps[port]) 
+        return acc_sum 
+
 
 class exp_dist_sig_thr(unit): 
     """
@@ -1618,6 +1669,76 @@ class exp_dist_sig_thr(unit):
         # there is only one state variable (the activity)
         return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
  
+
+class sig_trdc(unit): 
+    """
+    A sigmoidal unit where the threshold is moved to produce an exponential distribution.
+    
+    The only difference with exp_dist_sig_thr is that this is a multiport unit, so that the
+    only inputs consiered for the purpose of rate distribution control are those in the 
+    rdc port.
+
+    This unit has the same activation function as the sigmoidal unit, but the thresh
+    parameter is continually adjusted produce an exponential distribution of the firing rates in
+    the network, using the same approach as the exp_rate_dist_synapse and the 
+    exp_dist_sigmoidal units.
+
+    Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
+    Synaptic weights initialized to zero will be considered excitatory.
+    """
+    # The difference with sigmoidal units is the use of the slide_thresh requirement.
+    # This will automatically adjust the threshold at each buffer update.
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function. This value may adapt.
+                'tau' : Time constant of the update dynamics.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'rdc_port' : port ID of inputs used for rate distribution control.
+
+        Raises:
+            ValueError
+
+        """
+        if params['n_ports'] < 2:
+            raise ValueError('At least two ports whould be used with the sig_trdc units')
+        else:
+            self.multi_port = True
+        unit.__init__(self, ID, params, network)
+        self.slope = params['slope']    # slope of the sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.tau_thr = params['tau_thr']  # the reciprocal of the threshold sliding time constant
+        self.c = params['c']  # The coefficient in the exponential distribution
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.rdc_port = params['rdc_port'] # port for rate distribution control
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thresh, syn_reqs.lpf_fast]) 
+        
+    def f(self, arg):
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
+        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+    
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+ 
+    def get_mp_input_sum(self, time):
+        """ The input function of sig_trdc units. """
+        weights = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        return sum([np.dot(weights[prt], inps[prt]) for prt in range(self.n_ports)])
+
 
 class double_sigma_base(unit):
     """ The parent class for units in the double sigma family. """
@@ -2817,7 +2938,7 @@ class synaptic_scaling_harmonic_rate_sigmoidal(unit):
         return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
 
     def get_mp_input_sum(self, time):
-        """ The input function of the sig_ssrdc_sharp unit. """
+        """ The input function of the ss_hr_sig unit. """
         weights = self.get_mp_weights(time)
         inps = self.get_mp_inputs(time)
         acc_sum = 0.

@@ -521,7 +521,7 @@ class ei_network():
             plt.plot(self.all_times, weights, linewidth=1)
             plt.title('Some synaptic weights')
             # Plot the evolution of the synaptic scale factors
-            ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp]
+            ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp, unit_types.ss_hr_sig, unit_types.sig_ssrdc]
             if layer.e_pars['type'] in ssrdc_u or layer.i_pars['type'] in ssrdc_u:
                 sc_fig = plt.figure(figsize=(10,5))
                 factors = np.transpose([self.all_activs[layer.sc_track[i]] for i in range(layer.n['w_track'])])
@@ -529,8 +529,8 @@ class ei_network():
                 plt.title('Some synaptic scale factors')
             # Plot the evolution of the thresholds
             trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
-                      unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, 
-                      unit_types.ds_n_sharp, unit_types.sds_n_sharp]
+                      unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, unit_types.sig_trdc, 
+                      unit_types.ds_n_sharp, unit_types.sds_n_sharp, unit_types.st_hr_sig ]
             if layer.e_pars['type'] in trdc_u or layer.i_pars['type'] in trdc_u:
                 thr_fig = plt.figure(figsize=(10,5))
                 thresholds = np.transpose([self.all_activs[layer.thr_track[i]] for i in range(layer.n['w_track'])])
@@ -1290,7 +1290,7 @@ class ei_layer():
                 for sid,s in enumerate(which_syns[uid]):
                     self.net.units[self.w_track[uid*n_syns+sid]].set_function(self.net.syns[u][s].get_w)
             # If there are ssrdc units, create some units to track their scale factors
-            ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp]
+            ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp, unit_types.ss_hr_sig, unit_types.sig_ssrdc]
             if self.e_pars['type'] in ssrdc_u or self.i_pars['type'] in ssrdc_u:
                 self.sc_track = self.net.create(self.n['w_track'], self.wt_pars)
                 def scale_tracker(u,s):
@@ -1303,8 +1303,8 @@ class ei_layer():
                         self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
             # If there are exp_dist_sig_thr units, create some units to track the thresholds
             trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
-                      unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, 
-                      unit_types.ds_n_sharp, unit_types.sds_n_sharp]
+                      unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, unit_types.sig_trdc, 
+                      unit_types.ds_n_sharp, unit_types.sds_n_sharp, unit_types.st_hr_sig ]
             if self.e_pars['type'] in trdc_u or self.i_pars['type'] in trdc_u:
                 self.thr_track = self.net.create(self.n['w_track'], self.wt_pars)
                 def thresh_tracker(u):
