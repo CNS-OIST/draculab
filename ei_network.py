@@ -1296,6 +1296,9 @@ class ei_layer():
                 def scale_tracker(u,s):
                     if hasattr(self.net.units[u], 'scale_facs'):
                         return lambda x: self.net.units[u].scale_facs[s]
+                    elif hasattr(self.net.units[u], 'scale_facs_rdc'):
+                        syn = s%(len(self.net.units[u].scale_facs_rdc)-1)
+                        return lambda x: self.net.units[u].scale_facs[syn]
                     else:
                         return lambda x: 1.
                 for uid,u in enumerate(which_u):

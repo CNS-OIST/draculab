@@ -787,8 +787,10 @@ class unit():
         ######################################################################
         #u = (np.log(r/(1.-r))/self.slope) + self.thresh  # this u lags, so I changed it
         weights = np.array([syn.w for syn in self.net.syns[self.ID]])
-        u = np.dot(self.inp_vector[self.exc_idx], weights[self.exc_idx])
-        I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
+        #u = np.dot(self.inp_vector[self.exc_idx], weights[self.exc_idx])
+        u = self.get_input_sum(time)
+        #I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
+        I = u - np.sum( self.inp_vector[self.exc_idx] * weights[self.exc_idx] ) 
         mu_exc = np.maximum( np.sum( self.inp_vector[self.exc_idx] ), 0.001 )
         #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
         #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
@@ -813,7 +815,15 @@ class unit():
     def upd_exp_scale_mp(self, time):
         """ Updates the synaptic scaling factor used in multiport ssrdc units.
 
+            The current implementation requires the unit model to include a
+            get_unscaled_mp_input_sum function. This function should return the sum of the
+            'non-modulatory' inputs multiplied by their synaptic weights, without
+            including any synaptic scaling factors.
+
         """
+        # It is unknown beforehand which inputs are 'modulatory' (like the sharpening signal),
+        # so it is better to leave the specific implementation of get_unscaled_mp_input_sum to
+        # the individual unit models.
         r = self.get_lpf_fast(0)
         r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
         exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
@@ -824,10 +834,11 @@ class unit():
         #u = (np.log(r/(1.-r))/self.slope) + self.thresh
         rdc_inputs = self.mp_inputs[self.rdc_port]
         rdc_weights = self.get_mp_weights(time)[self.rdc_port]
-        u = np.dot(rdc_inputs[self.exc_idx_rdc], rdc_weights[self.exc_idx_rdc])
-        #I = u - np.dot(rdc_weights, rdc_inputs)  # THIS MAY NOT GENERALIZE WHEN YOU HAVE
-                                                 # INPUTS AT MANY PORTS!!!!
-        I = u - self.get_mp_input_sum(time)     # USE THIS INSTEAD
+        #u = np.dot(rdc_inputs[self.exc_idx_rdc], rdc_weights[self.exc_idx_rdc])
+        u = self.get_unscaled_mp_input_sum(time)
+        I = u - np.dot(rdc_weights, rdc_inputs)  
+                                                 
+        #I = u - self.get_mp_input_sum(time)     
         mu_exc = np.maximum( np.sum( rdc_inputs[self.exc_idx_rdc] ), 0.001 )
         #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
         #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc # adjusting for sigmoidal's slope
@@ -1610,6 +1621,13 @@ class sig_ssrdc(unit):
                 acc_sum += np.dot(weights[port], inps[port]) 
         return acc_sum 
 
+    def get_unscaled_mp_input_sum(self, time):
+        """ The inputs times the weights, with no synaptic scaling. """
+        weights = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        return sum([np.dot(weights[port], inps[port]) for port in range(self.n_ports)])
+        
+
 
 class exp_dist_sig_thr(unit): 
     """
@@ -1749,7 +1767,7 @@ class double_sigma_base(unit):
         Args:
             ID, params, network: same as in the parent's constructor.
             n_ports is no longer optional.
-                'n_ports' : number of inputs ports. 
+                'n_ports' : number of inputs ports. n_ports = len(branch_w) + extra_ports
 
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS 
@@ -1990,7 +2008,7 @@ class double_sigma_normal(double_sigma_base):
     def get_mp_input_sum(self, time):
         """ The input function of the normalized double sigma unit. """
         # Removing zero or near-zero values from lpf_slow_mp_inp_sum
-        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-2)) for arry in self.lpf_slow_mp_inp_sum]
+        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
         #
         # version 1. The big zip
         return sum( [ o*( self.f(th, sl, (np.dot(w,i)-y) / y) - self.phi ) for o,th,sl,y,w,i in 
