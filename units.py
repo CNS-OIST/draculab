@@ -832,14 +832,13 @@ class unit():
         # First APCTP version (12/13/17)
         ######################################################################
         #u = (np.log(r/(1.-r))/self.slope) + self.thresh
-        rdc_inputs = self.mp_inputs[self.rdc_port]
-        rdc_weights = self.get_mp_weights(time)[self.rdc_port]
-        #u = np.dot(rdc_inputs[self.exc_idx_rdc], rdc_weights[self.exc_idx_rdc])
-        u = self.get_unscaled_mp_input_sum(time)
-        I = u - np.dot(rdc_weights, rdc_inputs)  
-                                                 
-        #I = u - self.get_mp_input_sum(time)     
-        mu_exc = np.maximum( np.sum( rdc_inputs[self.exc_idx_rdc] ), 0.001 )
+        rdc_inp = self.mp_inputs[self.rdc_port]
+        rdc_w = self.get_mp_weights(time)[self.rdc_port]
+        #u = np.dot(rdc_inp[self.exc_idx_rdc], rdc_w[self.exc_idx_rdc])
+        u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*rdc_inp[self.exc_idx_rdc]*rdc_w[self.exc_idx_rdc])
+        #I = u - np.dot(rdc_w, rdc_inp)  
+        I = u - self.get_mp_input_sum(time)     
+        mu_exc = np.maximum( np.sum( rdc_inp[self.exc_idx_rdc] ), 0.001 )
         #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
         #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc # adjusting for sigmoidal's slope
         ss_scale = (u - I + self.Kp * error) / mu_exc
@@ -851,7 +850,7 @@ class unit():
         # x(t) = a x(0) / [ x(0) + (a - x(0))*exp(-a r t) ] .
         # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
         # We can use this analytical solution to update the scale factors on each update.
-        a = ss_scale / np.maximum(rdc_weights[self.exc_idx_rdc],.001)
+        a = ss_scale / np.maximum(rdc_w[self.exc_idx_rdc],.001)
         x0 = self.scale_facs_rdc[self.exc_idx_rdc]
         t = self.net.min_delay
         self.scale_facs_rdc[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )

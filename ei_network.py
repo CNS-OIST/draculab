@@ -833,7 +833,8 @@ class ei_network():
             trdc_u = [unit_types.exp_dist_sig, unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, 
                       unit_types.sds_trdc, unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, 
                       unit_types.ds_n_sharp, unit_types.sds_n_sharp]
-            if self.net.units[pop[0]].type in trdc_u:
+            #if self.net.units[pop[0]].type in trdc_u:
+            if hasattr(self.net.units[pop[0]], 'c'):
                 c = self.net.units[pop[0]].c
             else:
                 c = self.e_syn['c']
@@ -1297,8 +1298,8 @@ class ei_layer():
                     if hasattr(self.net.units[u], 'scale_facs'):
                         return lambda x: self.net.units[u].scale_facs[s]
                     elif hasattr(self.net.units[u], 'scale_facs_rdc'):
-                        syn = s%(len(self.net.units[u].scale_facs_rdc)-1)
-                        return lambda x: self.net.units[u].scale_facs[syn]
+                        syn = s%(len(self.net.units[u].scale_facs_rdc))
+                        return lambda x: self.net.units[u].scale_facs_rdc[syn]
                     else:
                         return lambda x: 1.
                 for uid,u in enumerate(which_u):
