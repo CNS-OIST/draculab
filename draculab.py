@@ -36,6 +36,8 @@ class unit_types(Enum):
     ss_hr_sig = 22
     sig_trdc = 23
     sig_ssrdc = 24
+    sig_trdc_sharp = 25
+    sds_n = 26
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -96,6 +98,10 @@ class unit_types(Enum):
             unit_class = sig_trdc
         elif self == unit_types.sig_ssrdc:
             unit_class = sig_ssrdc
+        elif self == unit_types.sig_trdc_sharp:
+            unit_class = sig_trdc_sharp
+        elif self == unit_types.sds_n:
+            unit_class = sigma_double_sigma_normal
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?

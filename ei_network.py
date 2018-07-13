@@ -489,7 +489,7 @@ class ei_network():
                 * The activity for the units of layer.tracked .
                 * The evolution of some synaptic weights 
                 * Synaptic scale factors for the units in layer.tracked
-                  (if using exp_dist_sig units and layer.n['w_track'] > 0)
+                  (if using ssrdc units and layer.n['w_track'] > 0)
                 * Thresholds for the units in layer.tracked
                   (if using trdc units and layer.n['w_track'] > 0)
         """
@@ -530,7 +530,7 @@ class ei_network():
             # Plot the evolution of the thresholds
             trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
                       unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, unit_types.sig_trdc, 
-                      unit_types.ds_n_sharp, unit_types.sds_n_sharp, unit_types.st_hr_sig ]
+                      unit_types.ds_n_sharp, unit_types.sds_n_sharp, unit_types.st_hr_sig, unit_types.sig_trdc_sharp]
             if layer.e_pars['type'] in trdc_u or layer.i_pars['type'] in trdc_u:
                 thr_fig = plt.figure(figsize=(10,5))
                 thresholds = np.transpose([self.all_activs[layer.thr_track[i]] for i in range(layer.n['w_track'])])
@@ -1305,10 +1305,10 @@ class ei_layer():
                 for uid,u in enumerate(which_u):
                     for sid,s in enumerate(which_syns[uid]):
                         self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
-            # If there are exp_dist_sig_thr units, create some units to track the thresholds
+            # If there are trdc units, create some units to track the thresholds
             trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
                       unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, unit_types.sig_trdc, 
-                      unit_types.ds_n_sharp, unit_types.sds_n_sharp, unit_types.st_hr_sig ]
+                      unit_types.ds_n_sharp, unit_types.sds_n_sharp, unit_types.st_hr_sig, unit_types.sig_trdc_sharp]
             if self.e_pars['type'] in trdc_u or self.i_pars['type'] in trdc_u:
                 self.thr_track = self.net.create(self.n['w_track'], self.wt_pars)
                 def thresh_tracker(u):

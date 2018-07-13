@@ -66,7 +66,7 @@ class unit():
         else: self.n_ports = 1
 
         if self.n_ports < 2:
-            self.multi_port = False # If True, the port_idx list is created in init_pre_syn_update in
+            self.multiport = False # If True, the port_idx list is created in init_pre_syn_update in
                                     # order to support customized get_mp_input* functions 
 
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
@@ -146,7 +146,7 @@ class unit():
         """
         Returns a list with all the inputs, arranged by input port.
 
-        This method is for units where multi_port = True, and that have a port_idx attribute.
+        This method is for units where multiport = True, and that have a port_idx attribute.
 
         The i-th element of the returned list is a numpy array containing the raw (not multiplied
         by the synaptic weight) inputs at port i. The inputs include transmision delays. 
@@ -207,7 +207,7 @@ class unit():
         """ 
         Returns a list with the weights corresponding to the list obtained with get_mp_inputs.
 
-        This method is for units where multi_port = True, and that have a port_idx attribute.
+        This method is for units where multiport = True, and that have a port_idx attribute.
 
         The i-th element of the returned list is a numpy array with the weights of the
         synapses where port = i.
@@ -355,7 +355,7 @@ class unit():
         # port_idx is a list whose elements are lists of integers.
         # port_idx[i] contains the indexes in net.syns[self.ID] (or net.delays[self.ID], or net.act[self.ID])
         # of the synapses whose input port is 'i'.
-        if self.multi_port is True:
+        if self.multiport is True:
             self.port_idx = [ [] for _ in range(self.n_ports) ]
             for idx, syn in enumerate(self.net.syns[self.ID]):
                 if syn.port >= self.n_ports:
@@ -536,13 +536,13 @@ class unit():
             elif req is syn_reqs.slide_thr_hr:  # <----------------------------------
                 if not syn_reqs.mp_inputs in self.syn_needs:
                     raise AssertionError('slide_thr_hr requires the mp_inputs requirement to be set')
-                if not self.multi_port:
+                if not self.multiport:
                     raise AssertionError('The slide_thr_hr requirment is for multiport units only')
                 self.functions.add(self.upd_slide_thr_hr)
             elif req is syn_reqs.syn_scale_hr:  # <----------------------------------
                 if not syn_reqs.mp_inputs in self.syn_needs:
                     raise AssertionError('syn_scale_hr requires the mp_inputs requirement to be set')
-                if not self.multi_port:
+                if not self.multiport:
                     raise AssertionError('The syn_scale_hr requirment is for multiport units only')
                 if not syn_reqs.lpf_fast in self.syn_needs:
                     raise AssertionError('syn_scale_hr requires the lpf_fast requirement to be set')
@@ -777,8 +777,10 @@ class unit():
         """ Updates the synaptic scaling factor used in exp_dist_sigmoidal units.
 
             The algorithm is a multiplicative version of the  one used in exp_rate_dist synapses.
+            It scales all excitatory inputs.
         """
-        r = self.get_lpf_fast(0)
+        #r = self.get_lpf_fast(0)
+        r = self.buffer[-1] # current rate
         r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
         exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
         error = self.below - self.above - 2.*exp_cdf + 1. 
@@ -788,9 +790,10 @@ class unit():
         #u = (np.log(r/(1.-r))/self.slope) + self.thresh  # this u lags, so I changed it
         weights = np.array([syn.w for syn in self.net.syns[self.ID]])
         #u = np.dot(self.inp_vector[self.exc_idx], weights[self.exc_idx])
-        u = self.get_input_sum(time)
-        #I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
-        I = u - np.sum( self.inp_vector[self.exc_idx] * weights[self.exc_idx] ) 
+        #u = self.get_input_sum(time)
+        u = self.get_exp_sc_input_sum(time)
+        I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
+        #I = u - np.sum( self.inp_vector[self.exc_idx] * weights[self.exc_idx] ) 
         mu_exc = np.maximum( np.sum( self.inp_vector[self.exc_idx] ), 0.001 )
         #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
         #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
@@ -804,6 +807,7 @@ class unit():
         # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
         # We can use this analytical solution to update the scale factors on each update.
         a = ss_scale / np.maximum(weights[self.exc_idx],.001)
+        a = np.minimum( a, 10.) # hard weight bound above
         x0 = self.scale_facs[self.exc_idx]
         t = self.net.min_delay
         self.scale_facs[self.exc_idx] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
@@ -824,7 +828,8 @@ class unit():
         # It is unknown beforehand which inputs are 'modulatory' (like the sharpening signal),
         # so it is better to leave the specific implementation of get_unscaled_mp_input_sum to
         # the individual unit models.
-        r = self.get_lpf_fast(0)
+        #r = self.get_lpf_fast(0)  # lpf'd rate
+        r = self.buffer[-1] # current rate
         r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
         exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
         error = self.below - self.above - 2.*exp_cdf + 1. 
@@ -834,9 +839,7 @@ class unit():
         #u = (np.log(r/(1.-r))/self.slope) + self.thresh
         rdc_inp = self.mp_inputs[self.rdc_port]
         rdc_w = self.get_mp_weights(time)[self.rdc_port]
-        #u = np.dot(rdc_inp[self.exc_idx_rdc], rdc_w[self.exc_idx_rdc])
         u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*rdc_inp[self.exc_idx_rdc]*rdc_w[self.exc_idx_rdc])
-        #I = u - np.dot(rdc_w, rdc_inp)  
         I = u - self.get_mp_input_sum(time)     
         mu_exc = np.maximum( np.sum( rdc_inp[self.exc_idx_rdc] ), 0.001 )
         #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
@@ -844,13 +847,14 @@ class unit():
         ss_scale = (u - I + self.Kp * error) / mu_exc
         #self.scale_facs[self.exc_idxrdc] += self.tau_scale * (ss_scale/np.maximum(weights[self.exc_idx_rdc],.05) - 
         #                                                    self.scale_facs[self.exc_idx_rdc])
-        # ------------ soft weight-bounded version ------------
+        # ------------ weight-bounded version ------------
         # Soft weight bounding implies that the scale factors follow the logistic differential 
         # equation. This equation has the form x' = r (a - x) x, and has a solution
         # x(t) = a x(0) / [ x(0) + (a - x(0))*exp(-a r t) ] .
         # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
         # We can use this analytical solution to update the scale factors on each update.
         a = ss_scale / np.maximum(rdc_w[self.exc_idx_rdc],.001)
+        a = np.minimum( a, 10.) # hard weight bound above
         x0 = self.scale_facs_rdc[self.exc_idx_rdc]
         t = self.net.min_delay
         self.scale_facs_rdc[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
@@ -1160,7 +1164,7 @@ class mp_linear(unit):
         super(mp_linear, self).__init__(ID, params, network)
         self.tau = params['tau']  # the time constant of the dynamics
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
-        self.multi_port = True
+        self.multiport = True
         assert self.type is unit_types.mp_linear, ['Unit ' + str(self.ID) + 
                                                             ' instantiated with the wrong type']
         
@@ -1473,6 +1477,7 @@ class exp_dist_sigmoidal(unit):
         # there is only one state variable (the activity)
         return ( self.f(self.get_exp_sc_input_sum(t)) - y[0] ) * self.rtau
 
+
 class sig_ssrdc_sharp(unit): 
     """
     The synaptic weights are scaled to produce an exponential distribution when input at port 1 > 0.5 .
@@ -1490,7 +1495,6 @@ class sig_ssrdc_sharp(unit):
     # excitatory inputs to be scaled using an 'exp_scale' factor. The exp_scale
     # factor is calculated by the upd_exp_scale function, which is called every update
     # thanks to the exp_scale synaptic requirement.
-
     def __init__(self, ID, params, network):
         """ The unit constructor.
 
@@ -1518,7 +1522,7 @@ class sig_ssrdc_sharp(unit):
         unit.__init__(self, ID, params, network)
         if self.n_ports != 2:
             raise ValueError('sig_ssrdc_sharp units are expected to have 2 ports')
-        self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
+        self.multiport = True  # This causes the port_idx list to be created in init_pre_syn_update
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
@@ -1588,7 +1592,7 @@ class sig_ssrdc(unit):
         unit.__init__(self, ID, params, network)
         if self.n_ports < 2:
             raise ValueError('sig_ssrdc units need at least 2 ports')
-        self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
+        self.multiport = True  # This causes the port_idx list to be created in init_pre_syn_update
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
@@ -1620,14 +1624,7 @@ class sig_ssrdc(unit):
                 acc_sum += np.dot(weights[port], inps[port]) 
         return acc_sum 
 
-    def get_unscaled_mp_input_sum(self, time):
-        """ The inputs times the weights, with no synaptic scaling. """
-        weights = self.get_mp_weights(time)
-        inps = self.get_mp_inputs(time)
-        return sum([np.dot(weights[port], inps[port]) for port in range(self.n_ports)])
-        
-
-
+    
 class exp_dist_sig_thr(unit): 
     """
     A sigmoidal unit where the threshold is moved to produce an exponential distribution.
@@ -1730,7 +1727,7 @@ class sig_trdc(unit):
         if params['n_ports'] < 2:
             raise ValueError('At least two ports whould be used with the sig_trdc units')
         else:
-            self.multi_port = True
+            self.multiport = True
         unit.__init__(self, ID, params, network)
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
@@ -1755,6 +1752,128 @@ class sig_trdc(unit):
         weights = self.get_mp_weights(time)
         inps = self.get_mp_inputs(time)
         return sum([np.dot(weights[prt], inps[prt]) for prt in range(self.n_ports)])
+
+
+class sharpen_base(unit):
+    """ 
+    The parent class for units with switchable threshold-based rate distribution control. 
+    
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use threshold-based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
+    to a default value called "thr_fix", with time constant reciprocal to "tau_fix".
+    
+    """
+    # The only difference with multiport_trdc_base is the use of the slide_thr_shrp instead of slide_thresh
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. Needs a valuer > 1
+                'tau_fast' : Time constant for the fast low-pass filter.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
+                'sharpen_port' : port ID where the inputs controlling trdc arrive.
+        Raises:
+            ValueError
+
+        """
+        if hasattr(self, 'unit_initialized') and self.unit_initialized:
+            pass
+        else:    # if the parent constructor hasn't been called
+            self.extra_ports = 1 # Used by the parent class' creator
+            unit.__init__(self, ID, params, network)
+
+        if self.n_ports < 2:
+            raise ValueError('Multiple ports required for classes derived from sharpen_base')
+        else:
+            self.multiport = True
+        self.rdc_port = params['rdc_port'] # port for rate distribution control
+        self.tau_thr = params['tau_thr']  # the reciprocal of the threshold sliding time constant
+        self.c = params['c']  # The coefficient in the exponential distribution
+        self.thr_fix = params['thr_fix']  # the value where the threshold returns
+        self.tau_fix = params['tau_fix']  # the speed of the threshold's return to thr_fix
+        self.sharpen_port = params['sharpen_port']
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thr_shrp, syn_reqs.lpf_fast])
+        # next line is for debugging
+        #self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thresh, syn_reqs.lpf_fast])
+
+
+class sig_trdc_sharp(sharpen_base): 
+    """
+    The threshold slides to produce a rate exp distro when input at port sharpen_port is larger than 0.5 .
+    
+    This unit has the same activation function as the sigmoidal unit, but the thresh
+    parameter is continually adjusted produce an exponential distribution of the firing rates in
+    the network, using the same approach as the exp_rate_dist_synapse and the 
+    exp_dist_sigmoidal units.
+
+    Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
+    Synaptic weights initialized to zero will be considered excitatory.
+
+    Any number of ports larger than 2 is accepted. The port numbers should range from
+    0 to n_ports-1. Inputs to ports outside that range will be ignored.
+    """
+    # The threshold is adjusted by the upd_thr_sharp, which is a requirement of the
+    # sharpen_base parent class
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. Needs a valuer > 1
+                'tau_fast' : Time constant for the fast low-pass filter.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
+                'slope' : Slope of the sigmoidal function.
+                'tau' : Time constant of the update dynamics.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
+                'sharpen_port' : port ID where the inputs controlling trdc arrive.
+
+        """
+        sharpen_base.__init__(self, ID, params, network) # parent's constructor
+        self.slope = params['slope']    # slope of the sigmoidal function
+        self.thresh = params['thr_fix']  # horizontal displacement of the sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.ports = [int(n) for n in range(self.n_ports) if n != self.sharpen_port]
+        self.ports = np.array(self.ports)  # array without the sharpen port
+
+    def f(self, arg):
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
+        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+    
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+ 
+    def get_mp_input_sum(self, time):
+        """ The input function of sig_trdc_sharp units. """
+        weights = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        return sum([np.dot(weights[p], inps[p]) for p in self.ports])
 
 
 class double_sigma_base(unit):
@@ -1813,7 +1932,7 @@ class double_sigma_base(unit):
         if not hasattr(self, 'extra_ports'): # for models with more ports than branches
             self.extra_ports = 0
         if self.n_ports > 1:
-            self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
+            self.multiport = True  # This causes the port_idx list to be created in init_pre_syn_update
 
         if self.extra_ports > 0:
             n_branches = self.n_ports - self.extra_ports
@@ -2076,7 +2195,8 @@ class sigma_double_sigma(double_sigma_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution.
+                'phi' : -phi is the minimum value of the branches' contribution. Since all branch
+                        weights are positive, this allows to have negative contributions.
         Raises:
             ValueError, NameError
 
@@ -2100,6 +2220,76 @@ class sigma_double_sigma(double_sigma_base):
         #    ret += self.br_w[i-1] * self.f(self.threshs[i-1], self.slopes[i-1], np.dot(w[i],inp[i]))
         #return ret
     
+
+class sigma_double_sigma_normal(double_sigma_base):
+    """ sigma_double_sigma unit with  normalized branch inputs.
+
+    Double sigma units are inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    There are two types of inputs. Somatic inputs arrive at port 0 (the default port), and are
+    just like inputs to the sigmoidal units. Dendritic inputs arrive at ports with with ID 
+    larger than 0, and are just like inputs to double_sigma units.
+
+    Each dendritic input belongs to a particular "branch". All inputs from the same branch
+    add linearly, are normalized, and the normalized sum is fed into a sigmoidal function 
+    that produces the output of the branch. The output of all the branches is added linearly 
+    to the somatic input to produce the total input to the unit, which is fed into a sigmoidal 
+    function to produce the output of the unit.
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports, tau_fast and tau_slow are  no longer optional.
+                'n_ports' : number of inputs ports. 
+                'tau_slow' : time constant for the slow low-pass filter.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : -phi is the minimum value of the branches' contribution. Since all branch
+                        weights are positive, this allows to have negative contributions.
+                
+
+        """
+        self.extra_ports = 1 # The soma port        
+        double_sigma_base.__init__(self, ID, params, network)
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.lpf_slow_mp_inp_sum]) 
+     
+    
+    def get_mp_input_sum(self, time):
+        """ The input function of the normalized double sigma unit. """
+        # Removing zero or near-zero values from lpf_slow_mp_inp_sum
+        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
+        w = self.get_mp_weights(time)
+        inp = self.get_mp_inputs(time)
+         
+        return np.dot(w[0], inp[0]) + sum( [ o*( self.f(th, sl, (np.dot(w,i)-y) / y) - self.phi ) 
+               for o,th,sl,y,w,i in zip(self.br_w, self.threshs, self.slopes, lpf_inp_sum[1:], w[1:], inp[1:]) ] )
+ 
 
 class multiport_trdc_base(unit):
     """ 
@@ -2408,65 +2598,6 @@ class double_sigma_normal_trdc(double_sigma_base, multiport_trdc_base):
                      zip(self.br_w, self.threshs, self.slopes, lpf_inp_sum,
                          self.get_mp_weights(time), self.get_mp_inputs(time))  ] )
          
-
-class sharpen_base(unit):
-    """ 
-    The parent class for units with switchable threshold-based rate distribution control. 
-    
-    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
-    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
-    will use threshold-based rate distribution control to produce an exponential distribution of firing 
-    rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
-    to a default value called "thr_fix", with time constant reciprocal to "tau_fix".
-    
-    """
-    # The only difference with multiport_trdc_base is the use of the slide_thr_shrp instead of slide_thresh
-
-    def __init__(self, ID, params, network):
-        """ The unit constructor.
-
-        Args:
-            ID, params, network: same as in the parent's constructor.
-            n_ports and tau_fast are no longer optional.
-                'n_ports' : number of inputs ports. Needs a valuer > 1
-                'tau_fast' : Time constant for the fast low-pass filter.
-
-            In addition, params should have the following entries.
-                REQUIRED PARAMETERS 
-                'rdc_port' : port ID of inputs used for rate distribution control.
-                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
-                'c' : Changes the homogeneity of the firing rate distribution.
-                    Values very close to 0 make all firing rates equally probable, whereas
-                    larger values make small firing rates more probable. 
-                    Shouldn't be set to zero (causes zero division in the cdf function).
-                'thr_fix' : default value of the threshold (when no distribution control is applied)
-                'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
-                'sharpen_port' : port ID where the inputs controlling trdc arrive.
-        Raises:
-            ValueError
-
-        """
-        if hasattr(self, 'unit_initialized') and self.unit_initialized:
-            pass
-        else:    # if the parent constructor hasn't been called
-            self.extra_ports = 1 # Used by the parent class' creator
-            unit.__init__(self, ID, params, network)
-
-        if self.n_ports < 2:
-            raise ValueError('Multiple ports required for classes derived from sharpen_base')
-        else:
-            self.multiport = True
-        self.rdc_port = params['rdc_port'] # port for rate distribution control
-        self.tau_thr = params['tau_thr']  # the reciprocal of the threshold sliding time constant
-        self.c = params['c']  # The coefficient in the exponential distribution
-        self.thr_fix = params['thr_fix']  # the value where the threshold returns
-        self.tau_fix = params['tau_fix']  # the speed of the threshold's return to thr_fix
-        self.sharpen_port = params['sharpen_port']
-        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thr_shrp, syn_reqs.lpf_fast])
-        # next line is for debugging
-        #self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thresh, syn_reqs.lpf_fast])
-
-
 
 class double_sigma_sharp(double_sigma_base, sharpen_base):
     """ 
@@ -2859,7 +2990,7 @@ class sliding_threshold_harmonic_rate_sigmoidal(unit):
         if params['n_ports'] < 2:
             raise ValueError('At least two ports whould be used with the st_hr_sig units')
         else:
-            self.multi_port = True
+            self.multiport = True
         unit.__init__(self, ID, params, network)  # the parent's constructor
         self.hr_port = params['hr_port'] # port for rate distribution control
         self.tau_thr = params['tau_thr']  # the reciprocal of the threshold sliding time constant
@@ -2932,9 +3063,9 @@ class synaptic_scaling_harmonic_rate_sigmoidal(unit):
         if params['n_ports'] < 2:
             raise ValueError('At least two ports whould be used with the ss_hr_sig units')
         else:
-            self.multi_port = True
+            self.multiport = True
         unit.__init__(self, ID, params, network)
-        self.multi_port = True  # This causes the port_idx list to be created in init_pre_syn_update
+        self.multiport = True  # This causes the port_idx list to be created in init_pre_syn_update
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
