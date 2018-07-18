@@ -2884,6 +2884,8 @@ class sigma_double_sigma_normal_sharp(double_sigma_base, sharpen_base):
     will use threshold-based rate distribution control to produce an exponential distribution of firing 
     rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
     to a default value called "thr_fix", with a rate set by "tau_fix".
+
+    The preferred way to assign the ports is: 0 -> soma; 1,...,n -> branches; n+1 -> sharpen. 
     """
 
     def __init__(self, ID, params, network):
