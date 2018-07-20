@@ -231,7 +231,7 @@ class syn_reqs(Enum):
     exp_scale_mp = 24 # scale factors to produce exp distro in multiport units
     slide_thr_hr = 25 # Sliding threshold that produces "harmonic" rate patterns (multiport units)
     syn_scale_hr = 26 # Synaptic scaling that produces "harmonic" rate patterns (multiport units)
-
+    exp_scale_shrp = 27 # scale synapses to produce exp rate distro if 'sharpen' input > 0.5
 
 
 

@@ -511,10 +511,6 @@ class unit():
                                      for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
                 # ensure the integer data type; otherwise you can't index numpy arrays
                 self.exc_idx_rdc = np.array(self.exc_idx_rdc, dtype='uint32')
-                # inh_idx_rdc = numpy array with index of all inhibitory units at the rdc port
-                self.inh_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
-                                     for i in self.port_idx[self.rdc_port]]) if syn.w < 0 ]
-                self.inh_idx_rdc = np.array(self.inh_idx_rdc, dtype='uint32')
                 self.functions.add(self.upd_exp_scale_mp)
             elif req is syn_reqs.slide_thresh:  # <----------------------------------
                 if (not syn_reqs.balance in self.syn_needs) and (not syn_reqs.balance_mp in self.syn_needs):
@@ -554,6 +550,21 @@ class unit():
                 #self.scale_facs = np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
                 self.scale_facs_hr = np.tile(1., len(self.port_idx[self.hr_port])) # array with scale factors
                 self.functions.add(self.upd_syn_scale_hr)
+            elif req is syn_reqs.exp_scale_shrp:  # <----------------------------------
+                if not syn_reqs.balance_mp in self.syn_needs:
+                    raise AssertionError('exp_scale_shrp requires the balance_mp requirement to be set')
+                if not self.multiport:
+                    raise AssertionError('The exp_scale_shrp requirement is for multiport units only')
+                if not syn_reqs.lpf_fast in self.syn_needs:
+                    raise AssertionError('exp_scale_shrp requires the lpf_fast requirement to be set')
+                self.scale_facs_rdc = np.tile(1., len(self.port_idx[self.rdc_port])) # array with scale factors
+                # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
+                self.exc_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
+                                     for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
+                # ensure the integer data type; otherwise you can't index numpy arrays
+                self.exc_idx_rdc = np.array(self.exc_idx_rdc, dtype='uint32')
+                self.rdc_exc_ones = np.tile(1., len(self.exc_idx_rdc))
+                self.functions.add(self.upd_exp_scale_shrp)
 
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
@@ -807,7 +818,7 @@ class unit():
         # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
         # We can use this analytical solution to update the scale factors on each update.
         a = ss_scale / np.maximum(weights[self.exc_idx],.001)
-        a = np.minimum( a, 10.) # hard weight bound above
+        a = np.minimum( a, 10.) # hard bound above
         x0 = self.scale_facs[self.exc_idx]
         t = self.net.min_delay
         self.scale_facs[self.exc_idx] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
@@ -819,15 +830,9 @@ class unit():
     def upd_exp_scale_mp(self, time):
         """ Updates the synaptic scaling factor used in multiport ssrdc units.
 
-            The current implementation requires the unit model to include a
-            get_unscaled_mp_input_sum function. This function should return the sum of the
-            'non-modulatory' inputs multiplied by their synaptic weights, without
-            including any synaptic scaling factors.
-
+            The algorithm is the same as upd_exp_scale, but only the inputs at the rdc_port
+            are considered.
         """
-        # It is unknown beforehand which inputs are 'modulatory' (like the sharpening signal),
-        # so it is better to leave the specific implementation of get_unscaled_mp_input_sum to
-        # the individual unit models.
         #r = self.get_lpf_fast(0)  # lpf'd rate
         r = self.buffer[-1] # current rate
         r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
@@ -854,11 +859,44 @@ class unit():
         # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
         # We can use this analytical solution to update the scale factors on each update.
         a = ss_scale / np.maximum(rdc_w[self.exc_idx_rdc],.001)
-        a = np.minimum( a, 10.) # hard weight bound above
+        a = np.minimum( a, 10.) # hard bound above
         x0 = self.scale_facs_rdc[self.exc_idx_rdc]
         t = self.net.min_delay
         self.scale_facs_rdc[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
 
+
+    def upd_exp_scale_shrp(self, time):
+        """ Updates the synaptic scaling factor used in ssrdc_sharp units.
+
+            The algorithm is the same as upd_exp_scale_mp, but controlled by the inputs at the
+            sharpening port. When the sum of inputs at this port is smaller than 0.5 the scale factors
+            return to 1 with a time constant of tau_relax.
+        """
+        if np.dot(self.mp_inputs[self.sharpen_port], self.get_mp_weights(time)[self.sharpen_port]) < 0.5:
+            a = self.rdc_exc_ones   
+            exp_tau = self.tau_relax
+        else: 
+            #r = self.get_lpf_fast(0)  # lpf'd rate
+            r = self.buffer[-1] # current rate
+            r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
+            exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+            error = self.below - self.above - 2.*exp_cdf + 1. 
+
+            #u = (np.log(r/(1.-r))/self.slope) + self.thresh
+            rdc_inp = self.mp_inputs[self.rdc_port]
+            rdc_w = self.get_mp_weights(time)[self.rdc_port]
+            u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*rdc_inp[self.exc_idx_rdc]*rdc_w[self.exc_idx_rdc])
+            I = u - self.get_mp_input_sum(time)     
+            mu_exc = np.maximum( np.sum( rdc_inp[self.exc_idx_rdc] ), 0.001 )
+            #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
+            #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc # adjusting for sigmoidal's slope
+            ss_scale = (u - I + self.Kp * error) / mu_exc
+            a = ss_scale / np.maximum(rdc_w[self.exc_idx_rdc],.001)
+            a = np.minimum( a, 10.) # hard bound above
+            exp_tau = self.tau_scale
+        
+        x0 = self.scale_facs_rdc[self.exc_idx_rdc]
+        self.scale_facs_rdc[self.exc_idx_rdc] = (x0*a) / (x0+(a-x0)*np.exp(-exp_tau*a*self.net.min_delay))
 
         
     def upd_inp_vector(self, time):
@@ -1492,6 +1530,8 @@ class ssrdc_sharp_base(unit):
     Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
     Synaptic weights initialized to zero will be considered excitatory.
     """
+    # The issue of updating the scaling factors according to the inputs at the sharpen_port is 
+    # handled by the unit.upd_exp_scale_shrp method, used by the exp_scale_shrp synaptic requirement.
 
     def __init__(self, ID, params, network):
         """ The unit constructor.
@@ -1504,6 +1544,7 @@ class ssrdc_sharp_base(unit):
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
                 'tau_scale' : sets the speed of change for the scaling factor
+                'tau_relax' : controls how fast the scaling factors return to 1 when rdc is off
                 'c' : Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
                     larger values make small firing rates more probable. 
@@ -1520,7 +1561,7 @@ class ssrdc_sharp_base(unit):
         if hasattr(self, 'unit_initialized') and self.unit_initialized:
             pass
         else:    # if the parent constructor hasn't been called
-            self.extra_ports = 1 # Used by double sigma units
+            #self.extra_ports = 1 # Used by double sigma units
             unit.__init__(self, ID, params, network)
 
         if self.n_ports < 2:
@@ -1529,11 +1570,12 @@ class ssrdc_sharp_base(unit):
             self.multiport = True # This causes the port_idx list to be created in init_pre_syn_update
         self.rdc_port = params['rdc_port'] # port for rate distribution control
         self.tau_scale = params['tau_scale']  # the scaling time constant
+        self.tau_relax = params['tau_relax']  # the second scaling time constant
         self.Kp = params['Kp']  # gain for synaptic scaling
         self.c = params['c']  # The coefficient in the exponential distribution
         self.sharpen_port = params['sharpen_port']
         
-        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.exp_scale_mp, syn_reqs.lpf_fast]) 
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.exp_scale_shrp, syn_reqs.lpf_fast]) 
 
 
 class sig_ssrdc_sharp(ssrdc_sharp_base): 
@@ -1548,11 +1590,8 @@ class sig_ssrdc_sharp(ssrdc_sharp_base):
     Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
     Synaptic weights initialized to zero will be considered excitatory.
     """
-    # The visible difference with sigmoidal units.derivatives is that this unit type
-    # calls get_mp_input_sum() instead of get_input_sum(), and this causes the 
-    # excitatory inputs to be scaled using an 'exp_scale' factor. The exp_scale
-    # factor is calculated by the upd_exp_scale function, which is called every update
-    # thanks to the exp_scale synaptic requirement.
+    # The scale_facs_rdc factors used in get_mp_input sum are updated by the upd_exp_scale
+    # method, which is called because the parent class has the exp_scale_shrp requirement.
     def __init__(self, ID, params, network):
         """ The unit constructor.
 
@@ -1567,6 +1606,7 @@ class sig_ssrdc_sharp(ssrdc_sharp_base):
                 'thresh' : Threshold of the sigmoidal function.
                 'tau' : Time constant of the update dynamics.
                 'tau_scale' : sets the speed of change for the scaling factor
+                'tau_relax' : controls how fast the scaling factors return to 1 when rdc is off
                 'c' : Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
                     larger values make small firing rates more probable. 
@@ -1584,6 +1624,10 @@ class sig_ssrdc_sharp(ssrdc_sharp_base):
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.nm_prts = list(range(self.n_ports)) # port list without the rdc and sharpen ports
+        del self.nm_prts[max(self.rdc_port,self.sharpen_port)]
+        del self.nm_prts[min(self.rdc_port,self.sharpen_port)]
+        #self.nm_prts = np.array(self.nm_prts, dtype='uint32')
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
@@ -1596,23 +1640,12 @@ class sig_ssrdc_sharp(ssrdc_sharp_base):
 
     def get_mp_input_sum(self, time):
         """ The input function of the sig_ssrdc_sharp unit. """
-        pass
-        """
-        weights = self.get_mp_weights(time)
+        ws = self.get_mp_weights(time)
         inps = self.get_mp_inputs(time)
-        if np.dot(weights[self.sharpen_port], inps[self.sharpen_port]) > 0.5:
-            return sum( [sc * w * i for sc, w, i in zip(self.scale_facs_rdc, weights[0], inps[0]) ] ) 
-        else:
-            return np.dot(weights[0], inps[0]) 
-        acc_sum = 0.
-        for port in range(self.n_ports):
-            if port == self.rdc_port:
-                acc_sum += np.sum(self.scale_facs_rdc * weights[port] * inps[port])
-            else:
-                if port != self.sharpen_port
-                acc_sum += np.dot(weights[port], inps[port]) 
+        acc_sum = np.sum(self.scale_facs_rdc * ws[self.rdc_port] * inps[self.rdc_port])
+        acc_sum += sum([np.dot(ws[p],inps[p]) for p in self.nm_prts]) 
         return acc_sum 
-        """
+
 
 class sig_ssrdc(unit):
     """
@@ -1674,6 +1707,7 @@ class sig_ssrdc(unit):
 
     def get_mp_input_sum(self, time):
         """ The input function of the sig_ssrdc unit. """
+        # TODO: calculate with the approach of sig_ssrdc_sharp
         weights = self.get_mp_weights(time)
         inps = self.get_mp_inputs(time)
         acc_sum = 0.
@@ -3150,6 +3184,7 @@ class synaptic_scaling_harmonic_rate_sigmoidal(unit):
 
     def get_mp_input_sum(self, time):
         """ The input function of the ss_hr_sig unit. """
+        # TODO: calculate with the approach of sig_ssrdc_sharp
         weights = self.get_mp_weights(time)
         inps = self.get_mp_inputs(time)
         acc_sum = 0.

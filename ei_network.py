@@ -1049,6 +1049,7 @@ class ei_layer():
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_slow' : 1, # 1 s for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
+            'tau_relax' : 1., # for ssrdc_sharp units
             'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc or hr units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units 
             'Kp' : 0.05, # for exp_dist_sigmoidal units
@@ -1078,6 +1079,7 @@ class ei_layer():
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_slow' : 1, # 1 s for medium low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
+            'tau_relax' : 1., # for ssrdc_sharp units
             'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc or hr units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units
             'Kp' : 0.05, # for exp_dist_sigmoidal units
