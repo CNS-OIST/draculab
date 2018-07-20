@@ -882,6 +882,7 @@ class unit():
         exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
         error = self.below - self.above - 2.*exp_cdf + 1. 
         self.thresh -= self.tau_thr * error
+        self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
         
 
     def upd_thr_shrp(self, time):
@@ -902,6 +903,7 @@ class unit():
             self.thresh -= self.tau_thr * error
         else:
             self.thresh += self.tau_fix * (self.thr_fix - self.thresh)
+        self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
 
 
     def upd_slide_thr_hr(self, time):
@@ -910,6 +912,7 @@ class unit():
         mean_inp = np.mean(inputs) 
         r = self.get_lpf_fast(0)
         self.thresh -= self.tau_thr * ( mean_inp - r )
+        self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
 
 
     def upd_syn_scale_hr(self, time):
@@ -1478,7 +1481,62 @@ class exp_dist_sigmoidal(unit):
         return ( self.f(self.get_exp_sc_input_sum(t)) - y[0] ) * self.rtau
 
 
-class sig_ssrdc_sharp(unit): 
+class ssrdc_sharp_base(unit): 
+    """
+    A parent class for units with switchable synaptic scaling based rate distribution control. 
+    
+    There is an extra port that controls whether or not the synaptic scaling is applied, it is
+    called the 'sharpen_port'. The input that is used for rate distribution control should
+    be at the 'rdc_port'.
+
+    Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
+    Synaptic weights initialized to zero will be considered excitatory.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. Needs a valuer > 1
+                'tau_fast' : Time constant for the fast low-pass filter.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
+                'tau_scale' : sets the speed of change for the scaling factor
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'sharpen_port' : port ID where the inputs controlling rdc arrive.
+
+        Raises:
+            ValueError
+
+        The actual values used for scaling are calculated in unit.upd_exp_scale_mp() .
+        """
+        if hasattr(self, 'unit_initialized') and self.unit_initialized:
+            pass
+        else:    # if the parent constructor hasn't been called
+            self.extra_ports = 1 # Used by double sigma units
+            unit.__init__(self, ID, params, network)
+
+        if self.n_ports < 2:
+            raise ValueError('ssrdc_sharp units are expected to have at least 2 ports')
+        else:
+            self.multiport = True # This causes the port_idx list to be created in init_pre_syn_update
+        self.rdc_port = params['rdc_port'] # port for rate distribution control
+        self.tau_scale = params['tau_scale']  # the scaling time constant
+        self.Kp = params['Kp']  # gain for synaptic scaling
+        self.c = params['c']  # The coefficient in the exponential distribution
+        self.sharpen_port = params['sharpen_port']
+        
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.exp_scale_mp, syn_reqs.lpf_fast]) 
+
+
+class sig_ssrdc_sharp(ssrdc_sharp_base): 
     """
     The synaptic weights are scaled to produce an exponential distribution when input at port 1 > 0.5 .
     
@@ -1500,6 +1558,9 @@ class sig_ssrdc_sharp(unit):
 
         Args:
             ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. Needs a valuer > 1
+                'tau_fast' : Time constant for the fast low-pass filter.
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
                 'slope' : Slope of the sigmoidal function.
@@ -1511,29 +1572,18 @@ class sig_ssrdc_sharp(unit):
                     larger values make small firing rates more probable. 
                     Shouldn't be set to zero (causes zero division in the cdf function).
                 'Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'sharpen_port' : port ID where the inputs controlling rdc arrive.
 
         Raises:
             ValueError
 
-        The actual values used for scaling are calculated in unit.upd_exp_scale() .
-        Values around Kp=0.1, tau_scale=0.1 are usually appropriate when c >= 1 .
-        When c <= 0 the current implementation is not very stable.
         """
-        unit.__init__(self, ID, params, network)
-        if self.n_ports != 2:
-            raise ValueError('sig_ssrdc_sharp units are expected to have 2 ports')
-        self.multiport = True  # This causes the port_idx list to be created in init_pre_syn_update
+        ssrdc_sharp_base.__init__(self, ID, params, network)
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
-        self.tau_scale = params['tau_scale']  # the scaling time constant
-        self.Kp = params['Kp']  # gain for synaptic scaling
-        self.c = params['c']  # The coefficient in the exponential distribution
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
-        self.rdc_port = 0 # other input ports will be ignored 
-        
-        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.exp_scale_mp, 
-                               syn_reqs.lpf_fast]) # I got rid of inp_vector and haven't tested yet
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
@@ -1546,13 +1596,23 @@ class sig_ssrdc_sharp(unit):
 
     def get_mp_input_sum(self, time):
         """ The input function of the sig_ssrdc_sharp unit. """
+        pass
+        """
         weights = self.get_mp_weights(time)
         inps = self.get_mp_inputs(time)
-        if np.dot(weights[1], inps[1]) > 0.5:
+        if np.dot(weights[self.sharpen_port], inps[self.sharpen_port]) > 0.5:
             return sum( [sc * w * i for sc, w, i in zip(self.scale_facs_rdc, weights[0], inps[0]) ] ) 
         else:
             return np.dot(weights[0], inps[0]) 
-
+        acc_sum = 0.
+        for port in range(self.n_ports):
+            if port == self.rdc_port:
+                acc_sum += np.sum(self.scale_facs_rdc * weights[port] * inps[port])
+            else:
+                if port != self.sharpen_port
+                acc_sum += np.dot(weights[port], inps[port]) 
+        return acc_sum 
+        """
 
 class sig_ssrdc(unit):
     """
@@ -1754,7 +1814,7 @@ class sig_trdc(unit):
         return sum([np.dot(weights[prt], inps[prt]) for prt in range(self.n_ports)])
 
 
-class sharpen_base(unit):
+class trdc_sharp_base(unit):
     """ 
     The parent class for units with switchable threshold-based rate distribution control. 
     
@@ -1798,7 +1858,7 @@ class sharpen_base(unit):
             unit.__init__(self, ID, params, network)
 
         if self.n_ports < 2:
-            raise ValueError('Multiple ports required for classes derived from sharpen_base')
+            raise ValueError('Multiple ports required for classes derived from trdc_sharp_base')
         else:
             self.multiport = True
         self.rdc_port = params['rdc_port'] # port for rate distribution control
@@ -1812,7 +1872,7 @@ class sharpen_base(unit):
         #self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thresh, syn_reqs.lpf_fast])
 
 
-class sig_trdc_sharp(sharpen_base): 
+class sig_trdc_sharp(trdc_sharp_base): 
     """
     The threshold slides to produce a rate exp distro when input at port sharpen_port is larger than 0.5 .
     
@@ -1828,7 +1888,7 @@ class sig_trdc_sharp(sharpen_base):
     0 to n_ports-1. Inputs to ports outside that range will be ignored.
     """
     # The threshold is adjusted by the upd_thr_sharp, which is a requirement of the
-    # sharpen_base parent class
+    # trdc_sharp_base parent class
     def __init__(self, ID, params, network):
         """ The unit constructor.
 
@@ -1852,7 +1912,7 @@ class sig_trdc_sharp(sharpen_base):
                 'sharpen_port' : port ID where the inputs controlling trdc arrive.
 
         """
-        sharpen_base.__init__(self, ID, params, network) # parent's constructor
+        trdc_sharp_base.__init__(self, ID, params, network) # parent's constructor
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thr_fix']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
@@ -1908,7 +1968,8 @@ class double_sigma_base(unit):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution.
+                'phi' : -phi is the minimum value of the branches' contribution. In this manner a branch
+                        can have a negative (inhibitory) contribution.
 
             For units where the number of ports exceeds the number of branches, the
             'extra_ports' variable should be created, so that n_ports = len(branch_w) + extra_ports.
@@ -2599,7 +2660,7 @@ class double_sigma_normal_trdc(double_sigma_base, multiport_trdc_base):
                          self.get_mp_weights(time), self.get_mp_inputs(time))  ] )
          
 
-class double_sigma_sharp(double_sigma_base, sharpen_base):
+class double_sigma_sharp(double_sigma_base, trdc_sharp_base):
     """ 
     double-sigma unit with threshold-based rate distribution control controled by a 'sharpen' port.
 
@@ -2623,7 +2684,7 @@ class double_sigma_sharp(double_sigma_base, sharpen_base):
     the programming notes wiki.
     """
     # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
-    # sharpen_base, however, only implements a constructor. This constructor will not
+    # trdc_sharp_base, however, only implements a constructor. This constructor will not
     # call the unit constructor if unit_initialized=True .
 
     def __init__(self, ID, params, network):
@@ -2671,7 +2732,7 @@ class double_sigma_sharp(double_sigma_base, sharpen_base):
         self.extra_ports = 1 # Used by the double_sigma_base creator
         double_sigma_base.__init__(self, ID, params, network)
         self.unit_initialized = True  # to avoid calling the unit constructor twice
-        sharpen_base.__init__(self, ID, params, network)
+        trdc_sharp_base.__init__(self, ID, params, network)
 
             
     def get_mp_input_sum(self, time):
@@ -2687,7 +2748,7 @@ class double_sigma_sharp(double_sigma_base, sharpen_base):
  
 
 
-class sigma_double_sigma_sharp(double_sigma_base, sharpen_base):
+class sigma_double_sigma_sharp(double_sigma_base, trdc_sharp_base):
     """ 
     sigma_double_sigma unit with switchable threshold-based rate distribution control.
 
@@ -2709,7 +2770,7 @@ class sigma_double_sigma_sharp(double_sigma_base, sharpen_base):
     The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
     """
     # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
-    # sharpen_base, however, only implements a constructor. This constructor will not
+    # trdc_sharp_base, however, only implements a constructor. This constructor will not
     # call the unit constructor if unit_initialized=True .
 
     def __init__(self, ID, params, network):
@@ -2758,7 +2819,7 @@ class sigma_double_sigma_sharp(double_sigma_base, sharpen_base):
         self.extra_ports = 2 # One for the soma, one for 'sharpen_port'
         double_sigma_base.__init__(self, ID, params, network)
         self.unit_initialized = True  # to avoid calling the unit constructor twice
-        sharpen_base.__init__(self, ID, params, network)
+        trdc_sharp_base.__init__(self, ID, params, network)
 
             
     def get_mp_input_sum(self, time):
@@ -2772,7 +2833,7 @@ class sigma_double_sigma_sharp(double_sigma_base, sharpen_base):
                       zip(self.br_w, self.threshs, self.slopes, w[1:], inp[1:]) ] )
  
 
-class double_sigma_normal_sharp(double_sigma_base, sharpen_base):
+class double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
     """ double_sigma units with normalized inputs and switchable threshold-based rate distro control.
 
     Double sigma units are inspired by:
@@ -2838,12 +2899,12 @@ class double_sigma_normal_sharp(double_sigma_base, sharpen_base):
 
         """
         # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
-        # sharpen_base, however, only implements a constructor. This constructor will not
+        # trdc_sharp_base, however, only implements a constructor. This constructor will not
         # call the unit constructor if unit_initialized=True .
         self.extra_ports = 1 # The sharpen port        
         double_sigma_base.__init__(self, ID, params, network)
         self.unit_initialized = True  # to avoid calling the unit constructor twice
-        sharpen_base.__init__(self, ID, params, network)
+        trdc_sharp_base.__init__(self, ID, params, network)
         self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum]) 
      
     
@@ -2861,7 +2922,7 @@ class double_sigma_normal_sharp(double_sigma_base, sharpen_base):
  
 
 
-class sigma_double_sigma_normal_sharp(double_sigma_base, sharpen_base):
+class sigma_double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
     """ sigma_double_sigma units with  normalized branch inputs, and switchable threshold-based rate distro control.
 
     Double sigma units are inspired by:
@@ -2933,12 +2994,12 @@ class sigma_double_sigma_normal_sharp(double_sigma_base, sharpen_base):
 
         """
         # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
-        # sharpen_base, however, only implements a constructor. This constructor will not
+        # trdc_sharp_base, however, only implements a constructor. This constructor will not
         # call the unit constructor if unit_initialized=True .
         self.extra_ports = 2 # The soma and the sharpen port        
         double_sigma_base.__init__(self, ID, params, network)
         self.unit_initialized = True  # to avoid calling the unit constructor twice
-        sharpen_base.__init__(self, ID, params, network)
+        trdc_sharp_base.__init__(self, ID, params, network)
         self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum]) 
      
     
