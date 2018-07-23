@@ -546,7 +546,14 @@ class topology():
                     d = dist(center, to_c)
                     if d < max_dist:
                         filtered.append(to_idx)
-            else:
+            elif a < 0:
+                min_dist = (c - min_prob)/a 
+                for to_idx in id_list:
+                    to_c = net.units[to_idx].coordinates
+                    d = dist(center, to_c)
+                    if d > min_dist:
+                        filtered.append(to_idx)
+            else:  # a==0
                 if c > min_prob:
                     filtered = id_list
         elif 'gaussian' in spec:

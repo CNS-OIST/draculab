@@ -521,7 +521,8 @@ class ei_network():
             plt.plot(self.all_times, weights, linewidth=1)
             plt.title('Some synaptic weights')
             # Plot the evolution of the synaptic scale factors
-            ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp, unit_types.ss_hr_sig, unit_types.sig_ssrdc]
+            ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp, unit_types.ss_hr_sig, unit_types.sig_ssrdc,
+                       unit_types.ds_ssrdc_sharp]
             if layer.e_pars['type'] in ssrdc_u or layer.i_pars['type'] in ssrdc_u:
                 sc_fig = plt.figure(figsize=(10,5))
                 factors = np.transpose([self.all_activs[layer.sc_track[i]] for i in range(layer.n['w_track'])])
@@ -1293,7 +1294,8 @@ class ei_layer():
                 for sid,s in enumerate(which_syns[uid]):
                     self.net.units[self.w_track[uid*n_syns+sid]].set_function(self.net.syns[u][s].get_w)
             # If there are ssrdc units, create some units to track their scale factors
-            ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp, unit_types.ss_hr_sig, unit_types.sig_ssrdc]
+            ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp, unit_types.ss_hr_sig, unit_types.sig_ssrdc,
+                       unit_types.ds_ssrdc_sharp ]
             if self.e_pars['type'] in ssrdc_u or self.i_pars['type'] in ssrdc_u:
                 self.sc_track = self.net.create(self.n['w_track'], self.wt_pars)
                 def scale_tracker(u,s):

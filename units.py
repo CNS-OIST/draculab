@@ -2002,7 +2002,7 @@ class double_sigma_base(unit):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution. In this manner a branch
+                'phi' : This value is substracted from the branches' contribution. In this manner a branch
                         can have a negative (inhibitory) contribution.
 
             For units where the number of ports exceeds the number of branches, the
@@ -2133,7 +2133,7 @@ class double_sigma(double_sigma_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution.
+                'phi' : This value is substracted from the branches' contribution.
         Raises:
             ValueError, NameError
 
@@ -2206,7 +2206,7 @@ class double_sigma_normal(double_sigma_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution.
+                'phi' : This value is substracted from the branches' contribution.
         Raises:
             ValueError, NameError
 
@@ -2290,7 +2290,7 @@ class sigma_double_sigma(double_sigma_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution. Since all branch
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
                         weights are positive, this allows to have negative contributions.
         Raises:
             ValueError, NameError
@@ -2365,10 +2365,9 @@ class sigma_double_sigma_normal(double_sigma_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution. Since all branch
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
                         weights are positive, this allows to have negative contributions.
                 
-
         """
         self.extra_ports = 1 # The soma port        
         double_sigma_base.__init__(self, ID, params, network)
@@ -2489,7 +2488,8 @@ class double_sigma_trdc(double_sigma_base, multiport_trdc_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
                 'rdc_port' : port ID of inputs used for rate distribution control.
                 'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant).
                 'c' : Changes the homogeneity of the firing rate distribution.
@@ -2579,7 +2579,8 @@ class sigma_double_sigma_trdc(double_sigma_base, multiport_trdc_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
                 'rdc_port' : port ID of inputs used for rate distribution control.
                 'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
                 'c' : Changes the homogeneity of the firing rate distribution.
@@ -2664,7 +2665,8 @@ class double_sigma_normal_trdc(double_sigma_base, multiport_trdc_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
                 'rdc_port' : port ID of inputs used for rate distribution control.
                 'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
                 'c' : Changes the homogeneity of the firing rate distribution.
@@ -2751,7 +2753,8 @@ class double_sigma_sharp(double_sigma_base, trdc_sharp_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
                 'rdc_port' : port ID of inputs used for rate distribution control.
                 'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
                 'c' : Changes the homogeneity of the firing rate distribution.
@@ -2837,7 +2840,8 @@ class sigma_double_sigma_sharp(double_sigma_base, trdc_sharp_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
                 'rdc_port' : port ID of inputs used for rate distribution control.
                 'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
                 'c' : Changes the homogeneity of the firing rate distribution.
@@ -2919,7 +2923,8 @@ class double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
                 'rdc_port' : port ID of inputs used for rate distribution control.
                 'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
                 'c' : Changes the homogeneity of the firing rate distribution.
@@ -3014,7 +3019,8 @@ class sigma_double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                         
                 'tau' : Time constant of the update dynamics.
-                'phi' : -phi is the minimum value of the branches' contribution.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
                 'rdc_port' : port ID of inputs used for rate distribution control.
                 'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
                 'c' : Changes the homogeneity of the firing rate distribution.
@@ -3194,5 +3200,89 @@ class synaptic_scaling_harmonic_rate_sigmoidal(unit):
             else:
                 acc_sum += np.dot(weights[port], inps[port]) 
         return acc_sum 
+
+
+class ds_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base): 
+    """
+    Double-sigma unit with switchable synaptic-scaling rate distribution control.
+
+    Each input belongs to a particular "branch". All inputs from the same branch add 
+    linearly, and the sum is fed into a sigmoidal function that produces the output of the branch. 
+    The output of all the branches is added linearly to produce the total input to the unit, 
+    which is fed into a sigmoidal function to produce the output of the unit.
+
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use synaptic-scaling based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the scale factors will decay exponentially
+    to the default value 1, with a rate set by the "tau_relax" parameter.
+
+    The inputs at the sharpen port will not contribute to the activation of the unit. 
+
+    The equations of the doulble-sigma unit can be seen in the "double_sigma_unit" tiddler of 
+    the programming notes wiki.
+
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. Needs a valuer > 1
+                'tau_fast' : Time constant for the fast low-pass filter.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function.
+                'tau' : Time constant of the update dynamics.
+                'tau_scale' : sets the speed of change for the scaling factor
+                'tau_relax' : controls how fast the scaling factors return to 1 when rdc is off
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'sharpen_port' : port ID where the inputs controlling rdc arrive.
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                'phi' : This value is substracted from the branches' contribution. In this manner a branch
+                        can have a negative (inhibitory) contribution.
+
+        """
+        self.extra_ports = 1 # The sharpen port is an extra port for double_sigma_base
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        ssrdc_sharp_base.__init__(self, ID, params, network)
+        self.nm_prts = list(range(self.n_ports)) # port list without the rdc and sharpen ports
+        del self.nm_prts[max(self.rdc_port,self.sharpen_port)]
+        del self.nm_prts[min(self.rdc_port,self.sharpen_port)]
+        #self.nm_prts = np.array(self.nm_prts, dtype='uint32')
+        
+    def get_mp_input_sum(self, time):
+        """ The input function of the ds_ssrdc_sharp unit. """
+        ws = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        rdcp = self.rdc_port # to make lines shorter
+        acc_sum = self.br_w[rdcp] * ( self.f( self.threshs[rdcp], self.slopes[rdcp], 
+                                            np.sum(self.scale_facs_rdc * ws[rdcp] * inps[rdcp]) -self.phi ) )
+        acc_sum += sum( [ self.br_w[p] * ( self.f( self.threshs[p], self.slopes[p], np.dot(ws[p],inps[p]) )
+                                           - self.phi ) for p in self.nm_prts ] )
+        return acc_sum 
+
 
 
