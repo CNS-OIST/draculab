@@ -193,6 +193,12 @@ class ei_network():
             The name of those dictionaries will come from these strings:
               source[0] +  source[1] + '_' + target[0] + target[1] + '_conn'   --> connection dictionary
               source[0] +  source[1] + '_' + target[0] + target[1] + '_syn'    --> synapse dictionary
+
+            Notice that if the 'boundary' and 'transform' entries of the connection dictionary are not
+            specified before running build(), then a default boundary and transform will be used.
+            The default boundary is the rectangle of the target population. The default transform puts 
+            the center of the rectangle of the sending population on the center of the rectangle of the 
+            receiving population.
         """
         # The way this method signals ei_network.build to create the connections is by adding an entry
         # in the layer_connections list. Each list entry consists of this dictionary:
