@@ -206,7 +206,6 @@ class network():
         connect the units in the 'from_list' to the units in the 'to_list' using the
         connection specifications in the 'conn_spec' dictionary, and the
         synapse specfications in the 'syn_spec' dictionary.
-        The current version always allows multapses.
 
         Args:
             from_list: A list with the IDs of the units sending the connections
@@ -633,13 +632,16 @@ class network():
         # Using 'connections', 'weights', and 'delayz', this is straightforward
         for idx, (output, target, port) in enumerate(connections):
             # specify that 'target' neuron has the 'output' input
-            if self.units[target].multi_port: # if the unit has support for multiple input ports
+            self.act[target].append(self.plants[plantID].get_state_var_fun(output))
+            """ # Instead of the line above I had this code. Not sure why...
+            if self.units[target].multiport: # if the unit has support for multiple input ports
                 self.act[target].append(self.plants[plantID].get_state_var)
             else:
                 # It is important to run init_buffers before this, because the function returned
                 # by get_state_var_fun doesn't seem to update the buffer size. This is a potential
                 # bug when the plant outputs are connected twice, with larger delays on the second time.
                 self.act[target].append(self.plants[plantID].get_state_var_fun(output))
+            """
             # add a new synapse object for our connection
             syn_params = syn_spec.copy() # a copy of syn_spec just for this connection
             syn_params['preID'] = plantID
@@ -674,10 +676,14 @@ class network():
         This method takes steps of 'min_delay' length, in which the units, synapses 
         and plants use their own methods to advance their state variables.
         
-        The method returns a 3-tuple with numpy arrays containing:
-        1) the simulation times when the update functions were called, 
-        2) the unit activities at those times, 
-        3) the plant states at those times.
+        The method returns a 3-tuple (times, unit_store, plant_store): 
+            'times' : a numpy array with  the simulation times when the update functions 
+                      were called. These times will begin at the initial simulation time, and
+                      advance in 'min_delay' increments until 'total_time' is completed.
+            'unit_store' : a 2-dimensional numpy array. unit_store[i][j] contains the activity
+                           of the i-th unit at time j-th timepoint (e.g. at times[j]).
+            'plant_store' : a 3-dimensional numpy array. plant_store[i][j][k] is the value
+                            of the k-th state variable, at the j-th timepoint, for the i-th plant.
 
         After run(T) is finished, calling run(T) again continues the simulation
         starting at the last state of the previous simulation.
