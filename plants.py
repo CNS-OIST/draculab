@@ -1,8 +1,8 @@
-'''
+"""
 plants.py
 This file contains all the physical plant models used in the draculab simulator.
 A plant is very similar to a unit, but it has a vector output.
-'''
+"""
 
 import numpy as np
 from scipy.integrate import odeint

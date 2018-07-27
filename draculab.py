@@ -1,10 +1,10 @@
-"""@package draculab
+"""draculab
 
 draculab.py  (Delayed-Rate Adaptively-Connected Units Laboratory)
 A simulator of rate units with delayed connections.
 
-\author     Sergio Verduzco Flores
-\date       2017
+author:     Sergio Verduzco Flores
+date:       2017-2018
 """
 
 # Enumeration classes provide human-readable and globally consistent constants

@@ -27,13 +27,15 @@ class network():
         """
         The network class constructor.
 
-        The constructor receives a 'params' dictionary, which only requires two entries:
-        A minimum transmission delay 'min_delay', and a minimum buffer size 'min_buff_size'.
-        Optional parameters in 'params' are:
-            'rtol' = relative tolerance in the ODE integrator.
-            'atol' = absolute tolerance in the ODE integrator.
-                     See: https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.odeint.html
-
+        Args:
+            params : parameter dictionary
+            REQUIRED PARAMETERS
+                min_delay : minimum transmission delay, and simulation step size
+                min_buff_size : number of network states to store for each simulation step.
+            OPTIONAL PARAMETERS 
+                rtol = relative tolerance in the ODE integrator.
+                atol = absolute tolerance in the ODE integrator.
+                See: https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.odeint.html
         """
         self.sim_time = 0.0  # current simulation time [ms]
         self.n_units = 0     # current number of units in the network
@@ -84,7 +86,8 @@ class network():
                 'type': a model from the plant_models enum.
                 Other required parameters depend on the specific plant model.
 
-        Returns: an integer with the ID of the created plant.
+        Returns: 
+            An integer with the ID of the created plant.
 
         Raises:
             AssertionError, NotImplementedError, ValueError.
@@ -118,10 +121,10 @@ class network():
             n: an integer indicating how many units to create.
             params: a dictionary with the parameters used to initialize the units.
                 REQUIRED PARAMETERS
-                'type' : a unit model form the unit_types enum.
-                'init_val' : initial activation value (also required for source units).
+                type: a unit model form the unit_types enum.
+                init_val: initial activation value (also required for source units).
                 OPTIONAL PARAMETERS
-                'coordinates' : The spatial location of the units can be specified in 2 ways:
+                coordinates: The spatial location of the units can be specified in 2 ways:
                                 * One numpy array (a single point). All units will have this location.
                                 * A list of n arrays. Each unit will be assigned one array.
                                           
@@ -689,13 +692,13 @@ class network():
         starting at the last state of the previous simulation.
         """
 
-        Nsteps = int(total_time/self.min_delay)
-        unit_store = [np.zeros(Nsteps) for i in range(self.n_units)]
-        plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants]
-        times = np.zeros(Nsteps) + self.sim_time
+        Nsteps = int(total_time/self.min_delay)  # total number of simulatin steps
+        unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # array to store unit activities
+        plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # array to store plant steps
+        times = np.zeros(Nsteps) + self.sim_time # array to store initial time of simulation steps
         
         for step in range(Nsteps):
-            times[step] = self.sim_time
+            times[step] = self.sim_time # self.sim_time persists between calls to network.run()
             
             # store current unit activities
             for uid, unit in enumerate(self.units):
