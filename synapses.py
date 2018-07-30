@@ -816,6 +816,70 @@ class exp_rate_dist_synapse(synapse):
         return -1. if x == 0 else np.sign(x)
 
 
+class delta_synapse(synapse):
+    """ A synapse that implements a continuous version of the delta rule.
+
+        The discrete delta rule produces a weight update given by:
+        Delta_w = alpha * (des - post) * pre, 
+        where alpha is a learning rate, des is a desired output for the postsynaptic unit,
+        post is the output of the postsynaptic unit, and pre is the input from the
+        presynaptic unit.
+
+        The version implemented here assumes that the error (des-post) is provided by the 
+        postsynaptic unit, and has weight dynamics given by:
+        w' = alpha * error * (pre - <pre>), or
+        w' = alpha * error * pre,
+        where <pre> is the slow low-pass filtered version of the presynaptic input.
+
+        Weight clipping is used to ensure that the weights of excitatory synapses don't
+        become negative, and the weights of inhibitory synapses don't become positive. To
+        decide whether a synapse is excitatory or inhibitory, the value of 'init_w' is used.
+        When init_w = 0, the synapse is assumed to be excitatory.
+        
+        This synapse is meant to be used with one of the delta_* unit models.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the parent class, with an addition
+            REQUIRED PARAMETERS
+            lrate: Learning rate. A scalar value that will multiply the derivative of the weight.
+
+        Warnings:
+            UserWarning when connecting to a non-delta unit.
+        """
+        synapse.__init__(self, params, network) # The parent class' constructor
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        self.post_unit = self.net.units[self.postID] # postsynaptic unit
+        self.pre_unit = self.net.units[self.preID] # presynaptic unit
+        # update requiements:
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_fast, 
+                                     syn_reqs.error, syn_reqs.pre_lpf_slow]) 
+                                     # pre_lpf_slow only required if you're using the 2nd option
+        # maximum and minimum values
+        if self.w >= 0:   # NOT YET USED
+            self.max_value = 10.
+            self.min_value = 0.
+        else:
+            self.max_value = 0.
+            self.min_value = -10.
+        if self.net.units[self.postID].type != unit_types.delta_linear:
+            from warnings import warn
+            warn('A delta synapse was connected to a non-delta unit', UserWarning)
+
+    def update(self, time):
+        """ Update the weight using the delta rule. """
+        #pre = self.net.units.[self.preID].get_lpf_fast(self.delay_steps)
+        #pre_lpf_slow = self.net.units.[self.preID].get_lpf_slow(self.delay_steps)
+        pre = self.pre_unit.get_lpf_fast(self.delay_steps)
+        pre_lpf_slow = self.pre_unit.get_lpf_slow(self.delay_steps)
+        #err = self.net.units.[self.postID].error
+        err = self.post_unit.error
+        self.w = self.w + self.alpha * err * pre
+        #self.w = self.w + self.alpha * err * (pre - pre_lpf_slow)
+
 
 
 

@@ -557,7 +557,10 @@ class unit():
                 self.exc_idx_rdc = np.array(self.exc_idx_rdc, dtype='uint32')
                 self.rdc_exc_ones = np.tile(1., len(self.exc_idx_rdc))
                 self.functions.add(self.upd_exp_scale_shrp)
-
+            elif req is syn_reqs.error:  # <----------------------------------
+                self.error = 0.
+                self.transmitting = 0.
+                self.functions.add(self.upd_error)
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
@@ -968,6 +971,30 @@ class unit():
         t = self.net.min_delay
         self.scale_facs_hr[self.exc_idx_hr] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
 
+
+    def upd_error(self, time):
+        """ update the error used by delta units."""
+        if self.transmitting > 0.5:
+            port1 = sum( [syn.w * act(time - dely) for syn, act, dely in zip(
+                         [self.net.syns[self.ID][i] for i in self.port_idx[1]],
+                         [self.net.act[self.ID][i] for i in self.port_idx[1]],
+                         [self.net.delays[self.ID][i] for i in self.port_idx[1]])] ) 
+            self.error = port1 - self.get_lpf_fast(0)
+            self.bias += self.bias_lrate * self.error
+            # to update 'transmitting' we can use the known solution to e' = -tau*e, namely
+            # e(t) = e(t0) * exp((t-t0)/tau), instead of the forward Euler rule
+            self.transmitting *= -np.exp((self.last_time-time)/self.tau_e)
+        else: # transmittin <= 0.5
+            self.error = 0.
+            # input at port 2
+            port2 = sum( [syn.w * act(time - dely) for syn, act, dely in zip(
+                         [self.net.syns[self.ID][i] for i in self.port_idx[2]],
+                         [self.net.act[self.ID][i] for i in self.port_idx[2]],
+                         [self.net.delays[self.ID][i] for i in self.port_idx[2]])] )
+            if port2 <= 0.5:
+                self.transmitting = 1.
+            else: 
+                self.transmitting *= -np.exp((self.last_time-time)/self.tau_e)
 
 
 class source(unit):
@@ -4251,38 +4278,38 @@ class ds_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
         Args:
             ID, params, network: same as in the parent's constructor.
             n_ports and tau_fast are no longer optional.
-                'n_ports' : number of inputs ports. Needs a valuer > 1
-                'tau_fast' : Time constant for the fast low-pass filter.
+                n_ports: number of inputs ports. Needs a valuer > 1
+                tau_fast: Time constant for the fast low-pass filter.
             In addition, params should have the following entries.
-                REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
-                'slope' : Slope of the sigmoidal function.
-                'thresh' : Threshold of the sigmoidal function.
-                'tau' : Time constant of the update dynamics.
-                'tau_scale' : sets the speed of change for the scaling factor
-                'tau_relax' : controls how fast the scaling factors return to 1 when rdc is off
-                'c' : Changes the homogeneity of the firing rate distribution.
+                REQUIRED PARAMETERS 
+                slope: Slope of the sigmoidal function.
+                thresh: Threshold of the sigmoidal function.
+                tau: Time constant of the update dynamics.
+                tau_scale: sets the speed of change for the scaling factor
+                tau_relax: controls how fast the scaling factors return to 1 when rdc is off
+                c: Changes the homogeneity of the firing rate distribution.
                     Values very close to 0 make all firing rates equally probable, whereas
                     larger values make small firing rates more probable. 
                     Shouldn't be set to zero (causes zero division in the cdf function).
-                'Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
-                'rdc_port' : port ID of inputs used for rate distribution control.
-                'sharpen_port' : port ID where the inputs controlling rdc arrive.
-                'branch_params' : A dictionary with the following 3 entries:
-                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
+                rdc_port: port ID of inputs used for rate distribution control.
+                sharpen_port: port ID where the inputs controlling rdc arrive.
+                branch_params: A dictionary with the following 3 entries:
+                    branch_w: The "weights" for all branches. This is a list whose length is the number
                             of branches. Each entry is a positive number, and all entries must add to 1.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
-                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                    slopes: Slopes of the branch sigmoidal functions. It can either be a float value
                             (resulting in all values being the same), it can be a list of length n_ports
                             specifying the slope for each branch, or it can be a dictionary specifying a
                             distribution. Currently only the uniform distribution is supported:
                             {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
-                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                    threshs: Thresholds of the branch sigmoidal functions. It can either be a float
                             value (resulting in all values being the same), it can be a list of length 
                             n_ports specifying the threshold for each branch, or it can be a dictionary 
                             specifying a distribution. Currently only the uniform distribution is supported:
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
-                'phi' : This value is substracted from the branches' contribution. In this manner a branch
+                phi: This value is substracted from the branches' contribution. In this manner a branch
                         can have a negative (inhibitory) contribution.
 
         """
@@ -4305,6 +4332,69 @@ class ds_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
         acc_sum += sum( [ self.br_w[p] * ( self.f( self.threshs[p], self.slopes[p], np.dot(ws[p],inps[p]) )
                                            - self.phi ) for p in self.nm_prts ] )
         return acc_sum 
+
+
+class delta_linear(unit):
+    """ A linear unit with bias that modifies its weights using a continuous version of the delta rule.
+
+    Units in this class have 3 input ports. 
+    Port 0 is for the plastic synapses, which are of the delta_synapse class.
+    Port 1 is for the desired value signal, which is used to produce the error.
+    Port 2 is for the signal that indicates when to update the synaptic weights.
+
+    The delta_linear units have a variable named 'transmitting', which decays to zero exponentially
+    with a time constant given as a paramter. If 'e' stands for transmitting, e' = -tau_e * e .
+
+    When transmitting > 0.5: 
+        * The signal at port 2 is ignored. 
+        * The error transmitted to the synapses is the the desired output (e.g. the signal at
+          port 1) minus the current activity. 
+        * Eligibility decays to 0 exponentially.
+    When transmitting <= 0.5:
+        * The error is 0 (which cancels plasticity at the synapses).
+        * If the scaled sum of inputs at port 2 is smaller than 0.5, transmitting decays exponentially, 
+          but if the input is larger than 0.5 then transmitting is set to the value 1.
+
+    After being set to 1, transmitting will take T = log(2)/tau_e time units to decay back to 0.5.
+    During this time any non-zero error signal will cause plasticity at the synapses.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                n_ports: number of inputs ports. IT MUST BE SET TO 3.
+                tau_fast: Time constant for the fast low-pass filter.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                gain: slope of the linear unit
+                tau: time constant of the update dynamics.
+                tau_e: time constant for the decay of transmitting.
+                bias_lrate: learning rate of the bias
+        Raises:
+            ValueError
+        """
+        unit.__init__(self, ID, params, network)  # The parent class' constructor
+        if self.n_ports != 3:
+            raise ValueError("delta_linear units require 3 input ports.")
+        self.gain = params['gain'] # a scalar that multiplies the output of the unit
+        self.tau = params['tau'] # time constant for the unit's dynamics
+        self.tau_e = params['tau_e'] # time constant for the decay of the transmitting
+        self.bias_lrate = params['bias_lrate'] # learning rate of the bias
+        self.bias = 0. # initial value of the bias input
+
+        self.syn_needs.update([syn_reqs.lpf_fast, syn_reqs.error])
+        
+    def get_mp_input_sum(self,time):
+        """ The input function of the delta_linear unit. """
+        return np.dot(self.get_mp_inputs(time)[0], self.get_mp_weights(time)[0])
+        
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        return ( self.gain * self.get_mp_input_sum(t) + self.bias  - y[0] ) / self.tau
+
+
 
 
 

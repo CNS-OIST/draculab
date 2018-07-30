@@ -39,6 +39,7 @@ class unit_types(Enum):
     sig_trdc_sharp = 25
     sds_n = 26
     ds_ssrdc_sharp = 27
+    delta_linear = 28
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -105,6 +106,8 @@ class unit_types(Enum):
             unit_class = sigma_double_sigma_normal
         elif self == unit_types.ds_ssrdc_sharp:
             unit_class = ds_ssrdc_sharp
+        elif self == unit_types.delta_linear:
+            unit_class = delta_linear
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?
@@ -127,7 +130,8 @@ class synapse_types(Enum):
     diff_hebbsnorm = 12 # Differential Hebbian with substractive normalization
     exp_rate_dist = 13 # To create an exponential firing rate distribution
     anticov_pre = 14  # anticovariance rule using the presynaptic mean activity
-    #axoaxo = auto()  # axo-axonic synapses will provide presynaptic inhibition
+    delta = 15 # continuous version of the delta rule
+
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -168,6 +172,8 @@ class synapse_types(Enum):
             syn_class = exp_rate_dist_synapse
         elif self == synapse_types.anticov_pre:
             syn_class = anti_cov_pre_synapse 
+        elif self == synapse_types.delta:
+            syn_class = delta_synapse 
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -235,6 +241,7 @@ class syn_reqs(Enum):
     slide_thr_hr = 25 # Sliding threshold that produces "harmonic" rate patterns (multiport units)
     syn_scale_hr = 26 # Synaptic scaling that produces "harmonic" rate patterns (multiport units)
     exp_scale_shrp = 27 # scale synapses to produce exp rate distro if 'sharpen' input > 0.5
+    error = 28 # desired output minus true output, used for delta synapses
 
 
 

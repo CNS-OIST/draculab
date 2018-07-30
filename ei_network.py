@@ -1054,7 +1054,7 @@ class ei_layer():
             'tau_wid' : 0.04,  # 40 ms variation
             'tau_fast' : 0.04, # 40 ms for fast low-pass filter
             'tau_mid' : .1, # 100 ms for medium low-pass filter
-            'tau_slow' : 1, # 1 s for medium low-pass filter
+            'tau_slow' : 1, # 1 s for slow low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
             'tau_relax' : 1., # for ssrdc_sharp units
             'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc or hr units
@@ -1084,7 +1084,7 @@ class ei_layer():
             'tau_wid' : 0.04,  # 40 ms variation
             'tau_fast' : 0.04, # 40 ms for fast low-pass filter
             'tau_mid' : .1, # 100 ms for medium low-pass filter
-            'tau_slow' : 1, # 1 s for medium low-pass filter
+            'tau_slow' : 1, # 1 s for slow low-pass filter
             'tau_scale' : 0.05, # for exp_dist_sigmoidal units
             'tau_relax' : 1., # for ssrdc_sharp units
             'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc or hr units
@@ -1107,6 +1107,8 @@ class ei_layer():
         self.x_pars = {'type' : unit_types.source,
             'init_val' : 0.,
             'tau_fast' : 0.04,
+            'tau_mid' : .1, # 100 ms for medium low-pass filter
+            'tau_slow' : 1, # 1 s for slow low-pass filter
             'function' : lambda x: None }
         self.wt_pars = {'type' : unit_types.source,  # parameters for "weight tracking" units
             'init_val' : 0.,
