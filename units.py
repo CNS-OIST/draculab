@@ -558,9 +558,16 @@ class unit():
                 self.rdc_exc_ones = np.tile(1., len(self.exc_idx_rdc))
                 self.functions.add(self.upd_exp_scale_shrp)
             elif req is syn_reqs.error:  # <----------------------------------
+                if not syn_reqs.mp_inputs in self.syn_needs:
+                    raise AssertionError('The error requirement needs the mp_inputs requirement.')
                 self.error = 0.
-                self.transmitting = 0.
+                self.learning = 0.
                 self.functions.add(self.upd_error)
+            elif req is syn_reqs.inp_l2:  # <----------------------------------
+                if not syn_reqs.mp_inputs in self.syn_needs:
+                    raise AssertionError('The inp_l2 requirement needs the mp_inputs requirement.')
+                self.inp_l2 = 1.
+                self.functions.add(self.upd_inp_l2)
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
@@ -974,27 +981,39 @@ class unit():
 
     def upd_error(self, time):
         """ update the error used by delta units."""
-        if self.transmitting > 0.5:
-            port1 = sum( [syn.w * act(time - dely) for syn, act, dely in zip(
-                         [self.net.syns[self.ID][i] for i in self.port_idx[1]],
-                         [self.net.act[self.ID][i] for i in self.port_idx[1]],
-                         [self.net.delays[self.ID][i] for i in self.port_idx[1]])] ) 
+        # Reliance on mp_inputs would normally be discouraged, since it slows things
+        # down, and can be replaced by the commented code below. However, because I also
+        # have the inp_l2 requirement in delta units, mp_inputs is available anyway.
+        inputs = self.mp_inputs
+        weights = self.get_mp_weights(time)
+        if self.learning > 0.5:
+            port1 = np.dot(inputs[1], weights[1])
+            #port1 = sum( [syn.w * act(time - dely) for syn, act, dely in zip(
+            #             [self.net.syns[self.ID][i] for i in self.port_idx[1]],
+            #             [self.net.act[self.ID][i] for i in self.port_idx[1]],
+            #             [self.net.delays[self.ID][i] for i in self.port_idx[1]])] ) 
             self.error = port1 - self.get_lpf_fast(0)
             self.bias += self.bias_lrate * self.error
-            # to update 'transmitting' we can use the known solution to e' = -tau*e, namely
+            # to update 'learning' we can use the known solution to e' = -tau*e, namely
             # e(t) = e(t0) * exp((t-t0)/tau), instead of the forward Euler rule
-            self.transmitting *= -np.exp((self.last_time-time)/self.tau_e)
-        else: # transmittin <= 0.5
+            self.learning *= np.exp((self.last_time-time)/self.tau_e)
+        else: # learning <= 0.5
             self.error = 0.
             # input at port 2
-            port2 = sum( [syn.w * act(time - dely) for syn, act, dely in zip(
-                         [self.net.syns[self.ID][i] for i in self.port_idx[2]],
-                         [self.net.act[self.ID][i] for i in self.port_idx[2]],
-                         [self.net.delays[self.ID][i] for i in self.port_idx[2]])] )
-            if port2 <= 0.5:
-                self.transmitting = 1.
+            port2 = np.dot(inputs[2], weights[2])
+            #port2 = sum( [syn.w * act(time - dely) for syn, act, dely in zip(
+            #             [self.net.syns[self.ID][i] for i in self.port_idx[2]],
+            #             [self.net.act[self.ID][i] for i in self.port_idx[2]],
+            #             [self.net.delays[self.ID][i] for i in self.port_idx[2]])] )
+            if port2 >= 0.5:
+                self.learning = 1.
             else: 
-                self.transmitting *= -np.exp((self.last_time-time)/self.tau_e)
+                self.learning *= np.exp((self.last_time-time)/self.tau_e)
+
+
+    def upd_inp_l2(self, time):
+        """ Update the L2 norm of the inputs at port 0. """
+        self.inp_l2 = np.linalg.norm(self.mp_inputs[0])
 
 
 class source(unit):
@@ -4335,27 +4354,31 @@ class ds_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
 
 
 class delta_linear(unit):
-    """ A linear unit with bias that modifies its weights using a continuous version of the delta rule.
+    """ A linear unit that modifies its weights using a continuous version of the delta rule.
+
+    This unit scales its input vector so it has a unit L2 norm. Moreover, there is an implicit bias
+    input that is always 1, and whose weight starts at 0 and changes with rate 'bias_lrate'.
 
     Units in this class have 3 input ports. 
     Port 0 is for the plastic synapses, which are of the delta_synapse class.
     Port 1 is for the desired value signal, which is used to produce the error.
     Port 2 is for the signal that indicates when to update the synaptic weights.
 
-    The delta_linear units have a variable named 'transmitting', which decays to zero exponentially
-    with a time constant given as a paramter. If 'e' stands for transmitting, e' = -tau_e * e .
+    The delta_linear units have a variable named 'learning', which decays to zero exponentially
+    with a time constant given as a paramter. If 'e' stands for learning, e' = -tau_e * e .
 
-    When transmitting > 0.5: 
+    When learning > 0.5: 
         * The signal at port 2 is ignored. 
         * The error transmitted to the synapses is the the desired output (e.g. the signal at
           port 1) minus the current activity. 
         * Eligibility decays to 0 exponentially.
-    When transmitting <= 0.5:
+    When learning <= 0.5:
         * The error is 0 (which cancels plasticity at the synapses).
-        * If the scaled sum of inputs at port 2 is smaller than 0.5, transmitting decays exponentially, 
-          but if the input is larger than 0.5 then transmitting is set to the value 1.
+        * If the scaled sum of inputs at port 2 is smaller than 0.5, learning decays exponentially, 
+          but if the input is larger than 0.5 then learning is set to the value 1.
 
-    After being set to 1, transmitting will take T = log(2)/tau_e time units to decay back to 0.5.
+    See unit.upd_error for details.
+    After being set to 1, learning will take T = log(2)/tau_e time units to decay back to 0.5.
     During this time any non-zero error signal will cause plasticity at the synapses.
     """
     def __init__(self, ID, params, network):
@@ -4368,10 +4391,10 @@ class delta_linear(unit):
                 tau_fast: Time constant for the fast low-pass filter.
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS 
-                gain: slope of the linear unit
+                gain: slope of the linear unit.
                 tau: time constant of the update dynamics.
-                tau_e: time constant for the decay of transmitting.
-                bias_lrate: learning rate of the bias
+                tau_e: time constant for the decay of learning.
+                bias_lrate: learning rate of the bias. Requires small values.
         Raises:
             ValueError
         """
@@ -4380,15 +4403,20 @@ class delta_linear(unit):
             raise ValueError("delta_linear units require 3 input ports.")
         self.gain = params['gain'] # a scalar that multiplies the output of the unit
         self.tau = params['tau'] # time constant for the unit's dynamics
-        self.tau_e = params['tau_e'] # time constant for the decay of the transmitting
+        self.tau_e = params['tau_e'] # time constant for the decay of the learning
         self.bias_lrate = params['bias_lrate'] # learning rate of the bias
         self.bias = 0. # initial value of the bias input
 
-        self.syn_needs.update([syn_reqs.lpf_fast, syn_reqs.error])
+        self.syn_needs.update([syn_reqs.lpf_fast, syn_reqs.error, syn_reqs.mp_inputs, syn_reqs.inp_l2])
         
     def get_mp_input_sum(self,time):
         """ The input function of the delta_linear unit. """
-        return np.dot(self.get_mp_inputs(time)[0], self.get_mp_weights(time)[0])
+        
+        return  sum( [syn.w * act(time - dely) for syn, act, dely in zip(
+                     [self.net.syns[self.ID][i] for i in self.port_idx[0]],
+                     [self.net.act[self.ID][i] for i in self.port_idx[0]],
+                     [self.net.delays[self.ID][i] for i in self.port_idx[0]])] ) / self.inp_l2
+        #return np.dot(self.get_mp_inputs(time)[0], self.get_mp_weights(time)[0]) / self.inp_l2
         
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """

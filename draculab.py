@@ -242,6 +242,7 @@ class syn_reqs(Enum):
     syn_scale_hr = 26 # Synaptic scaling that produces "harmonic" rate patterns (multiport units)
     exp_scale_shrp = 27 # scale synapses to produce exp rate distro if 'sharpen' input > 0.5
     error = 28 # desired output minus true output, used for delta synapses
+    inp_l2 = 29 # L2 norm of the inputs at port 0
 
 
 

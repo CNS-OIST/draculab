@@ -501,15 +501,17 @@ class ei_network():
         """
         #%matplotlib inline
         # Plot the inputs
+        pl_wid = 15 # width of the plots
+        pl_hgt = 5  # height of the plots
         layer = self.layers[lyr_name]
         if layer.n['x'] > 0:
-            inp_fig = plt.figure(figsize=(10,5))
+            inp_fig = plt.figure(figsize=(pl_wid,pl_hgt))
             inputs = np.transpose([self.all_activs[i] for i in layer.x])
             plt.plot(self.all_times, inputs, linewidth=1, figure=inp_fig)
             plt.title('Inputs')
 
         # Plot some unit activities
-        unit_fig = plt.figure(figsize=(10,5))
+        unit_fig = plt.figure(figsize=(pl_wid,pl_hgt))
         e_tracked = [e for e in layer.tracked if e in layer.e]
         i_tracked = [i for i in layer.tracked if i in layer.i]
         if len(e_tracked) > 0:
@@ -522,7 +524,7 @@ class ei_network():
         
         if layer.n['w_track'] > 0:
             # Plot the evolution of the synaptic weights
-            w_fig = plt.figure(figsize=(10,5))
+            w_fig = plt.figure(figsize=(pl_wid,pl_hgt))
             weights = np.transpose([self.all_activs[layer.w_track[i]] for i in range(layer.n['w_track'])])
             plt.plot(self.all_times, weights, linewidth=1)
             plt.title('Some synaptic weights')
@@ -530,7 +532,7 @@ class ei_network():
             ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp, unit_types.ss_hr_sig, unit_types.sig_ssrdc,
                        unit_types.ds_ssrdc_sharp]
             if layer.e_pars['type'] in ssrdc_u or layer.i_pars['type'] in ssrdc_u:
-                sc_fig = plt.figure(figsize=(10,5))
+                sc_fig = plt.figure(figsize=(pl_wid,pl_hgt))
                 factors = np.transpose([self.all_activs[layer.sc_track[i]] for i in range(layer.n['w_track'])])
                 plt.plot(self.all_times, factors, linewidth=1)
                 plt.title('Some synaptic scale factors')
@@ -539,7 +541,7 @@ class ei_network():
                       unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, unit_types.sig_trdc, 
                       unit_types.ds_n_sharp, unit_types.sds_n_sharp, unit_types.st_hr_sig, unit_types.sig_trdc_sharp]
             if layer.e_pars['type'] in trdc_u or layer.i_pars['type'] in trdc_u:
-                thr_fig = plt.figure(figsize=(10,5))
+                thr_fig = plt.figure(figsize=(pl_wid,pl_hgt))
                 thresholds = np.transpose([self.all_activs[layer.thr_track[i]] for i in range(layer.n['w_track'])])
                 plt.plot(self.all_times, thresholds, linewidth=1)
                 plt.title('Some unit thresholds')
@@ -1290,7 +1292,7 @@ class ei_layer():
             topo.topo_connect(self.net, self.x, self.e, self.xe_conn, self.xe_syn)
         # Set the function of the w_track units to follow randomly chosen weights.
         if self.n['w_track'] > 0:
-            n_u = int(np.floor(np.sqrt(self.n['w_track']))) # For how many units we'll track weights
+            n_u = min(len(self.e), int(np.floor(np.sqrt(self.n['w_track'])))) # For how many units we'll track weights
             n_syns, remainder = divmod(self.n['w_track'], n_u) # how many synapses per unit
             which_u = np.random.choice(self.e+self.i, n_u) # ID's of the units we'll track
             self.tracked = which_u # so basic_plot knows which units we tracked
