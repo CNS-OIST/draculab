@@ -1,0 +1,9 @@
+created: 20180801040346739
+draft.of: New Tiddler
+draft.title: Introduction
+modified: 20180801040658421
+tags: Contents
+title: Draft of 'New Tiddler'
+type: text/vnd.tiddlywiki
+
+draculab (written with lowercase in this document) is a Python module containing classes to simulate networks of rate units with delayed connections. The name draculab is a an acronym for Delayed-Rate Adaptively-Connected Units Laboratory.

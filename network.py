@@ -43,10 +43,10 @@ class network():
         self.n_plants = 0    # current number of plants in the network
         self.plants = []     # list with all the plant objects
         # The next 3 lists implement the connectivity of the network
-        self.delays = [] # delays[i][j] is the delay of the j-th connection to unit i in [ms]
+        self.delays = [] # delays[i][j] is the delay of the j-th connection to unit i 
         self.act = []    # act[i][j] is the function from which unit i obtains its j-th input
         self.syns = []   # syns[i][j] is the synapse object for the j-th connection to unit i
-        self.min_delay = params['min_delay'] # minimum transmission delay [ms]
+        self.min_delay = params['min_delay'] # minimum transmission delay
         self.min_buff_size = params['min_buff_size']  # number of values stored during a minimum delay period
         if 'rtol' in params: self.rtol = params['rtol']
         else: self.rtol = 1e-6 
@@ -228,7 +228,7 @@ class network():
                         of the connections to be made. Implemented distributions:
                         'uniform' - the delay dictionary must also include 'low' and 'high' values.
                             Example:
-                            {...,'init_w':{'distribution':'uniform', 'low':0.1, 'high':0.3}, ...}
+                            {...,'delay':{'distribution':'uniform', 'low':0.1, 'high':0.3}, ...}
                         Delays should be multiples of the network minimum delay.
                 OPTIONAL PARAMETERS
                 'allow_autapses' : True or False. Can units connect to themselves? Default is True.
@@ -678,18 +678,23 @@ class network():
 
         This method takes steps of 'min_delay' length, in which the units, synapses 
         and plants use their own methods to advance their state variables.
-        
-        The method returns a 3-tuple (times, unit_store, plant_store): 
-            'times' : a numpy array with  the simulation times when the update functions 
-                      were called. These times will begin at the initial simulation time, and
-                      advance in 'min_delay' increments until 'total_time' is completed.
-            'unit_store' : a 2-dimensional numpy array. unit_store[i][j] contains the activity
-                           of the i-th unit at time j-th timepoint (e.g. at times[j]).
-            'plant_store' : a 3-dimensional numpy array. plant_store[i][j][k] is the value
-                            of the k-th state variable, at the j-th timepoint, for the i-th plant.
 
         After run(T) is finished, calling run(T) again continues the simulation
         starting at the last state of the previous simulation.
+
+        Args:
+            total_time: time that the simulation will last.
+        
+        Returns:
+            The method returns a 3-tuple (times, unit_store, plant_store): 
+            times: a numpy array with  the simulation times when the update functions 
+                      were called. These times will begin at the initial simulation time, and
+                      advance in 'min_delay' increments until 'total_time' is completed.
+            unit_store: a 2-dimensional numpy array. unit_store[i][j] contains the activity
+                           of the i-th unit at time j-th timepoint (e.g. at times[j]).
+            plant_store: a 3-dimensional numpy array. plant_store[i][j][k] is the value
+                            of the k-th state variable, at the j-th timepoint, for the i-th plant.
+
         """
 
         Nsteps = int(total_time/self.min_delay)  # total number of simulatin steps
