@@ -491,7 +491,7 @@ class ei_network():
                 lyr_name : A string with the name of one of the layers.
 
             The plots produced will be for:
-                * All inputs to the layer (if any).
+                * All inputs from the x population (if any).
                 * The activity for the units of layer.tracked .
                 * The evolution of some synaptic weights 
                 * Synaptic scale factors for the units in layer.tracked
@@ -1330,8 +1330,8 @@ class ei_layer():
                 for uid,u in enumerate(which_u):
                     self.net.units[self.thr_track[uid]].set_function(thresh_tracker(u))
         else:
-            self.tracked = self.e[0:min(2,self.n['e']-1)]
-            self.tracked += self.i[0:min(2,self.n['i']-1)]
+            self.tracked = self.e[0:min(2,self.n['e'])]
+            self.tracked += self.i[0:min(2,self.n['i'])]
 
 
     def set_param(self, dictionary, entry, value):

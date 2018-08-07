@@ -113,6 +113,10 @@ class unit_types(Enum):
             # NameError instead?
         return unit_class
 
+    def list_names():
+        """ Return a list with the name of all defined units. """
+        return [name for name, member in unit_types.__members__.items()]
+
     
 class synapse_types(Enum):
     """ An enum class with all the implemented synapse models. """
@@ -179,6 +183,9 @@ class synapse_types(Enum):
         
         return syn_class
 
+    def list_names():
+        """ Return a list with the name of all defined synapses. """
+        return [name for name, member in synapse_types.__members__.items()]
 
 class plant_models(Enum):
     """ An enum class with all the implemented plant models. """
@@ -204,6 +211,10 @@ class plant_models(Enum):
             raise NotImplementedError('Attempting to retrieve the class for an unknown plant model')
 
         return plant_class
+
+    def list_names():
+        """ Return a list with the name of all defined plants. """
+        return [name for name, member in plant_models.__members__.items()]
 
 
 class syn_reqs(Enum):
@@ -244,6 +255,9 @@ class syn_reqs(Enum):
     error = 28 # desired output minus true output, used for delta synapses
     inp_l2 = 29 # L2 norm of the inputs at port 0
 
+    def list_names():
+        """ Return a list with the name of all defined synaptic requirements. """
+        return [name for name, member in syn_reqs.__members__.items()]
 
 
 # Importing the classes used by the simulator
