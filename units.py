@@ -2851,7 +2851,7 @@ class sig_trdc(unit):
     A sigmoidal unit where the threshold is moved to produce an exponential distribution.
     
     The only difference with exp_dist_sig_thr is that this is a multiport unit, so that the
-    only inputs consiered for the purpose of rate distribution control are those in the 
+    only inputs considered for the purpose of rate distribution control are those in the 
     rdc port.
 
     This unit has the same activation function as the sigmoidal unit, but the thresh

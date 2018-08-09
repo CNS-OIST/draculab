@@ -1062,7 +1062,6 @@ class ei_layer():
             'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc or hr units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units 
             'Kp' : 0.05, # for exp_dist_sigmoidal units
-            'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
             'omega' : 1.5, # for sq_hebb_subsnorm synapses
             'n_ports' : 1, # multiport units will alter this
             'branch_params' : { # for the double_sigma family of units
@@ -1092,7 +1091,6 @@ class ei_layer():
             'tau_thr' : 0.001, # for exp_dist_sig_thr and other trdc or hr units
             'c' : 2., # for exp_dist_sigmoidal and exp_dist_sig_thr units
             'Kp' : 0.05, # for exp_dist_sigmoidal units
-            'des_act' : 0.3, # for homeo_inhib, and corr_homeo_inhib synapses
             'omega' : 1.5, # for sq_hebb_subsnorm synapses
             'n_ports' : 1, # multiport units will alter this
             'branch_params' : { # for the double_sigma family of units
