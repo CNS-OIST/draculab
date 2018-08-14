@@ -3400,6 +3400,8 @@ class sigma_double_sigma_normal(double_sigma_base):
     to the somatic input to produce the total input to the unit, which is fed into a sigmoidal 
     function to produce the output of the unit.
 
+    ~~~~~~~~~~ In this version the somatic inputs are not normalized ~~~~~~~~~~
+
     The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
     """
 
@@ -3417,10 +3419,11 @@ class sigma_double_sigma_normal(double_sigma_base):
                 'slope' : Slope of the global sigmoidal function.
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
-                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                    branch_w: The "weights" for all branches. This is a list whose length is the number
                             of branches. Each entry is a positive number, and all entries must add to 1.
                             The input port corresponding to a branch is the index of its corresponding 
-                            weight in this list, so len(branch_w) = n_ports.
+                            weight in this list plus one. For example, if branch_w=[.2, .8], then
+                            input port 0 is at the soma, input port 1 has weight .2, and port 2 weight .8 .
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
                             (resulting in all values being the same), it can be a list of length n_ports
                             specifying the slope for each branch, or it can be a dictionary specifying a
@@ -4043,7 +4046,9 @@ class sigma_double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
     add linearly, are normalized, and the normalized sum is fed into a sigmoidal function 
     that produces the output of the branch. The output of all the branches is added linearly 
     to produce the total input to the unit, which is fed into a sigmoidal function to produce 
-    the output of the unit.
+    the output of the unit. 
+    
+    ~~~~~~~~~~ In this version the somatic inputs are not normalized ~~~~~~~~~~
 
     The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
 
@@ -4071,10 +4076,12 @@ class sigma_double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
                 'slope' : Slope of the global sigmoidal function.
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
-                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                    branch_w: The "weights" for all branches. This is a list whose length is the number
                             of branches. Each entry is a positive number, and all entries must add to 1.
                             The input port corresponding to a branch is the index of its corresponding 
-                            weight in this list, so len(branch_w) = n_ports.
+                            weight in this list plus one. For example, if branch_w=[.2, .8], then
+                            input port 0 is at the soma, input port 1 has weight .2, port 2 weight .8, and
+                            port 3 is the sharpening port.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
                             (resulting in all values being the same), it can be a list of length n_ports
                             specifying the slope for each branch, or it can be a dictionary specifying a
@@ -4424,5 +4431,112 @@ class delta_linear(unit):
 
 
 
+class sds_n_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base): 
+    """
+    Sigma double-sigma unit normalized branch inputs and switchable synaptic-scaling rate distribution control.
+
+    Double sigma units are inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    There are two types of inputs. Somatic inputs arrive at port 0 (the default port), and are
+    just like inputs to the sigmoidal units. Dendritic inputs arrive at ports with with ID 
+    larger than 0, and are just like inputs to double_sigma units.
+
+    Each dendritic input belongs to a particular "branch". All inputs from the same branch
+    add linearly, are normalized, and the normalized sum is fed into a sigmoidal function 
+    that produces the output of the branch. The output of all the branches is added linearly 
+    to produce the total input to the unit, which is fed into a sigmoidal function to produce 
+    the output of the unit.
+
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use synaptic-scaling based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the scale factors will decay exponentially
+    to the default value 1, with a rate set by the "tau_relax" parameter.
+
+    In this version the inputs at the rdc_port are not normalized, since this interacts with the scaling.
+    Also, notice that when the rdc_port is not 0 (e.g. at the soma), the ability to maintain the
+    rate distribution will be compromised, although scaling should still bias things in the right direction.
+
+    The inputs at the sharpen port will not contribute to the activation of the unit. 
+
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                n_ports: number of inputs ports. Needs a valuer > 1
+                tau_fast: Time constant for the fast low-pass filter.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                slope: Slope of the sigmoidal function.
+                thresh: Threshold of the sigmoidal function.
+                tau: Time constant of the update dynamics.
+                tau_scale: sets the speed of change for the scaling factor
+                tau_relax: controls how fast the scaling factors return to 1 when rdc is off
+                c: Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
+                rdc_port: port ID of inputs used for rate distribution control.
+                sharpen_port: port ID where the inputs controlling rdc arrive.
+                branch_params: A dictionary with the following 3 entries:
+                    branch_w: The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list plus one. For example, if branch_w=[.2, .8], then
+                            input port 0 is at the soma, input port 1 has weight .2, port 2 weight .8, and
+                            port 3 is the sharpening port.
+                    slopes: Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    threshs: Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                phi: This value is substracted from the branches' contribution. In this manner, a branch
+                        with no inputs may not contribute to the unit's activation.
+
+        """
+        self.extra_ports = 2 # The soma and the sharpen port 
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        ssrdc_sharp_base.__init__(self, ID, params, network)
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum])
+
+        self.nm_prts = list(range(self.n_ports)) # port list without the 0, rdc, and sharpen ports
+        if self.rdc_port != 0:
+            del self.nm_prts[max(self.rdc_port,self.sharpen_port)]
+            del self.nm_prts[min(self.rdc_port,self.sharpen_port)]
+            self.nm_prts = self.nm_prts[1:] # removes port 0
+        else:
+            del self.nm_prts[self.sharpen_port]
+            del self.nm_prts[0]
+        #self.nm_prts = np.array(self.nm_prts, dtype='uint32')
+        
+    def get_mp_input_sum(self, time):
+        """ The input function of the sds_ssrdc_sharp unit. """
+        ws = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        rdcp = self.rdc_port # to make lines shorter
+        # Removing zero or near-zero values from lpf_slow_mp_inp_sum
+        lpf_i = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
+        acc_sum = 0
+        # Adding input from soma
+        if rdcp != 0:
+            acc_sum += (np.dot(ws[0], inps[0]) - lpf_i[0]) / lpf_i[0]
+        # Adding input from rdc port (not normalized)
+        acc_sum += self.br_w[rdcp] * ( self.f( self.threshs[rdcp], self.slopes[rdcp], 
+                   np.sum(self.scale_facs_rdc * ws[rdcp] * inps[rdcp] ) - self.phi ) )
+        # Adding inputs from the other ports
+        acc_sum += sum( [ self.br_w[p-1] * ( self.f( self.threshs[p-1], self.slopes[p-1], 
+                          (np.dot(ws[p],inps[p])-lpf_i[p])/lpf_i[p] - self.phi ) ) for p in self.nm_prts ] )
+        return acc_sum 
 
 

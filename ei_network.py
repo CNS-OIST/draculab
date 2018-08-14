@@ -545,6 +545,19 @@ class ei_network():
                 thresholds = np.transpose([self.all_activs[layer.thr_track[i]] for i in range(layer.n['w_track'])])
                 plt.plot(self.all_times, thresholds, linewidth=1)
                 plt.title('Some unit thresholds')
+        # Plot the error and  learning variables of delta units
+        delta_u = [unit_types.delta_linear]
+        if layer.e_pars['type'] in delta_u: 
+            lrn_fig = plt.figure(figsize=(pl_wid,pl_hgt))
+            #lrn_var= np.transpose([self.all_activs[layer.learn_track[i]] for i in range(layer.n['w_track'])])
+            lrn_var= self.all_activs[layer.learn_track[0]] 
+            plt.plot(self.all_times, lrn_var, self.all_times, np.tile(.5,len(self.all_times)), 'k--')
+            plt.title('learning')
+            err_fig = plt.figure(figsize=(pl_wid,pl_hgt))
+            #err_var= np.transpose([self.all_activs[layer.error_track[i]] for i in range(layer.n['w_track'])])
+            err_var= self.all_activs[layer.error_track[0]] 
+            plt.plot(self.all_times, err_var) 
+            plt.title('error')
 
         plt.show()
 
@@ -1110,7 +1123,7 @@ class ei_layer():
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_slow' : 1, # 1 s for slow low-pass filter
             'function' : lambda x: None }
-        self.wt_pars = {'type' : unit_types.source,  # parameters for "weight tracking" units
+        self.track_pars = {'type' : unit_types.source,  # parameters for "tracking" units
             'init_val' : 0.,
             'tau_fast' : 0.04,
             'function' : lambda x: None }
@@ -1279,7 +1292,7 @@ class ei_layer():
             self.x = topo.create_group(self.net, self.x_geom, self.x_pars)
         # Create weight tracking units
         if self.n['w_track'] > 0:
-            self.w_track = self.net.create(self.n['w_track'], self.wt_pars)
+            self.w_track = self.net.create(self.n['w_track'], self.track_pars)
         # Create connections
         topo.topo_connect(self.net, self.e, self.e, self.ee_conn, self.ee_syn)
         topo.topo_connect(self.net, self.e, self.i, self.ei_conn, self.ei_syn)
@@ -1305,7 +1318,7 @@ class ei_layer():
             ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp, unit_types.ss_hr_sig, unit_types.sig_ssrdc,
                        unit_types.ds_ssrdc_sharp ]
             if self.e_pars['type'] in ssrdc_u or self.i_pars['type'] in ssrdc_u:
-                self.sc_track = self.net.create(self.n['w_track'], self.wt_pars)
+                self.sc_track = self.net.create(self.n['w_track'], self.track_pars)
                 def scale_tracker(u,s):
                     if hasattr(self.net.units[u], 'scale_facs'):
                         return lambda x: self.net.units[u].scale_facs[s]
@@ -1322,7 +1335,7 @@ class ei_layer():
                       unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, unit_types.sig_trdc, 
                       unit_types.ds_n_sharp, unit_types.sds_n_sharp, unit_types.st_hr_sig, unit_types.sig_trdc_sharp]
             if self.e_pars['type'] in trdc_u or self.i_pars['type'] in trdc_u:
-                self.thr_track = self.net.create(self.n['w_track'], self.wt_pars)
+                self.thr_track = self.net.create(self.n['w_track'], self.track_pars)
                 def thresh_tracker(u):
                     return lambda x: self.net.units[u].thresh
                 for uid,u in enumerate(which_u):
@@ -1330,6 +1343,20 @@ class ei_layer():
         else:
             self.tracked = self.e[0:min(2,self.n['e'])]
             self.tracked += self.i[0:min(2,self.n['i'])]
+
+        # If there is a delta unit, create tracking units for its learning and error variables
+        delta_u = [unit_types.delta_linear]
+        if self.e_pars['type'] in delta_u: 
+            self.learn_track = self.net.create(1, self.track_pars)
+            self.error_track = self.net.create(1, self.track_pars)
+            def create_lt(unit_id):
+                return lambda t : self.net.units[unit_id].learning
+            def create_et(unit_id):
+                return lambda t : self.net.units[unit_id].error
+            for unit in self.learn_track:
+                self.net.units[unit].set_function(create_lt(self.e[0]))
+            for unit in self.error_track:
+                self.net.units[unit].set_function(create_et(self.e[0]))
 
 
     def set_param(self, dictionary, entry, value):
