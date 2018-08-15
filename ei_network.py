@@ -501,7 +501,7 @@ class ei_network():
         """
         #%matplotlib inline
         # Plot the inputs
-        pl_wid = 15 # width of the plots
+        pl_wid = 18 # width of the plots
         pl_hgt = 5  # height of the plots
         layer = self.layers[lyr_name]
         if layer.n['x'] > 0:
@@ -1060,7 +1060,7 @@ class ei_layer():
             'x' : self.x_geom['rows'] * self.x_geom['columns'],  # number of input units
             'w_track': 6 } # number of weight tracking units
         self.e_pars = {'init_val_min' : 0.001,
-            'init_val_wid' : 1.,
+            'init_val_wid' : .99,
             'slope_min' : 0.5, # minimum slope
             'slope_wid' : 3.,  # 'width' of the slope distribution
             'thresh_min' : -0.2,
@@ -1089,7 +1089,7 @@ class ei_layer():
             'sharpen_port' : 1, # for the "sharpening" units
             'type' : unit_types.sigmoidal }
         self.i_pars = {'init_val_min' : 0.001,
-            'init_val_wid' : 1.,
+            'init_val_wid' : .99,
             'slope_min' : 0.5, # minimum slope
             'slope_wid' : 3.,  # 'width' of the slope distribution
             'thresh_min' : -0.2,
@@ -1118,7 +1118,7 @@ class ei_layer():
             'sharpen_port' : 1, # for the "sharpening" units
             'type' : unit_types.sigmoidal }
         self.x_pars = {'type' : unit_types.source,
-            'init_val' : 0.,
+            'init_val' : 0.5,
             'tau_fast' : 0.04,
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_slow' : 1, # 1 s for slow low-pass filter
