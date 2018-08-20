@@ -520,7 +520,7 @@ class ei_network():
         if len(i_tracked) > 0:
             i_acts = np.transpose(self.all_activs[i_tracked])
             plt.plot(self.all_times, i_acts, figure=unit_fig, linewidth=1)
-        plt.title('Some unit activities. Thick=Exc, Thin=Inh')
+        plt.title('Some unit activities at layer '+lyr_name+'. Thick=Exc, Thin=Inh')
         
         if layer.n['w_track'] > 0:
             # Plot the evolution of the synaptic weights
