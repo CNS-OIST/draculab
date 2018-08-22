@@ -4138,7 +4138,7 @@ class sliding_threshold_harmonic_rate_sigmoidal(unit):
     the discrete Laplacian operator applied to the directed graph where the nodes are the units, and
     the edges come from their connections.
 
-    In practice this means that ther firing rate of the unit will be adjusted so it approaches the mean 
+    In practice this means that the firing rate of the unit will be adjusted so it approaches the mean 
     firing rate of its inputs. 
 
     It is expected that one input port will have the inputs to be used for the rate harmonization,
@@ -4335,8 +4335,8 @@ class ds_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
                             n_ports specifying the threshold for each branch, or it can be a dictionary 
                             specifying a distribution. Currently only the uniform distribution is supported:
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
-                phi: This value is substracted from the branches' contribution. In this manner a branch
-                        can have a negative (inhibitory) contribution.
+                phi: This value is substracted from the branches' contribution. In this manner branches with
+                     zero input will contribute (0.5 - phi) times the branch weight.
 
         """
         self.extra_ports = 1 # The sharpen port is an extra port for double_sigma_base
