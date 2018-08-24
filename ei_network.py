@@ -242,7 +242,11 @@ class ei_network():
         return lambda x : x + (tar_center - src_center)
 
     def build(self):
-        """ Configure the draculab network. """
+        """ Build the layers and create the interlayer connections. 
+            
+            This is done after all parameter dictionaries have been specified.
+
+        """
         # Store record of network being built
         self.history.append('#()()()()()()()()()()()()()()()()()()')
         self.history.append('build()')
@@ -257,7 +261,7 @@ class ei_network():
             self.layers[name].build(self.net)
         print('\n')
 
-        # Create the parameter dictionaries for the inter-layer connections
+        # Populate the parameter dictionaries for the inter-layer connections
         for c in self.layer_connections:
             name = c['src_lyr'] + c['src_pop'] + '_' + c['trg_lyr'] + c['trg_pop'] # base name of the dictionaries
             conn_dict = self.__getattribute__(name+'_conn')  # The add_connection method created these

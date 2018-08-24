@@ -830,7 +830,7 @@ class unit():
 
 
     def upd_exp_scale_mp(self, time):
-        """ Updates the synaptic scaling factor used in multiport ssrdc units.
+        """ Updates the synaptic scaling factors used in multiport ssrdc units.
 
             The algorithm is the same as upd_exp_scale, but only the inputs at the rdc_port
             are considered.
