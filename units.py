@@ -866,6 +866,7 @@ class unit():
         t = self.net.min_delay
         self.scale_facs_rdc[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
 
+    
 
     def upd_exp_scale_shrp(self, time):
         """ Updates the synaptic scaling factor used in ssrdc_sharp units.
@@ -4412,7 +4413,7 @@ class delta_linear(unit):
         self.tau = params['tau'] # time constant for the unit's dynamics
         self.tau_e = params['tau_e'] # time constant for the decay of the learning
         self.bias_lrate = params['bias_lrate'] # learning rate of the bias
-        self.bias = 0. # initial value of the bias input
+        self.bias = 0. # initial value of the bias input (updated in upd_error)
 
         self.syn_needs.update([syn_reqs.lpf_fast, syn_reqs.error, syn_reqs.mp_inputs, syn_reqs.inp_l2])
         
