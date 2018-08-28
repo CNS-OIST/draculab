@@ -568,6 +568,24 @@ class unit():
                     raise AssertionError('The inp_l2 requirement needs the mp_inputs requirement.')
                 self.inp_l2 = 1.
                 self.functions.add(self.upd_inp_l2)
+            elif req is syn_reqs.exp_scale_sort_mp:  # <----------------------------------
+                if not self.multiport:
+                    raise AssertionError('The exp_scale_sort_mp requirement is for multiport units only')
+                self.scale_facs_rdc = np.tile(1., len(self.port_idx[self.rdc_port])) # array with scale factors
+                # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
+                self.exc_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
+                                     for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
+                self.autapse = False
+                for idx, syn in enumerate([self.net.syns[self.ID][eir] for eir in exc_idx_rdc]):
+                    if syn.preID == self.ID: # if there is an excitatory autapse at the rdc port
+                        self.autapse_idx = idx
+                        self.autapse = True
+                        break
+                # Gotta produce the array of ideal rates given the truncated exponential distribution
+                N = len(self.exc_idx_rdc)
+                points = [ (k + 0.5) / (N + 1.) for k in range(N) ]
+                self.ideal_rates = np.array([-(1./self.c) * np.log(1.-(1.-np.exp(-self.c))*pt) for pt in points])
+                self.functions.add(self.upd_exp_scale_sort_mp)
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
@@ -785,7 +803,7 @@ class unit():
         self.above = ( 0.5 * (np.sign(inputs - r) + 1.).sum() ) / N
         self.below = ( 0.5 * (np.sign(r - inputs) + 1.).sum() ) / N
 
-    
+
     def upd_exp_scale(self, time):
         """ Updates the synaptic scaling factor used in exp_dist_sigmoidal units.
 
@@ -867,6 +885,34 @@ class unit():
         self.scale_facs_rdc[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
 
     
+    def upd_exp_scale_sort_mp(self, time):
+        """ Updates the synaptic scale factor optionally used in some multiport ssrdc units.
+
+            This method implements the exp_scale_sort_mp requirement. It uses the 'ideal_rates' 
+            array produced in init_pre_syn_update.
+        """
+        exc_rdc_inp = self.mp_inputs[self.rdc_port][self.exc_idx_rdc] # Exc. inputs at the rdc port
+        exc_rdc_w = self.get_mp_weights(time)[self.rdc_port][self.exc_idx_rdc] # Exc. weights at rdc port
+        r = self.buffer[-1] # current rate
+
+        if not self.autapse: # if unit has no autapses, put a fake one with zero weight
+            exc_rdc_inp = np.concatenate(exc_rdc_inp, [r])
+            exc_rdc_w = np.concatenate(exc_rdc_w, [0])
+            self.autapse_idx = len(exc_rdc_inp) - 1
+        
+        rate_rank = np.argsort[exc_rdc_inp]  # array index that sorts exc_rdc_inp
+        ideal_exc_inp = np.dot(exc_rdc_w[rate_rank], self.ideal_rates)
+        my_ideal_rate = self.ideal_rates(np.where(rate_rank == self.autapse_idx)[0][0])
+        u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc] * exc_rdc_inp * exc_rdc_w)
+        I = u - self.get_mp_input_sum(time)     
+        syn_scale = (my_ideal_rate - I) / (ideal_exc_inp)
+        # same weight bounding as above
+        syn_scale = min(syn_scale, 10.) # hard_bound_above
+        x0 = self.scale_facs_rdc[self.exc_idx_rdc][0] # x0 is scalar cuz all Exc. factors are equal
+        t = self.net.min_delay
+        x = (x0 * syn_scale) / (x0 + (syn_scale - x0) * np.exp(-self.tau_scale * syn_scale * t) )
+        self.scale_facs_rdc[self.exc_idx_rdc] = x
+
 
     def upd_exp_scale_shrp(self, time):
         """ Updates the synaptic scaling factor used in ssrdc_sharp units.
@@ -2727,6 +2773,9 @@ class sig_ssrdc(unit):
     Synaptic scaling happens at excitatory inputs in the rdc port.
     Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
     Synaptic weights initialized to zero will be considered excitatory.
+
+    An extra feature is that the 'sorting' method of RDC is now supported. It can be used
+    by giving an extra argument to the constructor
     """
     def __init__(self, ID, params, network):
         """ The unit constructor.
@@ -2734,7 +2783,7 @@ class sig_ssrdc(unit):
         Args:
             ID, params, network: same as in the parent's constructor.
             In addition, params should have the following entries.
-                REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
+                REQUIRED PARAMETERS 
                 'slope' : Slope of the sigmoidal function.
                 'thresh' : Threshold of the sigmoidal function.
                 'tau' : Time constant of the update dynamics.
@@ -2745,6 +2794,9 @@ class sig_ssrdc(unit):
                     Shouldn't be set to zero (causes zero division in the cdf function).
                 'Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
                 'rdc_port' : port ID of inputs used for rate distribution control.
+                OPTIONAL PARAMETERS
+                'sort_rdc' : A boolean value specifying whether to use the 'sorting' type of
+                             rdc control, which uses the exp_scale_sort_mp requirement.
 
         Raises:
             ValueError
@@ -2763,7 +2815,11 @@ class sig_ssrdc(unit):
         self.c = params['c']  # The coefficient in the exponential distribution
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         self.rdc_port = params['rdc_port'] # port for rate distribution control
-        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.exp_scale_mp, syn_reqs.lpf_fast]) 
+        if 'sort_rdc' in params and params['sort_rdc']:
+            self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.exp_scale_sort_mp, syn_reqs.lpf_fast])
+        else:
+            self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, 
+                                   syn_reqs.exp_scale_mp, syn_reqs.lpf_fast]) 
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
