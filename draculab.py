@@ -258,6 +258,7 @@ class syn_reqs(Enum):
     error = 28 # desired output minus true output, used for delta synapses
     inp_l2 = 29 # L2 norm of the inputs at port 0
     exp_scale_sort_mp = 30 # A single scale factor to produce exp rate distro in some mp ssrdc units
+    exp_scale_sort_shrp = 31 # A scale factor to produce exp rate distro in some ssrdc_sharp units
 
     def list_names():
         """ Return a list with the name of all defined synaptic requirements. """

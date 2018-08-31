@@ -1,5 +1,5 @@
 created: 20180801005105162
-modified: 20180802035449354
+modified: 20180831004037950
 tags: Contents
 title: Installation
 type: text/vnd.tiddlywiki
@@ -66,4 +66,4 @@ Installation only requires one line:
 ```
 pip3 install pathos
 ```
-No program in this tutorial requires Pathos.
+No program in the tutorials requires Pathos.

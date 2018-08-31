@@ -27,3 +27,11 @@ def cython_get_act(float time, float times0, float time_bit, int b_size, np.ndar
     base = max( 0, min( base, b_size-2 ) )
     cdef float frac2 = rem / time_bit
     return buff[base] + frac2 * ( buff[base+1] - buff[base] )
+
+
+def cython_sig(float thresh, float slope, float arg):
+    """ The sigmoidal function used by most of draculab's units.
+
+        It is called by the sigmoidal units' f function.
+    """
+    return 1. / (1. + np.exp(-slope*(arg - thresh)))

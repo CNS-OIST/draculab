@@ -8,6 +8,7 @@ from synapses import *
 import numpy as np
 from scipy.integrate import odeint # to integrate ODEs
 from cython_utils import cython_get_act  # the cythonized linear interpolation 
+from cython_utils import cython_sig # the cythonized sigmoidal function
 #from scipy.interpolate import interp1d # to interpolate values
 
 
@@ -576,16 +577,40 @@ class unit():
                 self.exc_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
                                      for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
                 self.autapse = False
-                for idx, syn in enumerate([self.net.syns[self.ID][eir] for eir in exc_idx_rdc]):
+                for idx, syn in enumerate([self.net.syns[self.ID][eir] for eir in self.exc_idx_rdc]):
                     if syn.preID == self.ID: # if there is an excitatory autapse at the rdc port
                         self.autapse_idx = idx
                         self.autapse = True
                         break
                 # Gotta produce the array of ideal rates given the truncated exponential distribution
-                N = len(self.exc_idx_rdc)
+                if self.autapse:
+                    N = len(self.exc_idx_rdc)
+                else:
+                    N = len(self.exc_idx_rdc) + 1 # an extra point for the fake autapse
                 points = [ (k + 0.5) / (N + 1.) for k in range(N) ]
                 self.ideal_rates = np.array([-(1./self.c) * np.log(1.-(1.-np.exp(-self.c))*pt) for pt in points])
                 self.functions.add(self.upd_exp_scale_sort_mp)
+            elif req is syn_reqs.exp_scale_sort_shrp:  # <----------------------------------
+                if not self.multiport:
+                    raise AssertionError('The exp_scale_sort_shrp requirement is for multiport units only')
+                self.scale_facs_rdc = np.tile(1., len(self.port_idx[self.rdc_port])) # array with scale factors
+                # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
+                self.exc_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
+                                     for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
+                self.autapse = False
+                for idx, syn in enumerate([self.net.syns[self.ID][eir] for eir in self.exc_idx_rdc]):
+                    if syn.preID == self.ID: # if there is an excitatory autapse at the rdc port
+                        self.autapse_idx = idx
+                        self.autapse = True
+                        break
+                # Gotta produce the array of ideal rates given the truncated exponential distribution
+                if self.autapse:
+                    N = len(self.exc_idx_rdc)
+                else:
+                    N = len(self.exc_idx_rdc) + 1 # an extra point for the fake autapse
+                points = [ (k + 0.5) / (N + 1.) for k in range(N) ]
+                self.ideal_rates = np.array([-(1./self.c) * np.log(1.-(1.-np.exp(-self.c))*pt) for pt in points])
+                self.functions.add(self.upd_exp_scale_sort_shrp)
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
@@ -596,8 +621,8 @@ class unit():
     def upd_lpf_fast(self,time):
         """ Update the lpf_fast variable. """
         # Source units have their own implementation
-        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-                                        ' lpf_fast updated backwards in time']
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_fast updated backwards in time']
         cur_act = self.buffer[-1] # This doesn't work for source units
         # This updating rule comes from analytically solving 
         # lpf_x' = ( x - lpf_x ) / tau
@@ -618,8 +643,8 @@ class unit():
     def upd_lpf_mid(self,time):
         """ Update the lpf_mid variable. """
         # Source units have their own implementation
-        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-                                        ' lpf_mid updated backwards in time']
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_mid updated backwards in time']
         cur_act = self.buffer[-1] # This doesn't work for source units
         # This updating rule comes from analytically solving 
         # lpf_x' = ( x - lpf_x ) / tau
@@ -640,8 +665,8 @@ class unit():
     def upd_lpf_slow(self,time):
         """ Update the lpf_slow variable. """
         # Source units have their own implementation
-        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-                                        ' lpf_slow updated backwards in time']
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_slow updated backwards in time']
         cur_act = self.buffer[-1] # This doesn't work for source units
         # This updating rule comes from analytically solving 
         # lpf_x' = ( x - lpf_x ) / tau
@@ -662,8 +687,8 @@ class unit():
     def upd_sq_lpf_slow(self,time):
         """ Update the sq_lpf_slow variable. """
         # Source units have their own implementation
-        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-                                        ' sq_lpf_slow updated backwards in time']
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' sq_lpf_slow updated backwards in time']
         cur_sq_act = self.buffer[-1]**2.  # This doesn't work for source units.
         # This updating rule comes from analytically solving 
         # lpf_x' = ( x - lpf_x ) / tau
@@ -678,8 +703,8 @@ class unit():
         
             The actual value being averaged is lpf_fast of the presynaptic units.
         """
-        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-                                        ' inp_avg updated backwards in time']
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' inp_avg updated backwards in time']
         self.inp_avg = sum([u.get_lpf_fast(s) for u,s in self.snorm_list_dels]) / self.n_hebbsnorm
         
 
@@ -690,8 +715,8 @@ class unit():
             Inputs whose synaptic weight is zero or negative  are saturated to zero and
             excluded from the computation.
         """
-        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-                                        ' pos_inp_avg updated backwards in time']
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' pos_inp_avg updated backwards in time']
         # first, update the n vector from Eq. 8.14, pg. 290 in Dayan & Abbott
         self.n_vec = [ 1. if syn.w>0. else 0. for syn in self.snorm_syns ]
         
@@ -889,24 +914,26 @@ class unit():
         """ Updates the synaptic scale factor optionally used in some multiport ssrdc units.
 
             This method implements the exp_scale_sort_mp requirement. It uses the 'ideal_rates' 
-            array produced in init_pre_syn_update.
+            array produced in init_pre_syn_update. 
         """
+        # The equations come from the APCTP notebook, 8/28/18.
         exc_rdc_inp = self.mp_inputs[self.rdc_port][self.exc_idx_rdc] # Exc. inputs at the rdc port
         exc_rdc_w = self.get_mp_weights(time)[self.rdc_port][self.exc_idx_rdc] # Exc. weights at rdc port
         r = self.buffer[-1] # current rate
-
         if not self.autapse: # if unit has no autapses, put a fake one with zero weight
-            exc_rdc_inp = np.concatenate(exc_rdc_inp, [r])
-            exc_rdc_w = np.concatenate(exc_rdc_w, [0])
+            exc_rdc_inp = np.concatenate((exc_rdc_inp, [r]))
+            exc_rdc_w = np.concatenate((exc_rdc_w, [0]))
             self.autapse_idx = len(exc_rdc_inp) - 1
-        
-        rate_rank = np.argsort[exc_rdc_inp]  # array index that sorts exc_rdc_inp
+        rate_rank = np.argsort(exc_rdc_inp)  # array index that sorts exc_rdc_inp
         ideal_exc_inp = np.dot(exc_rdc_w[rate_rank], self.ideal_rates)
-        my_ideal_rate = self.ideal_rates(np.where(rate_rank == self.autapse_idx)[0][0])
-        u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc] * exc_rdc_inp * exc_rdc_w)
+        my_ideal_rate = self.ideal_rates[np.where(rate_rank == self.autapse_idx)[0][0]]
+        if self.autapse:
+            u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc] * exc_rdc_inp * exc_rdc_w)
+        else:
+            u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*exc_rdc_inp[:-1]*exc_rdc_w[:-1])
         I = u - self.get_mp_input_sum(time)     
         syn_scale = (my_ideal_rate - I) / (ideal_exc_inp)
-        # same weight bounding as above
+        # same weight bounding as upd_exp_scale_mp
         syn_scale = min(syn_scale, 10.) # hard_bound_above
         x0 = self.scale_facs_rdc[self.exc_idx_rdc][0] # x0 is scalar cuz all Exc. factors are equal
         t = self.net.min_delay
@@ -930,7 +957,6 @@ class unit():
             r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
             exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
             error = self.below - self.above - 2.*exp_cdf + 1. 
-
             #u = (np.log(r/(1.-r))/self.slope) + self.thresh
             rdc_inp = self.mp_inputs[self.rdc_port]
             rdc_w = self.get_mp_weights(time)[self.rdc_port]
@@ -943,10 +969,44 @@ class unit():
             a = ss_scale / np.maximum(rdc_w[self.exc_idx_rdc],.001)
             a = np.minimum( a, 10.) # hard bound above
             exp_tau = self.tau_scale
-        
         x0 = self.scale_facs_rdc[self.exc_idx_rdc]
         self.scale_facs_rdc[self.exc_idx_rdc] = (x0*a) / (x0+(a-x0)*np.exp(-exp_tau*a*self.net.min_delay))
 
+
+    def upd_exp_scale_sort_shrp(self, time):
+        """ Updates the synaptic scale factor optionally used in some ssrdc_sharp units.
+
+            The algorithm is the same as upd_exp_scale_sort_mp, but controlled by the inputs at the
+            sharpening port. When the sum of inputs at this port is smaller than 0.5 the scale factors
+            return to 1 with a time constant of tau_relax.
+        """
+        if np.dot(self.mp_inputs[self.sharpen_port], self.get_mp_weights(time)[self.sharpen_port]) < 0.5:
+            syn_scale = 1.
+            exp_tau = self.tau_relax
+        else: # input at sharpen port >= 0.5
+            exc_rdc_inp = self.mp_inputs[self.rdc_port][self.exc_idx_rdc] # Exc. inputs at the rdc port
+            exc_rdc_w = self.get_mp_weights(time)[self.rdc_port][self.exc_idx_rdc] # Exc. weights at rdc port
+            r = self.buffer[-1] # current rate
+            if not self.autapse: # if unit has no autapses, put a fake one with zero weight
+                exc_rdc_inp = np.concatenate((exc_rdc_inp, [r]))
+                exc_rdc_w = np.concatenate((exc_rdc_w, [0]))
+                self.autapse_idx = len(exc_rdc_inp) - 1
+            rate_rank = np.argsort(exc_rdc_inp)  # array index that sorts exc_rdc_inp
+            ideal_exc_inp = np.dot(exc_rdc_w[rate_rank], self.ideal_rates)
+            my_ideal_rate = self.ideal_rates[np.where(rate_rank == self.autapse_idx)[0][0]]
+            if self.autapse:
+                u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc] * exc_rdc_inp * exc_rdc_w)
+            else:
+                u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*exc_rdc_inp[:-1]*exc_rdc_w[:-1])
+            I = u - self.get_mp_input_sum(time)     
+            syn_scale = (my_ideal_rate - I) / (ideal_exc_inp)
+            syn_scale = min(syn_scale, 10.) # hard_bound_above
+            exp_tau = self.tau_scale
+        # same soft weight bounding as upd_exp_scale_mp
+        x0 = self.scale_facs_rdc[self.exc_idx_rdc][0] # x0 is scalar cuz all Exc. factors are equal
+        x = (x0 * syn_scale) / (x0 + (syn_scale - x0) * np.exp(-exp_tau * syn_scale * self.net.min_delay) )
+        self.scale_facs_rdc[self.exc_idx_rdc] = x
+ 
         
     def upd_inp_vector(self, time):
         """ Update a numpy array containing all the current synaptic inputs """
@@ -1227,7 +1287,8 @@ class sigmoidal(unit):
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
-        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
@@ -2250,86 +2311,6 @@ class source(unit):
 
 
 
-
-    
-class sigmoidal(unit): 
-    """
-    An implementation of a typical sigmoidal unit. 
-    
-    Its output is produced by linearly suming the inputs (times the synaptic weights), 
-    and feeding the sum to a sigmoidal function, which constraints the output to values 
-    beween zero and one.
-
-    Because this unit operates in real time, it updates its value gradualy, with
-    a 'tau' time constant.
-    """
-
-    def __init__(self, ID, params, network):
-        """ The unit constructor.
-
-        Args:
-            ID, params, network: same as in the parent's constructor.
-            In addition, params should have the following entries.
-                REQUIRED PARAMETERS
-                'slope' : Slope of the sigmoidal function.
-                'thresh' : Threshold of the sigmoidal function.
-                'tau' : Time constant of the update dynamics.
-
-        Raises:
-            AssertionError.
-
-        """
-
-        super(sigmoidal, self).__init__(ID, params, network)
-        self.slope = params['slope']    # slope of the sigmoidal function
-        self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
-        self.tau = params['tau']  # the time constant of the dynamics
-        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
-        assert self.type is unit_types.sigmoidal, ['Unit ' + str(self.ID) + 
-                                                            ' instantiated with the wrong type']
-        
-    def f(self, arg):
-        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
-        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
-    
-    def derivatives(self, y, t):
-        """ This function returns the derivatives of the state variables at a given point in time. """
-        # there is only one state variable (the activity)
-        return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
-    
-
-class linear(unit): 
-    """ An implementation of a linear unit.
-
-    The output is the sum of the inputs multiplied by their synaptic weights.
-    The output upates with time constant 'tau'.
-    """
-
-    def __init__(self, ID, params, network):
-        """ The unit constructor.
-
-        Args:
-            ID, params, network: same as in the parent's constructor.
-            In addition, params should have the following entries.
-                REQUIRED PARAMETERS
-                'tau' : Time constant of the update dynamics.
-
-        Raises:
-            AssertionError.
-
-        """
-        super(linear, self).__init__(ID, params, network)
-        self.tau = params['tau']  # the time constant of the dynamics
-        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
-        assert self.type is unit_types.linear, ['Unit ' + str(self.ID) + 
-                                                            ' instantiated with the wrong type']
-        
-    def derivatives(self, y, t):
-        """ This function returns the derivatives of the state variables at a given point in time. """
-        # there is only one state variable (the activity)
-        return( self.get_input_sum(t) - y[0] ) * self.rtau
-   
-
 class custom_fi(unit): 
     """
     A unit where the f-I curve is provided to the constructor. 
@@ -2626,7 +2607,8 @@ class exp_dist_sigmoidal(unit):
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
-        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
@@ -2644,6 +2626,9 @@ class ssrdc_sharp_base(unit):
 
     Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
     Synaptic weights initialized to zero will be considered excitatory.
+
+    The method to usd for rate distribution control can be specified through the sort_rdc
+    parameter given to the constructor.
     """
     # The issue of updating the scaling factors according to the inputs at the sharpen_port is 
     # handled by the unit.upd_exp_scale_shrp method, used by the exp_scale_shrp synaptic requirement.
@@ -2667,6 +2652,10 @@ class ssrdc_sharp_base(unit):
                 'Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
                 'rdc_port' : port ID of inputs used for rate distribution control.
                 'sharpen_port' : port ID where the inputs controlling rdc arrive.
+                OPTIONAL PARAMETERS
+                'sort_rdc' : A boolean value specifying whether to use the 'sorting' type of
+                             rdc control, which uses the exp_scale_sort_mp requirement.
+                             If sort_rdc is absent or false, the default is non-sorting rdc.
 
         Raises:
             ValueError
@@ -2690,7 +2679,11 @@ class ssrdc_sharp_base(unit):
         self.c = params['c']  # The coefficient in the exponential distribution
         self.sharpen_port = params['sharpen_port']
         
-        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.exp_scale_shrp, syn_reqs.lpf_fast]) 
+        if 'sort_rdc' in params and params['sort_rdc']:
+            self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.exp_scale_sort_shrp, syn_reqs.lpf_fast])
+        else:
+            self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, 
+                                   syn_reqs.exp_scale_shrp, syn_reqs.lpf_fast]) 
 
 
 class sig_ssrdc_sharp(ssrdc_sharp_base): 
@@ -2704,6 +2697,9 @@ class sig_ssrdc_sharp(ssrdc_sharp_base):
 
     Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
     Synaptic weights initialized to zero will be considered excitatory.
+
+    The method to use for rate distribution control can be specified through the sort_rdc
+    parameter given to the constructor.
     """
     # The scale_facs_rdc factors used in get_mp_input sum are updated by the upd_exp_scale
     # method, which is called because the parent class has the exp_scale_shrp requirement.
@@ -2729,6 +2725,10 @@ class sig_ssrdc_sharp(ssrdc_sharp_base):
                 'Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
                 'rdc_port' : port ID of inputs used for rate distribution control.
                 'sharpen_port' : port ID where the inputs controlling rdc arrive.
+                OPTIONAL PARAMETERS
+                'sort_rdc' : A boolean value specifying whether to use the 'sorting' type of
+                             rdc control, which uses the exp_scale_sort_mp requirement.
+                             If sort_rdc is absent or false, the default is non-sorting rdc.
 
         Raises:
             ValueError
@@ -2746,12 +2746,14 @@ class sig_ssrdc_sharp(ssrdc_sharp_base):
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
-        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
-        return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+        #return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+        return ( cython_sig(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
 
     def get_mp_input_sum(self, time):
         """ The input function of the sig_ssrdc_sharp unit. """
@@ -2774,8 +2776,8 @@ class sig_ssrdc(unit):
     Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
     Synaptic weights initialized to zero will be considered excitatory.
 
-    An extra feature is that the 'sorting' method of RDC is now supported. It can be used
-    by giving an extra argument to the constructor
+    The method to usd for rate distribution control can be specified through the sort_rdc
+    parameter given to the constructor.
     """
     def __init__(self, ID, params, network):
         """ The unit constructor.
@@ -2797,6 +2799,7 @@ class sig_ssrdc(unit):
                 OPTIONAL PARAMETERS
                 'sort_rdc' : A boolean value specifying whether to use the 'sorting' type of
                              rdc control, which uses the exp_scale_sort_mp requirement.
+                             If sort_rdc is absent or false, the default is non-sorting rdc.
 
         Raises:
             ValueError
@@ -2823,7 +2826,8 @@ class sig_ssrdc(unit):
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
-        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
@@ -2895,7 +2899,8 @@ class exp_dist_sig_thr(unit):
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
-        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
@@ -2959,7 +2964,8 @@ class sig_trdc(unit):
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
-        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
@@ -3081,7 +3087,8 @@ class sig_trdc_sharp(trdc_sharp_base):
 
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
-        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
@@ -3202,11 +3209,13 @@ class double_sigma_base(unit):
  
     def f(self, thresh, slope, arg):
         """ The sigmoidal function, with parameters given explicitly."""
-        return 1. / (1. + np.exp(-slope*(arg - thresh)))
+        #return 1. / (1. + np.exp(-slope*(arg - thresh)))
+        return cython_sig(thresh, slope, arg)
 
     def derivatives(self, y, t):
         """ This function returns the derivative of the activity given its current values. """
-        return ( self.f(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+        #return ( self.f(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+        return ( cython_sig(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
 
 
  
@@ -4237,12 +4246,14 @@ class sliding_threshold_harmonic_rate_sigmoidal(unit):
 
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
-        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
-        return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+        #return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+        return ( cython_sig(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
 
     def get_mp_input_sum(self, time):
         """ The input function of st_hr_sig unit. """
@@ -4313,12 +4324,14 @@ class synaptic_scaling_harmonic_rate_sigmoidal(unit):
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
-        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
-        return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+        #return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+        return ( cython_sig(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
 
     def get_mp_input_sum(self, time):
         """ The input function of the ss_hr_sig unit. """
@@ -4351,9 +4364,11 @@ class ds_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
 
     The inputs at the sharpen port will not contribute to the activation of the unit. 
 
+    The method to usd for rate distribution control can be specified through the sort_rdc
+    parameter given to the constructor.
+
     The equations of the doulble-sigma unit can be seen in the "double_sigma_unit" tiddler of 
     the programming notes wiki.
-
     """
     def __init__(self, ID, params, network):
         """ The unit constructor.
@@ -4394,6 +4409,10 @@ class ds_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                 phi: This value is substracted from the branches' contribution. In this manner branches with
                      zero input will contribute (0.5 - phi) times the branch weight.
+                OPTIONAL PARAMETERS
+                'sort_rdc' : A boolean value specifying whether to use the 'sorting' type of
+                             rdc control, which uses the exp_scale_sort_mp requirement.
+                             If sort_rdc is absent or false, the default is non-sorting rdc.
 
         """
         self.extra_ports = 1 # The sharpen port is an extra port for double_sigma_base
@@ -4514,8 +4533,13 @@ class sds_n_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
     In this version the inputs at the rdc_port are not normalized, since this interacts with the scaling.
     Also, notice that when the rdc_port is not 0 (e.g. at the soma), the ability to maintain the
     rate distribution will be compromised, although scaling should still bias things in the right direction.
+    ~~~~ Because of this, these units make sense when the rdc port is 0 (e.g. the soma) ~~~~
+    Nevertheless, this is not enforced.
 
     The inputs at the sharpen port will not contribute to the activation of the unit. 
+
+    The method to use for rate distribution control can be specified through the sort_rdc
+    parameter given to the constructor.
 
     """
     def __init__(self, ID, params, network):
@@ -4559,6 +4583,10 @@ class sds_n_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
                             {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
                 phi: This value is substracted from the branches' contribution. In this manner, a branch
                         with no inputs may not contribute to the unit's activation.
+                OPTIONAL PARAMETERS
+                'sort_rdc' : A boolean value specifying whether to use the 'sorting' type of
+                             rdc control, which uses the exp_scale_sort_mp requirement.
+                             If sort_rdc is absent or false, the default is non-sorting rdc.
 
         """
         self.extra_ports = 2 # The soma and the sharpen port 
@@ -4583,6 +4611,7 @@ class sds_n_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
         inps = self.get_mp_inputs(time)
         rdcp = self.rdc_port # to make lines shorter
         # Removing zero or near-zero values from lpf_slow_mp_inp_sum
+        # If I ever use this unit seriously, this should be done at upd_lpf_slow_mp_inp_sum
         lpf_i = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
         acc_sum = 0
         # Adding input from soma

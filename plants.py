@@ -137,7 +137,6 @@ class plant():
         new_buff = odeint(self.derivatives, self.buffer[-1,:], new_times, rtol=self.rtol, atol=self.atol)
         self.buffer = np.roll(self.buffer, -self.net.min_buff_size, axis=0)
         self.buffer[self.offset:,:] = new_buff[1:,:] 
-        # TODO: numpy.pad may probably do this with two lines. Not sure it's better.
 
 
     def append_inputs(self, inp_funcs, ports, delays, synaps):

@@ -140,9 +140,10 @@ class network():
         assert self.sim_time == 0., 'Units are being created when the simulation time is not zero'
 
         # Any entry in 'params' other than 'coordinates', 'type', 'function', or 'branch_params'
-        # should either be a scalar, a list of length 'n', or a numpy array of length 'n'.
+        # should either be a scalar, a boolean, a list of length 'n', or a numpy array of length 'n'.
         # 'coordinates' should be either a list (with 'n' arrays) or a (1|2|3) array.
         listed = [] # the entries in 'params' specified with a list
+        accepted_types = [float, int, bool] # accepted data types for parameters
         for par in params:
             if par == 'type':
                 if not issubclass(type(params[par]), unit_types):
@@ -176,7 +177,7 @@ class network():
                     listed.append(par)
                 else:
                     raise ValueError('Found parameter list of incorrect size during unit creation')
-            elif (type(params[par]) != float) and (type(params[par]) != int):
+            elif not (type(params[par]) in accepted_types):
                 raise TypeError('Found a parameter of the wrong type during unit creation')
                     
         params_copy = params.copy() # The 'params' dictionary that a unit receives in its constructor

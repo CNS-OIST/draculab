@@ -88,7 +88,7 @@ class ei_network():
             'min_buff_size' : 10,
             'rtol' : 1e-5,
             'atol' : 1e-5,
-            'cm_del' : .01 }  # delay in seconds for each centimeter in distance. 
+            'cm_del' : .03 }  # delay in seconds for each centimeter in distance. 
         
         # CREATING ei_layer OBJECTS
         if type(layer_names) is list and type(layer_names[0]) is str:
@@ -165,6 +165,18 @@ class ei_network():
             'inp_ports' : 0, # for multiport units
             'c' : 1., # for exp_rate_dist synapses
             'wshift' : 1. } # for exp_rate_dist synapses
+
+    # Sometimes the plotting functions need to know if a unit has moving threshold or syn scales
+        global trdc_u
+        global ssrdc_u
+        trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, 
+                  unit_types.sds_trdc, unit_types.ds_n_trdc, unit_types.ds_sharp, 
+                  unit_types.sds_sharp, unit_types.sig_trdc, 
+                  unit_types.ds_n_sharp, unit_types.sds_n_sharp, 
+                  unit_types.st_hr_sig, unit_types.sig_trdc_sharp]
+        ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp, 
+                   unit_types.ss_hr_sig, unit_types.sig_ssrdc, 
+                   unit_types.ds_ssrdc_sharp, unit_types.sds_n_ssrdc_sharp]
 
     
     def get_layer(self, name):
@@ -533,17 +545,12 @@ class ei_network():
             plt.plot(self.all_times, weights, linewidth=1)
             plt.title('Some synaptic weights')
             # Plot the evolution of the synaptic scale factors
-            ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp, unit_types.ss_hr_sig, unit_types.sig_ssrdc,
-                       unit_types.ds_ssrdc_sharp]
             if layer.e_pars['type'] in ssrdc_u or layer.i_pars['type'] in ssrdc_u:
                 sc_fig = plt.figure(figsize=(pl_wid,pl_hgt))
                 factors = np.transpose([self.all_activs[layer.sc_track[i]] for i in range(layer.n['w_track'])])
                 plt.plot(self.all_times, factors, linewidth=1)
                 plt.title('Some synaptic scale factors')
             # Plot the evolution of the thresholds
-            trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
-                      unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, unit_types.sig_trdc, 
-                      unit_types.ds_n_sharp, unit_types.sds_n_sharp, unit_types.st_hr_sig, unit_types.sig_trdc_sharp]
             if layer.e_pars['type'] in trdc_u or layer.i_pars['type'] in trdc_u:
                 thr_fig = plt.figure(figsize=(pl_wid,pl_hgt))
                 thresholds = np.transpose([self.all_activs[layer.thr_track[i]] for i in range(layer.n['w_track'])])
@@ -793,10 +800,8 @@ class ei_network():
         # notebook or qt5 
         self.hist_fig = plt.figure(figsize=(10,10))
         if pdf: # assuming pop consists of excitatory units
-            trdc_u = [unit_types.exp_dist_sig, unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, 
-                      unit_types.sds_trdc, unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, 
-                      unit_types.ds_n_sharp, unit_types.sds_n_sharp]
-            if self.net.units[pop[0]].type in trdc_u:
+            #if self.net.units[pop[0]].type in trdc_u:
+            if hasattr(self.net.units[pop[0]], 'c'):
                 c = self.net.units[pop[0]].c
             else:
                 c = self.e_syn['c']
@@ -856,9 +861,6 @@ class ei_network():
         # Histogram figure and axis
         self.hist_ax = self.double_fig.add_axes([0.02, .04, .47, .92])
         if pdf: # assuming pop consists of units of the same type
-            trdc_u = [unit_types.exp_dist_sig, unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, 
-                      unit_types.sds_trdc, unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, 
-                      unit_types.ds_n_sharp, unit_types.sds_n_sharp]
             #if self.net.units[pop[0]].type in trdc_u:
             if hasattr(self.net.units[pop[0]], 'c'):
                 c = self.net.units[pop[0]].c
@@ -1319,8 +1321,6 @@ class ei_layer():
                 for sid,s in enumerate(which_syns[uid]):
                     self.net.units[self.w_track[uid*n_syns+sid]].set_function(self.net.syns[u][s].get_w)
             # If there are ssrdc units, create some units to track their scale factors
-            ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp, unit_types.ss_hr_sig, unit_types.sig_ssrdc,
-                       unit_types.ds_ssrdc_sharp ]
             if self.e_pars['type'] in ssrdc_u or self.i_pars['type'] in ssrdc_u:
                 self.sc_track = self.net.create(self.n['w_track'], self.track_pars)
                 def scale_tracker(u,s):
@@ -1335,9 +1335,6 @@ class ei_layer():
                     for sid,s in enumerate(which_syns[uid]):
                         self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
             # If there are trdc units, create some units to track the thresholds
-            trdc_u = [unit_types.exp_dist_sig_thr, unit_types.double_sigma_trdc, unit_types.sds_trdc, 
-                      unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, unit_types.sig_trdc, 
-                      unit_types.ds_n_sharp, unit_types.sds_n_sharp, unit_types.st_hr_sig, unit_types.sig_trdc_sharp]
             if self.e_pars['type'] in trdc_u or self.i_pars['type'] in trdc_u:
                 self.thr_track = self.net.create(self.n['w_track'], self.track_pars)
                 def thresh_tracker(u):
