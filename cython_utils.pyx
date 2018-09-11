@@ -6,6 +6,9 @@ This file has cython functions used in draculab.
 import numpy as np
 cimport numpy as np
 cimport cython
+#import scipy
+from scipy.integrate import solve_ivp 
+#from scipy.integrate import odeint
 
 # Since I have explicit bounds check, I can afford to throw away these checks:
 @cython.boundscheck(False)
@@ -35,3 +38,29 @@ def cython_sig(float thresh, float slope, float arg):
         It is called by the sigmoidal units' f function.
     """
     return 1. / (1. + np.exp(-slope*(arg - thresh)))
+
+
+def cython_update(self, float time):
+    """ The Cython implementation of unit.update. """
+    new_times = self.times[-1] + self.times_grid
+    self.times = np.roll(self.times, -self.min_buff_size)
+    self.times[self.offset:] = new_times[1:]
+
+    """
+    new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times, rtol=self.rtol, atol=self.atol) 
+    self.buffer = np.roll(self.buffer, -self.min_buff_size)
+    self.buffer[self.offset:] = new_buff[1:,0] 
+    """
+    solution = solve_ivp(self.derivatives, (new_times[0], new_times[-1]), [self.buffer[-1]], method='LSODA',
+                                            t_eval=new_times, rtol=self.rtol, atol=self.atol)
+    self.buffer = np.roll(self.buffer, -self.min_buff_size)
+    self.buffer[self.offset:] = solution.y[0,1:]
+    #"""
+
+    self.pre_syn_update(time) # Update any variables needed for the synapse to update.
+
+    for pre in self.net.syns[self.ID]:
+        pre.update(time)
+
+    self.last_time = time # last_time is used to update some pre_syn_update values
+

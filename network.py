@@ -697,10 +697,9 @@ class network():
                             of the k-th state variable, at the j-th timepoint, for the i-th plant.
 
         """
-
         Nsteps = int(total_time/self.min_delay)  # total number of simulatin steps
-        unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # array to store unit activities
-        plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # array to store plant steps
+        unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # arrays to store unit activities
+        plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # arrays to store plant steps
         times = np.zeros(Nsteps) + self.sim_time # array to store initial time of simulation steps
         
         for step in range(Nsteps):

@@ -6,9 +6,11 @@ This file contains all the unit models used in the draculab simulator.
 from draculab import unit_types, synapse_types, syn_reqs  # names of models and requirements
 from synapses import *
 import numpy as np
-from scipy.integrate import odeint # to integrate ODEs
 from cython_utils import cython_get_act  # the cythonized linear interpolation 
 from cython_utils import cython_sig # the cythonized sigmoidal function
+from scipy.integrate import odeint # to integrate ODEs
+#from scipy.integrate import solve_ivp # to integrate ODEs
+#from cython_utils import cython_update # the cythonized unit.update method
 #from scipy.interpolate import interp1d # to interpolate values
 
 
@@ -217,6 +219,7 @@ class unit():
         In addition, all the synapses of the unit are updated.
         source and kwta units override this with shorter update functions.
         """
+        #"""
         # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
         # Maybe there should be a single 'times' array in the network. This seems more parallelizable, though.
         #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
@@ -231,6 +234,16 @@ class unit():
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:,0] 
 
+        # This is a reimplementation with solve_ivp. To make it work you need to change the order of the
+        # arguments in all the derivatives functions, from derivatives(self, y, t) to derivatives(self, y, t).
+        # In vi it takes one command: :%s/derivatives(self, y, t)/derivatives(self, t, y)/
+        # Also, make sure that the import command at the top is uncommented for solve_ivp.
+        # One more thing: to use the stiff solvers the derivatives must return a list or array.
+        #solution = solve_ivp(self.derivatives, (new_times[0], new_times[-1]), [self.buffer[-1]], method='LSODA',
+        #                                        t_eval=new_times, rtol=self.rtol, atol=self.atol)
+        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        #self.buffer[self.offset:] = solution.y[0,1:]
+
         self.pre_syn_update(time) # Update any variables needed for the synapse to update.
                                   # It is important this is done after the buffer has been updated.
         # For each synapse on the unit, update its state
@@ -238,6 +251,9 @@ class unit():
             pre.update(time)
 
         self.last_time = time # last_time is used to update some pre_syn_update values
+        #"""
+        # EXPERIMENTAL CODE
+        #cython_update(self, time)
 
 
     def get_act(self,time):
@@ -1293,14 +1309,14 @@ class sigmoidal(unit):
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
-        return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
+        return [( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau]
     
 
 class linear(unit): 
     """ An implementation of a linear unit.
 
-    The output is the sum of the inputs multiplied by their synaptic weights.
-    The output upates with time constant 'tau'.
+        The output approaches the sum of the inputs multiplied by their synaptic weights,
+        evolving with time constant 'tau'.
     """
 
     def __init__(self, ID, params, network):
@@ -1316,14 +1332,20 @@ class linear(unit):
             AssertionError.
 
         """
-        super(linear, self).__init__(ID, params, network)
+        #super(linear, self).__init__(ID, params, network)
+        unit.__init__(self, ID, params, network)
         self.tau = params['tau']  # the time constant of the dynamics
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
-        assert self.type is unit_types.linear, ['Unit ' + str(self.ID) + 
-                                                            ' instantiated with the wrong type']
+        #assert self.type is unit_types.linear, ['Unit ' + str(self.ID) + 
+        #                                                    ' instantiated with the wrong type']
         
     def derivatives(self, y, t):
-        """ This function returns the derivatives of the state variables at a given point in time. """
+        """ This function returns the derivatives of the state variables at a given point in time. 
+        
+            Args: 
+                y : a 1-element array or list with the current firing rate.
+                t: time when the derivative is evaluated.
+        """
         # there is only one state variable (the activity)
         return( self.get_input_sum(t) - y[0] ) * self.rtau
    
