@@ -42,6 +42,8 @@ def cython_sig(float thresh, float slope, float arg):
 
 def cython_update(self, float time):
     """ The Cython implementation of unit.update. """
+    # If the unit object (self) is being passed as more than just a reference this could
+    # slow down things
     new_times = self.times[-1] + self.times_grid
     self.times = np.roll(self.times, -self.min_buff_size)
     self.times[self.offset:] = new_times[1:]
@@ -63,4 +65,52 @@ def cython_update(self, float time):
         pre.update(time)
 
     self.last_time = time # last_time is used to update some pre_syn_update values
+
+
+def euler_int(derivatives, float x0, float t0, int n_steps, float dt):
+    """ A simple implementation of the forward Euler integration method.
+    
+        Args:
+            derivatives: The function derivatives(y, t) returns 
+                         the derivative of the firing rate at time t given that
+                         the current rate is y.
+            x0: initial state
+            t0: initial time
+            n_steps: number of integration steps
+            dt: integration step size
+    """
+    x = np.zeros(n_steps, dtype=float)
+    x[0] = x0
+    cdef float t = t0
+    for step in range(1, n_steps, 1):
+        x[step] = x[step-1] + dt * derivatives([x[step-1]], t)
+        t = t + dt
+    return x
+
+
+def euler_maruyama_int(derivatives, float x0, float t0, int n_steps, float dt, float sigma):
+    """ The Euler-Maruyama method for stochastic differential equations.
+
+        This solver turns the neural model into a Langevin equation by adding white noise.
+
+        Args:
+            derivatives: The function derivatives(y, t) returns 
+                         the derivative of the firing rate at time t given that
+                         the current rate is y.
+            x0: initial state
+            t0: initial time
+            n_steps: number of integration steps
+            dt: integration step size
+            sigma: the standard deviation associated to the Wiener process
+    """
+    x = np.zeros(n_steps, dtype=float)
+    x[0] = x0
+    cdef float t = t0
+    for step in range(1, n_steps, 1):
+        x[step] = x[step-1] + ( dt * derivatives([x[step-1]], t)
+                            + sigma * np.random.normal(loc=0., scale=dt) )
+        t = t + dt
+    return x
+
+            
 

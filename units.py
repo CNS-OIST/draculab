@@ -8,6 +8,8 @@ from synapses import *
 import numpy as np
 from cython_utils import cython_get_act  # the cythonized linear interpolation 
 from cython_utils import cython_sig # the cythonized sigmoidal function
+from cython_utils import euler_int # the cythonized forward Euler integration
+from cython_utils import euler_maruyama_int # the cythonized Euler-Maruyama approximation
 from scipy.integrate import odeint # to integrate ODEs
 #from scipy.integrate import solve_ivp # to integrate ODEs
 #from cython_utils import cython_update # the cythonized unit.update method
@@ -225,17 +227,18 @@ class unit():
         #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
 
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size)
+        self.times = np.roll(self.times, -self.min_buff_size) # TODO: ring buffer
         self.times[self.offset:] = new_times[1:] 
         
+        #---------------------------------------------------------------------
         # odeint also returns the initial condition, so to produce min_buff_size new values
         # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
-        new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times, rtol=self.rtol, atol=self.atol)
-        self.buffer = np.roll(self.buffer, -self.min_buff_size)
-        self.buffer[self.offset:] = new_buff[1:,0] 
-
+        #new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times, rtol=self.rtol, atol=self.atol)
+        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        #self.buffer[self.offset:] = new_buff[1:,0] 
+        #---------------------------------------------------------------------
         # This is a reimplementation with solve_ivp. To make it work you need to change the order of the
-        # arguments in all the derivatives functions, from derivatives(self, y, t) to derivatives(self, y, t).
+        # arguments in all the derivatives functions, from derivatives(self, y, t) to derivatives(self, t, y).
         # In vi it takes one command: :%s/derivatives(self, y, t)/derivatives(self, t, y)/
         # Also, make sure that the import command at the top is uncommented for solve_ivp.
         # One more thing: to use the stiff solvers the derivatives must return a list or array.
@@ -243,6 +246,25 @@ class unit():
         #                                        t_eval=new_times, rtol=self.rtol, atol=self.atol)
         #self.buffer = np.roll(self.buffer, -self.min_buff_size)
         #self.buffer[self.offset:] = solution.y[0,1:]
+        #---------------------------------------------------------------------
+        # This is an implementation with forward Euler integration. Although this may be too
+        # imprecise and unstable in some cases, it is a first step to implement the
+        # Euler-Maruyama method. And it's also faster than odeint.
+        #dt = new_times[1] - new_times[0]
+        # euler_int is defined in cython_utils.pyx
+        #new_buff = euler_int(self.derivatives, self.buffer[-1], time, len(new_times), dt)
+        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        #self.buffer[self.offset:] = new_buff[1:] 
+        #---------------------------------------------------------------------
+        # This is the Euler-Maruyama implementation. Basically the same as forward Euler.
+        dt = new_times[1] - new_times[0]
+        sigma = 0.5 # standard deviation of Wiener process. Should be a parameter.
+        # euler_maruyama_int is defined in cython_utils.pyx
+        new_buff = euler_maruyama_int(self.derivatives, self.buffer[-1], time, 
+                                      len(new_times), dt, sigma)
+        self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        self.buffer[self.offset:] = new_buff[1:] 
+        #---------------------------------------------------------------------
 
         self.pre_syn_update(time) # Update any variables needed for the synapse to update.
                                   # It is important this is done after the buffer has been updated.
@@ -1309,7 +1331,7 @@ class sigmoidal(unit):
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
-        return [( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau]
+        return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
     
 
 class linear(unit): 
