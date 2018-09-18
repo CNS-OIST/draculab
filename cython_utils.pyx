@@ -88,7 +88,8 @@ def euler_int(derivatives, float x0, float t0, int n_steps, float dt):
     return x
 
 
-def euler_maruyama_int(derivatives, float x0, float t0, int n_steps, float dt, float sigma):
+def euler_maruyama_int(derivatives, float x0, float t0, int n_steps, 
+                       float dt, float mu, float sigma):
     """ The Euler-Maruyama method for stochastic differential equations.
 
         This solver turns the neural model into a Langevin equation by adding white noise.
@@ -101,6 +102,7 @@ def euler_maruyama_int(derivatives, float x0, float t0, int n_steps, float dt, f
             t0: initial time
             n_steps: number of integration steps
             dt: integration step size
+            mu: mean of the white noise
             sigma: the standard deviation associated to the Wiener process
     """
     x = np.zeros(n_steps, dtype=float)
@@ -108,9 +110,11 @@ def euler_maruyama_int(derivatives, float x0, float t0, int n_steps, float dt, f
     cdef float t = t0
     for step in range(1, n_steps, 1):
         x[step] = x[step-1] + ( dt * derivatives([x[step-1]], t)
-                            + sigma * np.random.normal(loc=0., scale=dt) )
+                            #+ sigma * np.random.normal(loc=mu, scale=dt) )
+                            #+ np.sqrt(dt) * sigma * (mu + np.random.random()) )
+                            + mu + sigma * np.random.normal(loc=0., scale=dt) )
         t = t + dt
     return x
 
-            
+ 
 

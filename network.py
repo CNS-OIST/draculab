@@ -701,7 +701,7 @@ class network():
         unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # arrays to store unit activities
         plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # arrays to store plant steps
         times = np.zeros(Nsteps) + self.sim_time # array to store initial time of simulation steps
-        
+
         for step in range(Nsteps):
             times[step] = self.sim_time # self.sim_time persists between calls to network.run()
             
