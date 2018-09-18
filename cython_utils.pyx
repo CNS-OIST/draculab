@@ -108,11 +108,46 @@ def euler_maruyama_int(derivatives, float x0, float t0, int n_steps,
     x = np.zeros(n_steps, dtype=float)
     x[0] = x0
     cdef float t = t0
+    cdef sqrdt = np.sqrt(dt)
     for step in range(1, n_steps, 1):
-        x[step] = x[step-1] + ( dt * derivatives([x[step-1]], t)
-                            #+ sigma * np.random.normal(loc=mu, scale=dt) )
-                            #+ np.sqrt(dt) * sigma * (mu + np.random.random()) )
-                            + mu + sigma * np.random.normal(loc=0., scale=dt) )
+        x[step] = x[step-1] + ( dt * (derivatives([x[step-1]], t) + mu) 
+                            + sigma * np.random.normal(loc=0, scale=sqrdt) )
+                            #+ sigma * np.random.normal(loc=0., scale=dt) )
+                            #+ sigma * sqrdt * np.random.normal(loc=0., scale=1.) )
+        t = t + dt
+    return x
+
+
+def exp_euler_int(derivatives, float x0, float t0, int n_steps, 
+                       float dt, float mu, float sigma, float lambd):
+    """ A version of the  exponential Euler method for stochastic differential equations.
+
+        This method is used when the derivatives function decomposes into a linear part
+        plus a remainder. In the case of the noisy_leaky_linear unit the linear part
+        comes from the parameter 'lambd' (with the sign reversed), and the nonlinear
+        remainder is the input.
+
+        Args:
+            derivatives: The function derivatives(y, t) returns 
+                         the derivative of the firing rate at time t given that
+                         the current rate is y.
+            x0: initial state
+            t0: initial time
+            n_steps: number of integration steps
+            dt: integration step size
+            mu: mean of the white noise
+            sigma: the standard deviation associated to the Wiener process
+            lambd: the coefficient of the linear part
+    """
+    x = np.zeros(n_steps, dtype=float)
+    x[0] = x0
+    cdef float t = t0
+    cdef float expAt = np.exp(lambd*dt)
+    cdef float coeff2 = (expAt - 1.)/lambd
+    cdef float coeff3 = np.sqrt( (expAt*expAt - 1.)/(2.*lambd) )
+    for step in range(1, n_steps, 1):
+        x[step] = ( expAt*x[step-1] + coeff2*derivatives(x[step-1], t)
+                + coeff3*sigma*np.random.normal(loc=0., scale=1.) + mu*dt )
         t = t + dt
     return x
 

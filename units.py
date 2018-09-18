@@ -10,6 +10,7 @@ from cython_utils import cython_get_act  # the cythonized linear interpolation
 from cython_utils import cython_sig # the cythonized sigmoidal function
 from cython_utils import euler_int # the cythonized forward Euler integration
 from cython_utils import euler_maruyama_int # the cythonized Euler-Maruyama approximation
+from cython_utils import exp_euler_int # the cythonized exponential Euler approximation
 from scipy.integrate import odeint # to integrate ODEs
 #from scipy.integrate import solve_ivp # to integrate ODEs
 #from cython_utils import cython_update # the cythonized unit.update method
@@ -1394,12 +1395,13 @@ class noisy_leaky_linear(unit):
 
         This unit is meant to emulate the 'lin_rate' units from NEST without multiplicative
         coupling. The noiseless dynamics are:
-        tau * u' = -lambd * u + (inp - u),
-        where tau is the dynamics' time constant, lambd a decay parameter, and inp
+        tau * u' = -lambda * u + inp ,
+        where tau is the dynamics' time constant, lambda a decay parameter, and inp
         is the sum of inputs times their weights.
 
         The update function adds additive white noise with mean 'mu' and standard
-        deviation 'sigma'.
+        deviation 'sigma'. The update function also rectifies the output of the
+        unit, so it never reaches negative values.
     """
     def __init__(self, ID, params, network):
         """ The constructor for the noisy_leaky_linear class.
@@ -1409,17 +1411,19 @@ class noisy_leaky_linear(unit):
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS
                 'tau' : Time constant of the update dynamics.
-                'lambd': passive decay factor ('lambda' is a reserved keyword).
+                'lambda': passive decay rate 
                 'mu': mean of the white noise
                 'sigma': standard deviation for the white noise process
 
         """
         unit.__init__(self, ID, params, network)
         self.tau = params['tau']  # the time constant of the dynamics
-        self.lambd = params['lambd']  # controls the rate of decay
+        self.lambd = params['lambda']  # controls the rate of decay
         self.mu = params['mu']
         self.sigma = params['sigma']
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        if self.lambd > 0.:
+            self.diff = lambda y, t: self.get_input_sum(t) * self.rtau
 
     def derivatives(self, y, t):
         """ This function returns the derivative of the activity at a given point in time. 
@@ -1428,7 +1432,7 @@ class noisy_leaky_linear(unit):
                 y : a 1-element array or list with the current firing rate.
                 t: time when the derivative is evaluated.
         """
-        return (self.get_input_sum(t) - (self.lambd + 1) * y[0]) * self.rtau
+        return (self.get_input_sum(t) - self.lambd * y[0]) * self.rtau
  
     def update(self,time):
         """
@@ -1444,9 +1448,14 @@ class noisy_leaky_linear(unit):
         # This is the Euler-Maruyama implementation. Basically the same as forward Euler.
         # The atol and rtol values are meaningless in this case.
         dt = new_times[1] - new_times[0]
-        # euler_maruyama_int is defined in cython_utils.pyx
-        new_buff = euler_maruyama_int(self.derivatives, self.buffer[-1], time, 
-                                      len(new_times), dt, self.mu, self.sigma)
+        # The integration functions are defined in cython_utils.pyx
+        if self.lambd == 0.:
+            new_buff = euler_maruyama_int(self.derivatives, self.buffer[-1], time, 
+                                          len(new_times), dt, self.mu, self.sigma)
+        else:
+            new_buff = exp_euler_int(self.diff, self.buffer[-1], time, len(new_times),
+                                     dt, self.mu, self.sigma, -self.lambd)
+        new_buff = np.maximum(new_buff, 0.)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:] 
 
