@@ -41,7 +41,8 @@ class unit_types(Enum):
     ds_ssrdc_sharp = 27
     delta_linear = 28
     sds_n_ssrdc_sharp = 29
-    noisy_leaky_linear = 30
+    noisy_linear = 30
+    noisy_sigmoidal = 31
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -112,8 +113,10 @@ class unit_types(Enum):
             unit_class = delta_linear
         elif self == unit_types.sds_n_ssrdc_sharp:
             unit_class = sds_n_ssrdc_sharp
-        elif self == unit_types.noisy_leaky_linear:
-            unit_class = noisy_leaky_linear 
+        elif self == unit_types.noisy_linear:
+            unit_class = noisy_linear 
+        elif self == unit_types.noisy_sigmoidal:
+            unit_class = noisy_sigmoidal
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?

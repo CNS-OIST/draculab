@@ -190,7 +190,7 @@ class topology():
                 'delays' : A dictionary that specifies the delay of each connection as a function of
                           the distance between the sending and the receiving unit. It should contain
                           the following dictionary:
-                          >> {'linear' :  'c' : c, 'a' : a}}. The connection between units with distance 'd'
+                          >> {'linear' :  {'c' : c, 'a' : a}}. The connection between units with distance 'd'
                               will have a delay equal to [c + a*d], where the square brackets indicate that 
                               this value will be transformed to the nearest multiple of the minimum 
                               transmission delay. Notice a=0 implies all delays will have value [c].

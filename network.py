@@ -712,7 +712,7 @@ class network():
             # store current plant state variables 
             for pid, plant in enumerate(self.plants):
                 plant_store[pid][step,:] = plant.get_state(self.sim_time)
-                
+            
             # update units
             for unit in self.units:
                 unit.update(self.sim_time)

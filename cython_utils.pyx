@@ -13,7 +13,28 @@ from scipy.integrate import solve_ivp
 # Since I have explicit bounds check, I can afford to throw away these checks:
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def cython_get_act(float time, float times0, float time_bit, int b_size, np.ndarray buff):
+def cython_get_act2(float time, float t0, float t1, np.ndarray times, int b_size, np.ndarray buff):
+    """
+        The Cython version of the second implementation of unit.get_act()
+
+        In the namespace of the unit.get_act method, the arguments are:
+            time : time
+            t0 : self.times[0]
+            t1 : self.times[-1]
+            times : self.times
+            b_size : self.buff_size
+            buff : self.buffer
+    """
+    cdef float t = min( max(time, t0), t1 ) # clipping 'time'
+    cdef float frac = (t-t0)/(t1-t0)
+    cdef int base = <int>(np.floor(frac*(b_size-1))) # biggest index s.t. times[index] <= time
+    cdef frac2 = ( t-times[base] ) / ( times[min(base+1,b_size-1)] - times[base] + 1e-8 )
+    return buff[base] + frac2 * ( buff[min(base+1,b_size-1)] - buff[base] )
+
+
+@cython.boundscheck(False)
+@cython.wraparound(False)
+def cython_get_act3(float time, float times0, float time_bit, int b_size, np.ndarray buff):
     """
         The Cython version of the third implementation of unit.get_act()
 

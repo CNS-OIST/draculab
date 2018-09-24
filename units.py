@@ -6,7 +6,8 @@ This file contains all the unit models used in the draculab simulator.
 from draculab import unit_types, synapse_types, syn_reqs  # names of models and requirements
 from synapses import *
 import numpy as np
-from cython_utils import cython_get_act  # the cythonized linear interpolation 
+from cython_utils import cython_get_act2  # cythonized linear interpolation version 2
+from cython_utils import cython_get_act3  # cythonized linear interpolation version 2
 from cython_utils import cython_sig # the cythonized sigmoidal function
 from cython_utils import euler_int # the cythonized forward Euler integration
 from cython_utils import euler_maruyama_int # the cythonized Euler-Maruyama approximation
@@ -117,10 +118,12 @@ class unit():
         min_buff = self.min_buff_size
         self.offset = (self.steps-1)*min_buff # an index used in the update function of derived classes
         self.buff_size = int(round(self.steps*min_buff)) # number of activation values to store
-        self.buffer = np.array( [self.init_val]*self.buff_size ) # numpy array with previous activation values
-        self.times = np.linspace(-self.delay, 0., self.buff_size) # the corresponding times for the buffer values
-        self.times_grid = np.linspace(0, min_del, min_buff+1) # used to create values for 'times'
-        self.time_bit = self.times[1] - self.times[0] + 1e-9 # time interval used by get_act.
+        self.buffer = np.array( [self.init_val]*self.buff_size, dtype=float) # numpy array with previous 
+                                                                             # activation values
+        self.times = np.linspace(-self.delay, 0., self.buff_size, dtype=float) # the corresponding times 
+                                                                               #for the buffer values
+        self.times_grid = np.linspace(0, min_del, min_buff+1, dtype=float) # used to create values for 'times'
+        self.time_bit = self.times[1] - self.times[0] + 1e-10 # time interval used by get_act.
         
         
     def get_inputs(self, time):
@@ -317,7 +320,7 @@ class unit():
         # This linear interpolation takes advantage of the ordered, regularly-spaced buffer.
         # Time values outside the buffer range receive the buffer endpoints.
         # The third implementation is faster, but for small buffer sizes in test2.ipynb this
-        # gives more exact results. I can't figure out why.
+        # gives more exact results. 
         """
         time = min( max(time,self.times[0]), self.times[-1] ) # clipping 'time'
         frac = (time-self.times[0])/(self.times[-1]-self.times[0])
@@ -338,8 +341,11 @@ class unit():
         return self.buffer[base] + frac2 * ( self.buffer[base+1] - self.buffer[base] )
         """
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # The fourth implementation uses the same algorithm as the third, with Cython
-        return cython_get_act(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
+        # This is the second implementation, written in Cython
+        return cython_get_act2(time, self.times[0], self.times[-1], self.times, self.buff_size, self.buffer)
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # This is the third implementation, written in Cython
+        #return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
 
   
     def init_pre_syn_update(self):
@@ -1304,7 +1310,6 @@ class source(unit):
 
 
 
-
     
 class sigmoidal(unit): 
     """
@@ -1312,10 +1317,13 @@ class sigmoidal(unit):
     
     Its output is produced by linearly suming the inputs (times the synaptic weights), 
     and feeding the sum to a sigmoidal function, which constraints the output to values 
-    beween zero and one.
+    beween zero and one. The sigmoidal unit has the equation:
+    f(x) = 1. / (1. + exp(-slope*(x - thresh)))
 
     Because this unit operates in real time, it updates its value gradualy, with
-    a 'tau' time constant.
+    a 'tau' time constant. The dynamics of the unit are:
+    tau * u' = f(inp) - u,
+    where 'inp' is the sum of inputs, and 'u' is the firing rate.
     """
 
     def __init__(self, ID, params, network):
@@ -1352,6 +1360,92 @@ class sigmoidal(unit):
         # there is only one state variable (the activity)
         return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
     
+
+class noisy_sigmoidal(unit): 
+    """
+        An implementation of a sigmoidal unit with intrinsic noise. 
+    
+        Its output is produced by linearly suming the inputs (times the synaptic weights), 
+        and feeding the sum to a sigmoidal function, which constraints the output to values 
+        beween zero and one. The sigmoidal unit has the equation:
+        f(x) = 1. / (1. + exp(-slope*(x - thresh)))
+    
+        Because this unit operates in real time, it updates its value gradualy, with
+        a 'tau' time constant. When there is no noise the dynamics of the unit are:
+        tau * u' = f(inp) - lambda * u,
+        where 'inp' is the sum of inputs, 'u' is the firing rate, and lambda is a decay rate.
+
+        The update function of this unit uses a stochastic solver that adds Gaussian
+        white noise to the unit's derivative. When lambda>0, the solver used is
+        exponential Euler. When lambda=0, the solver is Euler-Maruyama.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function.
+                'tau' : Time constant of the update dynamics.
+                'lambda': decay factor
+                'mu': mean of the white noise
+                'sigma': standard deviation of the white noise process
+        """
+
+        unit.__init__(self, ID, params, network)
+        self.slope = params['slope']    # slope of the sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.lambd = params['lambda'] # decay rate (can't be called 'lambda')
+        self.sigma = params['sigma'] # std. dev. of white noise
+        self.mu = params['mu'] # mean of the white noise
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        # if lambd > 0 we'll use the exponential Euler integration method
+        if self.lambd > 0.:
+            self.diff = lambda y, t: self.f(self.get_input_sum(t)) * self.rtau
+        
+    def f(self, arg):
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
+        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        #return cython_sig(self.thresh, self.slope, arg)
+    
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        return ( self.f(self.get_input_sum(t)) - self.lambd*y[0] ) * self.rtau
+
+    def update(self,time):
+        """
+        Advance the dynamics from time to time+min_delay.
+
+        This update function overrides the one in unit.update in order to use 
+        a stochastic solver. 
+        """
+        new_times = self.times[-1] + self.times_grid
+        self.times = np.roll(self.times, -self.min_buff_size) 
+        self.times[self.offset:] = new_times[1:] 
+        dt = new_times[1] - new_times[0]
+        if True: #self.lambd == 0.:
+            new_buff = euler_maruyama_int(self.derivatives, self.buffer[-1], time, 
+                                          len(new_times), dt, self.mu, self.sigma)
+        else:
+            new_buff = exp_euler_int(self.diff, self.buffer[-1], time, len(new_times),
+                                     dt, self.mu, self.sigma, -self.lambd)
+        #new_buff = np.maximum(new_buff, 0.)
+        self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        self.buffer[self.offset:] = new_buff[1:] 
+
+        self.pre_syn_update(time) # Update any variables needed for the synapse to update.
+                                  # It is important this is done after the buffer has been updated.
+        # For each synapse on the unit, update its state
+        for pre in self.net.syns[self.ID]:
+            pre.update(time)
+
+        self.last_time = time # last_time is used to update some pre_syn_update values
+
 
 class linear(unit): 
     """ An implementation of a linear unit.
@@ -1390,7 +1484,7 @@ class linear(unit):
         return( self.get_input_sum(t) - y[0] ) * self.rtau
    
 
-class noisy_leaky_linear(unit):
+class noisy_linear(unit):
     """ A linear unit with passive decay and a noisy update function.
 
         This unit is meant to emulate the 'lin_rate' units from NEST without multiplicative
@@ -1401,10 +1495,11 @@ class noisy_leaky_linear(unit):
 
         The update function adds additive white noise with mean 'mu' and standard
         deviation 'sigma'. The update function also rectifies the output of the
-        unit, so it never reaches negative values.
+        unit, so it never reaches negative values. When lambda>0, the solver used is
+        exponential Euler. When lambda=0, the solver is Euler-Maruyama.
     """
     def __init__(self, ID, params, network):
-        """ The constructor for the noisy_leaky_linear class.
+        """ The constructor for the noisy_linear class.
 
         Args:
             ID, params, network: same as in the parent's constructor.
@@ -1421,7 +1516,8 @@ class noisy_leaky_linear(unit):
         self.lambd = params['lambda']  # controls the rate of decay
         self.mu = params['mu']
         self.sigma = params['sigma']
-        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.rtau = 1./self.tau   # because you always use 1/tau instead of tau
+        # if lambd > 0 we'll use the exponential Euler integration method
         if self.lambd > 0.:
             self.diff = lambda y, t: self.get_input_sum(t) * self.rtau
 
@@ -1439,7 +1535,7 @@ class noisy_leaky_linear(unit):
         Advance the dynamics from time to time+min_delay.
 
         This update function overrides the one in unit.update in order to use 
-        the Euler-Maruyama solver.
+        a stochastic solver. 
         """
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.min_buff_size) 
@@ -1449,7 +1545,7 @@ class noisy_leaky_linear(unit):
         # The atol and rtol values are meaningless in this case.
         dt = new_times[1] - new_times[0]
         # The integration functions are defined in cython_utils.pyx
-        if self.lambd == 0.:
+        if True: #self.lambd == 0.:
             new_buff = euler_maruyama_int(self.derivatives, self.buffer[-1], time, 
                                           len(new_times), dt, self.mu, self.sigma)
         else:
