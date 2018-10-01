@@ -14,6 +14,7 @@ from scipy.integrate import solve_ivp
 @cython.boundscheck(False)
 @cython.wraparound(False)
 def cython_get_act2(float time, float t0, float t1, np.ndarray times, int b_size, np.ndarray buff):
+#def cython_get_act2(double time, double t0, double t1, double[:] times, int b_size, double[:] buff):
     """
         The Cython version of the second implementation of unit.get_act()
 
@@ -25,7 +26,9 @@ def cython_get_act2(float time, float t0, float t1, np.ndarray times, int b_size
             b_size : self.buff_size
             buff : self.buffer
     """
+    #cdef double t = min( max(time, t0), t1 ) # clipping 'time'
     cdef float t = min( max(time, t0), t1 ) # clipping 'time'
+    #cdef double frac = (t-t0)/(t1-t0)
     cdef float frac = (t-t0)/(t1-t0)
     cdef int base = <int>(np.floor(frac*(b_size-1))) # biggest index s.t. times[index] <= time
     cdef frac2 = ( t-times[base] ) / ( times[min(base+1,b_size-1)] - times[base] + 1e-8 )
@@ -140,36 +143,38 @@ def euler_maruyama_int(derivatives, float x0, float t0, int n_steps,
 
 
 def exp_euler_int(derivatives, float x0, float t0, int n_steps, 
-                       float dt, float mu, float sigma, float lambd):
+                       float dt, float mu, float sigma, float eAt, float c2, float c3):
     """ A version of the  exponential Euler method for stochastic differential equations.
 
         This method is used when the derivatives function decomposes into a linear part
         plus a remainder. In the case of the noisy_leaky_linear unit the linear part
-        comes from the parameter 'lambd' (with the sign reversed), and the nonlinear
-        remainder is the input.
+        comes from the term -lambda*y,  and the nonlinear remainder is the input.
 
         Args:
             derivatives: The function derivatives(y, t) returns 
                          the derivative of the firing rate at time t given that
-                         the current rate is y.
+                         the current rate is y, but it no longer includes the
+                         term -lambda*y .
             x0: initial state
             t0: initial time
             n_steps: number of integration steps
             dt: integration step size
             mu: mean of the white noise
             sigma: the standard deviation associated to the Wiener process
-            lambd: the coefficient of the linear part
+            eAt: np.exp(A*dt), where A = -self.lambd*self.rtau
+            c2 = (self.eAt-1)/A
+            c3 = np.sqrt( (self.eAt**2. - 1) / (2.*A) )
     """
     x = np.zeros(n_steps, dtype=float)
     x[0] = x0
     cdef float t = t0
-    cdef float expAt = np.exp(lambd*dt)
-    cdef float coeff2 = (expAt - 1.)/lambd
-    cdef float coeff3 = np.sqrt( (expAt*expAt - 1.)/(2.*lambd) )
+    #cdef float eAt = np.exp(-lambd*dt/tau)
+    #cdef float c2 = -(expAt - 1.)/lambd
+    #cdef float c3 = np.sqrt( (eAt*eAt - 1.)/(-2.*lambd) )
     for step in range(1, n_steps, 1):
-        x[step] = ( expAt*x[step-1] + coeff2*derivatives(x[step-1], t)
-                + coeff3*sigma*np.random.normal(loc=0., scale=1.) + mu*dt )
-        t = t + dt
+        x[step] = ( eAt*x[step-1] + c2*derivatives(x[step-1], t)
+                + c3*sigma*np.random.normal(loc=0., scale=1.) + mu*dt )
+        t += dt
     return x
 
  

@@ -43,9 +43,9 @@ class topology():
                          Currently accepted values: 
                          'sheet': a flat 2D rectangular surface. The geometry dictionary should
                                   also include an 'extent' property, which is a 2D list
-                                  with the size of this sheet. If 'center' is 3D, its first 2
-                                  coordinates will be used as the center of the sheet; other
-                                  coordinates are currently ignored.
+                                  with the size of this sheet in the format [width, height]. 
+                                  If 'center' is 3D, its first 2 coordinates will be used as the center 
+                                  of the sheet; other coordinates are currently ignored.
                 'arrangement':  A string specifying how the units will fill the shape.
                                 Valid values:
                                 'grid': Grid arrangement. The geometry dictionary must also contain the integer

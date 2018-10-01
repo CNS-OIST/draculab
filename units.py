@@ -54,7 +54,7 @@ class unit():
         self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
         self.min_buff_size = network.min_buff_size # a local copy just to avoid the extra reference
         # The delay of a unit is the maximum delay among the projections it sends. 
-        # Its final value of 'delay' should be set by network.connect(), after the unit is created.
+        # The final value of 'delay' should be set by network.connect(), after the unit is created.
         if 'delay' in params: 
             self.delay = params['delay']
             # delay must be a multiple of net.min_delay. Next line checks that.
@@ -84,7 +84,9 @@ class unit():
                             # Used by the upd_lpf_X functions
         self.init_buffers() # This will create the buffers that store states and times
         
-        self.pre_syn_update = lambda time : None # See init_pre_syn_update below
+        #self.pre_syn_update = lambda time : None # See init_pre_syn_update below
+        # functions will have all the functions invoked by pres_syn_update
+        self.functions = set()
 
      
     def init_buffers(self):
@@ -93,6 +95,8 @@ class unit():
 
         It is useful because new connections may increase self.delay, and thus the size of the buffers.
 
+        Raises:
+            AssertionError.
         """
     
         assert self.net.sim_time == 0., 'Buffers are being reset when the simulation time is not zero'
@@ -420,8 +424,8 @@ class unit():
                     self.port_idx[syn.port].append(idx) 
 
         # Create the pre_syn_update function and the associated variables
-        if not hasattr(self, 'functions'): # so we don't erase previous requirements
-            self.functions = set() 
+        #if not hasattr(self, 'functions'): # so we don't erase previous requirements
+        #    self.functions = set() 
 
         for req in self.syn_needs:
             if req is syn_reqs.lpf_fast:  # <----------------------------------
@@ -677,8 +681,13 @@ class unit():
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
-        self.pre_syn_update = lambda time: [f(time) for f in self.functions]
+        #self.pre_syn_update = lambda time: [f(time) for f in self.functions]
 
+
+    def pre_syn_update(self, time):
+        """ Call all the functions created in init_pre_syn_update. """
+        for f in self.functions:
+            f(time)
         
 
     def upd_lpf_fast(self,time):
@@ -1520,6 +1529,14 @@ class noisy_linear(unit):
         # if lambd > 0 we'll use the exponential Euler integration method
         if self.lambd > 0.:
             self.diff = lambda y, t: self.get_input_sum(t) * self.rtau
+            dt = self.times[1] - self.times[0]
+            A = -self.lambd*self.rtau
+            self.eAt = np.exp(A*dt)
+            self.c2 = (self.eAt-1.)/A
+            self.c3 = np.sqrt( (self.eAt**2. - 1.) / (2.*A) )
+
+    #def diff(self, y, t):
+    #    self.get_input_sum(t) * self.rtau
 
     def derivatives(self, y, t):
         """ This function returns the derivative of the activity at a given point in time. 
@@ -1545,12 +1562,14 @@ class noisy_linear(unit):
         # The atol and rtol values are meaningless in this case.
         dt = new_times[1] - new_times[0]
         # The integration functions are defined in cython_utils.pyx
-        if True: #self.lambd == 0.:
+        if False: #self.lambd == 0.:
             new_buff = euler_maruyama_int(self.derivatives, self.buffer[-1], time, 
                                           len(new_times), dt, self.mu, self.sigma)
         else:
+            #new_buff = exp_euler_int(self.diff, self.buffer[-1], time, len(new_times),
+            #                         dt, self.mu, self.sigma, -self.lambd)
             new_buff = exp_euler_int(self.diff, self.buffer[-1], time, len(new_times),
-                                     dt, self.mu, self.sigma, -self.lambd)
+                                     dt, self.mu, self.sigma, self.eAt, self.c2, self.c3)
         new_buff = np.maximum(new_buff, 0.)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:] 

@@ -8,6 +8,7 @@ from units import *
 from synapses import *
 from plants import *
 import numpy as np
+#import ray
 
 class network():
     """ 
@@ -263,7 +264,7 @@ class network():
             ValueError, TypeError, NotImplementedError.
         """
         
-        # A quick test first
+        # A quick test first (all unit ID's are in the right range)
         if (np.amax(from_list + to_list) > self.n_units-1) or (np.amin(from_list + to_list) < 0):
             raise ValueError('Attempting to connect units with an ID out of range')
 
@@ -398,7 +399,8 @@ class network():
                 if len(syn_spec['inp_ports']) == n_conns:
                     portz = syn_spec['inp_ports']
                 else:
-                    raise ValueError('Number of input ports specified does not match number of connections created')
+                    raise ValueError('Number of input ports specified does not \
+                                      match number of connections created')
             else:
                 raise TypeError('Input ports were specified with the wrong data type')
         else:
@@ -420,7 +422,10 @@ class network():
             self.delays[target].append( delayz[idx] )
             if self.units[source].delay <= delayz[idx]: # this is the longest delay for this source
                 self.units[source].delay = delayz[idx]+self.min_delay
-                # added self.min_delay because the ODE solver may ask for values a bit out of range
+                # added self.min_delay because the ODE solver may ask for values out of range,
+                # depending on the order in which the units are updated (e.g. when a unit asks
+                # for activation values to a units that has already updated, those values will
+                # be 'min_delay' too old for the updated unit).
                 # After changing the delay we need to init_buffers again. Done below.
 
         # After connecting, run init_pre_syn_update and init_buffers for all the units connected 
@@ -724,4 +729,276 @@ class network():
             self.sim_time += self.min_delay
 
         return times, unit_store, plant_store
+
+
+    def upd_unit(self, unit_id):
+        """ Update the unit with the given ID. 
+        
+            Auxiliary function to parallel_run
+        """
+        self.units[unit_id].update(self.sim_time)
+        return self.units[unit_id]
+
+
+    def parallel_run(self, total_time, n_procs):
+        """
+        Simulate the network for the given time using pathos for parallelization
+
+        This method takes steps of 'min_delay' length, in which the units, synapses 
+        and plants use their own methods to advance their state variables.
+
+        After run(T) is finished, calling run(T) again continues the simulation
+        starting at the last state of the previous simulation.
+
+        Args:
+            total_time: time that the simulation will last.
+            n_procs: number of processes
+        
+        Returns:
+            The method returns a 3-tuple (times, unit_store, plant_store): 
+            times: a numpy array with  the simulation times when the update functions 
+                      were called. These times will begin at the initial simulation time, and
+                      advance in 'min_delay' increments until 'total_time' is completed.
+            unit_store: a 2-dimensional numpy array. unit_store[i][j] contains the activity
+                           of the i-th unit at time j-th timepoint (e.g. at times[j]).
+            plant_store: a 3-dimensional numpy array. plant_store[i][j][k] is the value
+                            of the k-th state variable, at the j-th timepoint, for the i-th plant.
+
+        """
+        from pathos.multiprocessing import ProcessPool as Pool
+        #import time
+        #if not hasattr(self, 'pool'):
+        #    self.pool = ProcessingPool(nodes=n_procs)
+        pool = Pool(nodes=n_procs)
+        results = [0]*len(self.units)
+
+        Nsteps = int(total_time/self.min_delay)  # total number of simulatin steps
+        unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # arrays to store unit activities
+        plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # arrays to store plant steps
+        times = np.zeros(Nsteps) + self.sim_time # array to store initial time of simulation steps
+
+        for step in range(Nsteps):
+            times[step] = self.sim_time # self.sim_time persists between calls to network.run()
+            
+            # store current unit activities
+            for uid, unit in enumerate(self.units):
+                unit_store[uid][step] = unit.get_act(self.sim_time)
+           
+            # store current plant state variables 
+            for pid, plant in enumerate(self.plants):
+                plant_store[pid][step,:] = plant.get_state(self.sim_time)
+            
+            # update units
+            self.units = list(pool.imap(self.upd_unit, range(len(self.units))))
+            #for unit in self.units:
+            #    unit.update(self.sim_time)
+
+            # update plants
+            for plant in self.plants:
+                plant.update(self.sim_time)
+
+            self.sim_time += self.min_delay
+
+        return times, unit_store, plant_store
+
+    def parallel_run2(self, total_time, n_procs):
+        """
+        Simulate the network for the given time using PyMP for parallelization.
+
+        This method takes steps of 'min_delay' length, in which the units, synapses 
+        and plants use their own methods to advance their state variables.
+
+        After run(T) is finished, calling run(T) again continues the simulation
+        starting at the last state of the previous simulation.
+
+        Args:
+            total_time: time that the simulation will last.
+            n_procs: number of processes
+        
+        Returns:
+            The method returns a 3-tuple (times, unit_store, plant_store): 
+            times: a numpy array with  the simulation times when the update functions 
+                      were called. These times will begin at the initial simulation time, and
+                      advance in 'min_delay' increments until 'total_time' is completed.
+            unit_store: a 2-dimensional numpy array. unit_store[i][j] contains the activity
+                           of the i-th unit at time j-th timepoint (e.g. at times[j]).
+            plant_store: a 3-dimensional numpy array. plant_store[i][j][k] is the value
+                            of the k-th state variable, at the j-th timepoint, for the i-th plant.
+
+        """
+        import pymp
+        #import time
+
+        Nsteps = int(total_time/self.min_delay)  # total number of simulatin steps
+        unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # arrays to store unit activities
+        plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # arrays to store plant steps
+        times = np.zeros(Nsteps) + self.sim_time # array to store initial time of simulation steps
+
+        for step in range(Nsteps):
+            times[step] = self.sim_time # self.sim_time persists between calls to network.run()
+        
+            # store current unit activities
+            for uid, unit in enumerate(self.units):
+                unit_store[uid][step] = unit.get_act(self.sim_time)
+       
+            # store current plant state variables 
+            for pid, plant in enumerate(self.plants):
+                plant_store[pid][step,:] = plant.get_state(self.sim_time)
+        
+            # update units
+            with pymp.Parallel(n_procs, if_=True) as p:
+                #pymp.shared.list(self.delays) 
+                #pymp.shared.list(self.act) 
+                for index in p.range(len(self.units)):
+                    self.units[index].update(self.sim_time)
+
+            # update plants
+            for plant in self.plants:
+                plant.update(self.sim_time)
+
+            self.sim_time += self.min_delay
+            #time.sleep(.1)
+
+        return times, unit_store, plant_store
+
+
+    def parallel_run3(self, total_time, n_procs):
+        """
+        Simulate the network for the given time using the multiprocess module for parallelization.
+
+        This method takes steps of 'min_delay' length, in which the units, synapses 
+        and plants use their own methods to advance their state variables.
+
+        After run(T) is finished, calling run(T) again continues the simulation
+        starting at the last state of the previous simulation.
+
+        Args:
+            total_time: time that the simulation will last.
+            n_procs: number of processes
+        
+        Returns:
+            The method returns a 3-tuple (times, unit_store, plant_store): 
+            times: a numpy array with  the simulation times when the update functions 
+                      were called. These times will begin at the initial simulation time, and
+                      advance in 'min_delay' increments until 'total_time' is completed.
+            unit_store: a 2-dimensional numpy array. unit_store[i][j] contains the activity
+                           of the i-th unit at time j-th timepoint (e.g. at times[j]).
+            plant_store: a 3-dimensional numpy array. plant_store[i][j][k] is the value
+                            of the k-th state variable, at the j-th timepoint, for the i-th plant.
+
+        """
+        #from multiprocessing import Process
+        import multiprocess as mp
+        #import dill 
+        #mp.reduction.pickle = dill
+
+        #p = [None]*len(self.units)
+        with mp.Pool(processes=n_procs) as pool:
+
+            Nsteps = int(total_time/self.min_delay)  # total number of simulatin steps
+            unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # arrays to store unit activities
+            plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # arrays to store plant steps
+            times = np.zeros(Nsteps) + self.sim_time # array to store initial time of simulation steps
+
+            for step in range(Nsteps):
+                times[step] = self.sim_time # self.sim_time persists between calls to network.run()
+            
+                # store current unit activities
+                for uid, unit in enumerate(self.units):
+                    unit_store[uid][step] = unit.get_act(self.sim_time)
+           
+                # store current plant state variables 
+                for pid, plant in enumerate(self.plants):
+                    plant_store[pid][step,:] = plant.get_state(self.sim_time)
+            
+                # update units
+                self.units = pool.map(self.upd_unit, range(len(self.units)))
+                """
+                for index in range(len(self.units)):
+                    p[index] = Process(target=self.upd_unit, args=(index,))
+                    p[index].start()
+                #p[index].join()
+                """
+                # update plants
+                for plant in self.plants:
+                    plant.update(self.sim_time)
+
+            self.sim_time += self.min_delay
+
+        return times, unit_store, plant_store
+
+
+    def parallel_run4(self, total_time, n_procs):
+        """
+        Simulate the network for the given time using Ray for parallelization.
+
+        This method takes steps of 'min_delay' length, in which the units, synapses 
+        and plants use their own methods to advance their state variables.
+
+        After run(T) is finished, calling run(T) again continues the simulation
+        starting at the last state of the previous simulation.
+
+        Args:
+            total_time: time that the simulation will last.
+            n_procs: number of processes
+        
+        Returns:
+            The method returns a 3-tuple (times, unit_store, plant_store): 
+            times: a numpy array with  the simulation times when the update functions 
+                      were called. These times will begin at the initial simulation time, and
+                      advance in 'min_delay' increments until 'total_time' is completed.
+            unit_store: a 2-dimensional numpy array. unit_store[i][j] contains the activity
+                           of the i-th unit at time j-th timepoint (e.g. at times[j]).
+            plant_store: a 3-dimensional numpy array. plant_store[i][j][k] is the value
+                            of the k-th state variable, at the j-th timepoint, for the i-th plant.
+
+        """
+        ray.init(num_cpus=10, ignore_reinit_error=True)
+
+        @ray.remote
+        def ray_upd_unit(unit_id):
+            """ Update the unit with the given ID. """
+            self.units[unit_id].update(self.sim_time)
+            return self.units[unit_id]
+
+
+        Nsteps = int(total_time/self.min_delay)  # total number of simulatin steps
+        unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # arrays to store unit activities
+        plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # arrays to store plant steps
+        times = np.zeros(Nsteps) + self.sim_time # array to store initial time of simulation steps
+
+        ray_units = rem_units.remote(self)
+
+        for step in range(Nsteps):
+            times[step] = self.sim_time # self.sim_time persists between calls to network.run()
+            
+            # store current unit activities
+            for uid, unit in enumerate(self.units):
+                unit_store[uid][step] = unit.get_act(self.sim_time)
+           
+            # store current plant state variables 
+            for pid, plant in enumerate(self.plants):
+                plant_store[pid][step,:] = plant.get_state(self.sim_time)
+            
+            # update units
+            #obj_ids = [ray_upd_unit.remote(u) for u in range(len(self.units))]
+            [ray_units.update.remote(i, self.sim_time) for i in range(len(self.units))]
+
+            # update plants
+            for plant in self.plants:
+                plant.update(self.sim_time)
+
+            self.sim_time += self.min_delay
+
+        return times, unit_store, plant_store
+
+"""
+@ray.remote
+class rem_units():
+    def __init__(self, net):
+        self.units = net.units
+
+    def update(self, unit_id, time):
+        self.units[unit_id].update(time) 
+"""
 
