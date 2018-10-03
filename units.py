@@ -10,12 +10,13 @@ from cython_utils import cython_get_act2  # cythonized linear interpolation vers
 from cython_utils import cython_get_act3  # cythonized linear interpolation version 2
 from cython_utils import cython_sig # the cythonized sigmoidal function
 from cython_utils import euler_int # the cythonized forward Euler integration
-from cython_utils import euler_maruyama_int # the cythonized Euler-Maruyama approximation
-from cython_utils import exp_euler_int # the cythonized exponential Euler approximation
+from cython_utils import euler_maruyama # the cythonized Euler-Maruyama approximation
+from cython_utils import exp_euler # the cythonized exponential Euler approximation
 from scipy.integrate import odeint # to integrate ODEs
+from array import array
 #from scipy.integrate import solve_ivp # to integrate ODEs
 #from cython_utils import cython_update # the cythonized unit.update method
-#from scipy.interpolate import interp1d # to interpolate values
+from scipy.interpolate import interp1d # to interpolate values
 
 
 class unit():
@@ -80,7 +81,7 @@ class unit():
 
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
-        self.last_time = 0  # time of last call to the update function
+        self.last_time = 0.  # time of last call to the update function
                             # Used by the upd_lpf_X functions
         self.init_buffers() # This will create the buffers that store states and times
         
@@ -103,17 +104,18 @@ class unit():
 
         min_del = self.net.min_delay  # just to have shorter lines below
         self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
+        bf_type = np.dtype('d')
 
         # The following buffers are for the low-pass filterd variables required by synaptic plasticity.
         # They only store one value per update. Updated by upd_lpf_X
         if syn_reqs.lpf_fast in self.syn_needs:
-            self.lpf_fast_buff = np.array( [self.init_val]*self.steps )
+            self.lpf_fast_buff = np.array( [self.init_val]*self.steps, dtype=bf_type)
         if syn_reqs.lpf_mid in self.syn_needs:
-            self.lpf_mid_buff = np.array( [self.init_val]*self.steps )
+            self.lpf_mid_buff = np.array( [self.init_val]*self.steps, dtype=bf_type)
         if syn_reqs.lpf_slow in self.syn_needs:
-            self.lpf_slow_buff = np.array( [self.init_val]*self.steps )
+            self.lpf_slow_buff = np.array( [self.init_val]*self.steps, dtype=bf_type)
         if syn_reqs.lpf_mid_inp_sum in self.syn_needs:
-            self.lpf_mid_inp_sum_buff = np.array( [self.init_val]*self.steps )
+            self.lpf_mid_inp_sum_buff = np.array( [self.init_val]*self.steps, dtype=bf_type)
 
         # 'source' units don't use activity buffers, so for them the method ends here
         if self.type == unit_types.source:
@@ -122,11 +124,14 @@ class unit():
         min_buff = self.min_buff_size
         self.offset = (self.steps-1)*min_buff # an index used in the update function of derived classes
         self.buff_size = int(round(self.steps*min_buff)) # number of activation values to store
-        self.buffer = np.array( [self.init_val]*self.buff_size, dtype=float) # numpy array with previous 
-                                                                             # activation values
-        self.times = np.linspace(-self.delay, 0., self.buff_size, dtype=float) # the corresponding times 
-                                                                               #for the buffer values
-        self.times_grid = np.linspace(0, min_del, min_buff+1, dtype=float) # used to create values for 'times'
+        #self.buffer = np.ascontiguousarray( [self.init_val]*self.buff_size, dtype=bf_type) # numpy array with 
+                                                                             # previous activation values
+        #self.buffer = np.array( [self.init_val]*self.buff_size, dtype=bf_type) # numpy array with 
+        self.buffer = array('d', [self.init_val]*self.buff_size)
+        self.times = np.linspace(-self.delay, 0., self.buff_size, dtype=bf_type) # the corresponding 
+                                                                             # times #for the buffer values
+        self.times_grid = np.linspace(0, min_del, min_buff+1, dtype=bf_type) # used to create 
+                                                                             # values for 'times'
         self.time_bit = self.times[1] - self.times[0] + 1e-10 # time interval used by get_act.
         
         
@@ -242,13 +247,13 @@ class unit():
         # TO USE A SOLVER, UNCOMMENT ITS CODE. 
         #---------------------------------------------------------------------
         # odeint
-        """
+        #"""
         # odeint also returns the initial condition, so to produce min_buff_size new values
         # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
         new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times, rtol=self.rtol, atol=self.atol)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:,0] 
-        """
+        #"""
         #---------------------------------------------------------------------
         # solve_ivp --- REQUIRES ADDITIONAL STEPS (see below)
         """
@@ -265,7 +270,7 @@ class unit():
         """
         #---------------------------------------------------------------------
         # Euler
-        #"""
+        """
         # This is an implementation with forward Euler integration. Although this may be 
         # imprecise and unstable in some cases, it is a first step to implement the
         # Euler-Maruyama method. And it's also faster than odeint.
@@ -275,20 +280,19 @@ class unit():
         new_buff = euler_int(self.derivatives, self.buffer[-1], time, len(new_times), dt)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:] 
-        #"""
+        """
         #---------------------------------------------------------------------
         # Euler-Maruyama
         """
         # This is the Euler-Maruyama implementation. Basically the same as forward Euler.
         # The atol and rtol values are meaningless in this case.
+        # This solver does the buuffer's "rolling" by itself.
         dt = new_times[1] - new_times[0]
-        mu = 0. # Mean of the white noise 
-        sigma = 0.5 # standard deviation of Wiener process. Should be a parameter.
-        # euler_maruyama_int is defined in cython_utils.pyx
-        new_buff = euler_maruyama_int(self.derivatives, self.buffer[-1], time, 
-                                      len(new_times), dt, mu, sigma)
-        self.buffer = np.roll(self.buffer, -self.min_buff_size)
-        self.buffer[self.offset:] = new_buff[1:] 
+        self.mu = 0. # Mean of the white noise << REMOVE after testing
+        self.sigma = 0.0 # standard deviation of Wiener process. << REMOVE after testing
+        # euler_maruyama_ is defined in cython_utils.pyx
+        euler_maruyama(self.derivatives, self.buffer, time, 
+                        self.buff_size-self.min_buff_size, dt, self.mu, self.sigma)
         """
         #---------------------------------------------------------------------
 
@@ -346,10 +350,10 @@ class unit():
         """
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # This is the second implementation, written in Cython
-        return cython_get_act2(time, self.times[0], self.times[-1], self.times, self.buff_size, self.buffer)
+        #return cython_get_act2(time, self.times[0], self.times[-1], self.times, self.buff_size, self.buffer)
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # This is the third implementation, written in Cython
-        #return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
+        return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
 
   
     def init_pre_syn_update(self):
@@ -1438,10 +1442,10 @@ class noisy_sigmoidal(unit):
         self.times[self.offset:] = new_times[1:] 
         dt = new_times[1] - new_times[0]
         if True: #self.lambd == 0.:
-            new_buff = euler_maruyama_int(self.derivatives, self.buffer[-1], time, 
+            new_buff = euler_maruyama(self.derivatives, self.buffer[-1], time, 
                                           len(new_times), dt, self.mu, self.sigma)
         else:
-            new_buff = exp_euler_int(self.diff, self.buffer[-1], time, len(new_times),
+            new_buff = exp_euler(self.diff, self.buffer[-1], time, len(new_times),
                                      dt, self.mu, self.sigma, -self.lambd)
         #new_buff = np.maximum(new_buff, 0.)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
@@ -1554,6 +1558,7 @@ class noisy_linear(unit):
         This update function overrides the one in unit.update in order to use 
         a stochastic solver. 
         """
+        assert abs(self.times[-1]-time) < 1e-6, "Time out of phase in unit's update function"
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.min_buff_size) 
         self.times[self.offset:] = new_times[1:] 
@@ -1562,17 +1567,18 @@ class noisy_linear(unit):
         # The atol and rtol values are meaningless in this case.
         dt = new_times[1] - new_times[0]
         # The integration functions are defined in cython_utils.pyx
-        if False: #self.lambd == 0.:
-            new_buff = euler_maruyama_int(self.derivatives, self.buffer[-1], time, 
-                                          len(new_times), dt, self.mu, self.sigma)
+        if self.lambd == 0.:
+            # needs no buffer roll or buffer assignment
+            euler_maruyama(self.derivatives, self.buffer, time, 
+                                    self.buff_size-self.min_buff_size, dt, self.mu, self.sigma)
         else:
-            #new_buff = exp_euler_int(self.diff, self.buffer[-1], time, len(new_times),
+            #new_buff = exp_euler(self.diff, self.buffer[-1], time, len(new_times),
             #                         dt, self.mu, self.sigma, -self.lambd)
-            new_buff = exp_euler_int(self.diff, self.buffer[-1], time, len(new_times),
+            new_buff = exp_euler(self.diff, self.buffer[-1], time, len(new_times),
                                      dt, self.mu, self.sigma, self.eAt, self.c2, self.c3)
-        new_buff = np.maximum(new_buff, 0.)
-        self.buffer = np.roll(self.buffer, -self.min_buff_size)
-        self.buffer[self.offset:] = new_buff[1:] 
+            new_buff = np.maximum(new_buff, 0.)
+            self.buffer = np.roll(self.buffer, -self.min_buff_size)
+            self.buffer[self.offset:] = new_buff[1:] 
 
         self.pre_syn_update(time) # Update any variables needed for the synapse to update.
                                   # It is important this is done after the buffer has been updated.

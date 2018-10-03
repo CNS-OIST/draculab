@@ -1,3 +1,4 @@
+#cython: language_level=3
 """
 cython_utils.pyx
 
@@ -6,6 +7,7 @@ This file has cython functions used in draculab.
 import numpy as np
 cimport numpy as np
 cimport cython
+cimport cpython.array
 #import scipy
 from scipy.integrate import solve_ivp 
 #from scipy.integrate import odeint
@@ -13,8 +15,10 @@ from scipy.integrate import solve_ivp
 # Since I have explicit bounds check, I can afford to throw away these checks:
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def cython_get_act2(float time, float t0, float t1, np.ndarray times, int b_size, np.ndarray buff):
-#def cython_get_act2(double time, double t0, double t1, double[:] times, int b_size, double[:] buff):
+#def cython_get_act2(double time, double t0, double t1, np.array[double, ndim=1] times, 
+#                    int b_size, np.ndarray[double, ndim=1] buff):
+def cython_get_act2(double time, double t0, double t1, double[:] times, int b_size, double[:] buff):
+#def cython_get_act2(float time, float t0, float t1, np.ndarray[np.float_t, ndim=1] times, int b_size, np.ndarray[np.float_t, ndim=1] buff):
     """
         The Cython version of the second implementation of unit.get_act()
 
@@ -26,18 +30,30 @@ def cython_get_act2(float time, float t0, float t1, np.ndarray times, int b_size
             b_size : self.buff_size
             buff : self.buffer
     """
-    #cdef double t = min( max(time, t0), t1 ) # clipping 'time'
-    cdef float t = min( max(time, t0), t1 ) # clipping 'time'
+    #cdef float t = min( max(time, t0), t1 ) # clipping 'time'
+    cdef double t = min( max(time, t0), t1 ) # clipping 'time'
+    #cdef float frac = (t-t0)/(t1-t0)
     #cdef double frac = (t-t0)/(t1-t0)
-    cdef float frac = (t-t0)/(t1-t0)
-    cdef int base = <int>(np.floor(frac*(b_size-1))) # biggest index s.t. times[index] <= time
-    cdef frac2 = ( t-times[base] ) / ( times[min(base+1,b_size-1)] - times[base] + 1e-8 )
+    frac = (t-t0)/(t1-t0)
+    cdef int base = <int>(frac*(b_size-1)) # biggest index s.t. times[index] <= time
+    cdef double frac2 = ( t-times[base] ) / ( times[min(base+1,b_size-1)] - times[base] + 1e-8 )
     return buff[base] + frac2 * ( buff[min(base+1,b_size-1)] - buff[base] )
+    """
+    cdef int i = 0
+
+    if time > times[-2]:
+        i = b_size - 2
+    else:
+        while time > times[i+1]:
+            i += 1
+    return buff[i] + (times[i+1] - time) * (buff[i+1] - buff[i])/(times[i+1]-times[i])
+    """
 
 
 @cython.boundscheck(False)
 @cython.wraparound(False)
-def cython_get_act3(float time, float times0, float time_bit, int b_size, np.ndarray buff):
+#def cython_get_act3(float time, float times0, float time_bit, int b_size, np.ndarray[float, ndim=1] buff):
+def cython_get_act3(double time, double times0, double time_bit, Py_ssize_t b_size, double[:] buff):
     """
         The Cython version of the third implementation of unit.get_act()
 
@@ -48,11 +64,11 @@ def cython_get_act3(float time, float times0, float time_bit, int b_size, np.nda
             b_size : self.buff_size
             buff : self.buffer
     """
-    cdef float t = time - times0
-    cdef int base = <int>(t // time_bit)
-    cdef float rem = t % time_bit
+    cdef double t = time - times0
+    cdef Py_ssize_t base = <int>(t // time_bit)
+    cdef double rem = t % time_bit
     base = max( 0, min( base, b_size-2 ) )
-    cdef float frac2 = rem / time_bit
+    cdef double frac2 = rem / time_bit
     return buff[base] + frac2 * ( buff[base+1] - buff[base] )
 
 
@@ -91,7 +107,7 @@ def cython_update(self, float time):
     self.last_time = time # last_time is used to update some pre_syn_update values
 
 
-def euler_int(derivatives, float x0, float t0, int n_steps, float dt):
+def euler_int(derivatives, double x0, double t0, int n_steps, double dt):
     """ A simple implementation of the forward Euler integration method.
     
         Args:
@@ -103,17 +119,34 @@ def euler_int(derivatives, float x0, float t0, int n_steps, float dt):
             n_steps: number of integration steps
             dt: integration step size
     """
-    x = np.zeros(n_steps, dtype=float)
+    x = np.zeros(n_steps, dtype=np.dtype('d'))
     x[0] = x0
-    cdef float t = t0
+    cdef double t = t0
     for step in range(1, n_steps, 1):
         x[step] = x[step-1] + dt * derivatives([x[step-1]], t)
         t = t + dt
     return x
 
 
-def euler_maruyama_int(derivatives, float x0, float t0, int n_steps, 
-                       float dt, float mu, float sigma):
+cdef euler_maruyama_impl(derivatives, double[::1] buff, double t0, Py_ssize_t offset, 
+                       double dt, double mudt, double sigma, double[:] noise, double factor):
+    cdef Py_ssize_t mbs = buff.shape[0] - offset # minimal buffer size
+    cdef Py_ssize_t i, step
+    for i in range(offset):
+        buff[i] = buff[i+mbs]
+
+    cdef double t = t0
+    for step in range(offset, len(buff)):
+        buff[step] = buff[step-1] + ( dt * <double>derivatives([buff[step-1]], t) + mudt
+                                  + factor * noise[step-offset] )
+        buff[step] = max(buff[step], 0.)
+        t += dt
+
+
+def euler_maruyama(derivatives, double[::1] buff, double t0, Py_ssize_t offset, 
+                       double dt, double mu, double sigma):
+#def euler_maruyama(derivatives,  np.array[float, ndim=1] buff, double t0, int offset, 
+#                       double dt, double mu, double sigma):
     """ The Euler-Maruyama method for stochastic differential equations.
 
         This solver turns the neural model into a Langevin equation by adding white noise.
@@ -123,27 +156,40 @@ def euler_maruyama_int(derivatives, float x0, float t0, int n_steps,
                          the derivative of the firing rate at time t given that
                          the current rate is y.
             x0: initial state
+            buff: the unit's activation buffer
             t0: initial time
-            n_steps: number of integration steps
+            offset: index of last value of previous integration
             dt: integration step size
             mu: mean of the white noise
             sigma: the standard deviation associated to the Wiener process
     """
-    x = np.zeros(n_steps, dtype=float)
-    x[0] = x0
-    cdef float t = t0
-    cdef sqrdt = np.sqrt(dt)
-    for step in range(1, n_steps, 1):
-        x[step] = x[step-1] + ( dt * (derivatives([x[step-1]], t) + mu) 
-                            + sigma * np.random.normal(loc=0, scale=sqrdt) )
-                            #+ sigma * np.random.normal(loc=0., scale=dt) )
-                            #+ sigma * sqrdt * np.random.normal(loc=0., scale=1.) )
+    #"""
+    cdef Py_ssize_t mbs = len(buff) - offset # minimal buffer size
+    cdef Py_ssize_t i, step
+    for i in range(offset):
+        buff[i] = buff[i+mbs]
+
+    cdef double t = t0
+    cdef double factor = sigma*np.sqrt(dt)
+    cdef double mudt = mu*dt
+    cdef double[:] noise = np.random.normal(loc=0., scale=1., size=buff.shape[0]-offset)
+    sqrdt = np.sqrt(dt)
+    for step in range(offset, len(buff)):
+        buff[step] = buff[step-1] + ( dt * <double>derivatives([buff[step-1]], t) + mudt
+                                  + sigma * np.random.normal(loc=0., scale=sqrdt) )
+        buff[step] = max(buff[step], 0.)
         t = t + dt
-    return x
+    """
+    cdef double factor = sigma*np.sqrt(dt)
+    cdef double mudt = mu*dt
+    cdef double[:] noise = np.random.normal(loc=0., scale=1., size=buff.shape[0]-offset)
+    euler_maruyama_impl(derivatives, buff, t0, offset, dt, mudt, sigma, noise, factor)
+    """
 
-
-def exp_euler_int(derivatives, float x0, float t0, int n_steps, 
-                       float dt, float mu, float sigma, float eAt, float c2, float c3):
+#cpdef float[:] exp_euler(derivatives, float x0, float t0, int n_steps, 
+#                       float dt, float mu, float sigma, float eAt, float c2, float c3):
+def exp_euler(derivatives, double x0, double t0, int n_steps, 
+                       double dt, double mu, double sigma, double eAt, double c2, double c3):
     """ A version of the  exponential Euler method for stochastic differential equations.
 
         This method is used when the derivatives function decomposes into a linear part
@@ -165,17 +211,35 @@ def exp_euler_int(derivatives, float x0, float t0, int n_steps,
             c2 = (self.eAt-1)/A
             c3 = np.sqrt( (self.eAt**2. - 1) / (2.*A) )
     """
-    x = np.zeros(n_steps, dtype=float)
+    """
+    x = np.zeros(n_steps, dtype=np.dtype('f'))
     x[0] = x0
-    cdef float t = t0
+    cdef double t = t0
+    cdef double mudt = mu*dt
+    cdef sc3 = c3*sigma
     #cdef float eAt = np.exp(-lambd*dt/tau)
     #cdef float c2 = -(expAt - 1.)/lambd
     #cdef float c3 = np.sqrt( (eAt*eAt - 1.)/(-2.*lambd) )
     for step in range(1, n_steps, 1):
         x[step] = ( eAt*x[step-1] + c2*derivatives(x[step-1], t)
-                + c3*sigma*np.random.normal(loc=0., scale=1.) + mu*dt )
+                + sc3*np.random.normal(loc=0., scale=1.) + mudt )
         t += dt
     return x
+    """
+    cdef double sc3 = c3*sigma
+    x = np.zeros(n_steps, dtype=np.dtype('d'))
+    x[0] = x0
+    cdef double[:] noise = np.random.normal(loc=0., scale=1., size=n_steps)
+    return exp_euler_impl(derivatives, x, t0, n_steps, dt, mu, eAt, c2, sc3, noise)
 
  
-
+cdef double[:] exp_euler_impl(derivatives, double[:] x, double t0, int n_steps, 
+                       double dt, double mu, double eAt, double c2, double sc3, double[:] noise):
+    cdef Py_ssize_t step
+    cdef double t = t0
+    cdef double mudt = mu*dt
+    for step in range(1, n_steps, 1):
+        x[step] = ( eAt*x[step-1] + c2*<double>derivatives(<float>x[step-1], <float>t)
+                + sc3*noise[step] + mudt )
+        t += dt
+    return x
