@@ -9,8 +9,8 @@ cimport numpy as np
 cimport cython
 cimport cpython.array
 #import scipy
-from scipy.integrate import solve_ivp 
-#from scipy.integrate import odeint
+#from scipy.integrate import solve_ivp 
+from scipy.integrate import odeint
 
 # Since I have explicit bounds check, I can afford to throw away these checks:
 @cython.boundscheck(False)
@@ -88,7 +88,6 @@ def cython_update(self, float time):
     self.times = np.roll(self.times, -self.min_buff_size)
     self.times[self.offset:] = new_times[1:]
 
-    """
     new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times, rtol=self.rtol, atol=self.atol) 
     self.buffer = np.roll(self.buffer, -self.min_buff_size)
     self.buffer[self.offset:] = new_buff[1:,0] 
@@ -97,7 +96,7 @@ def cython_update(self, float time):
                                             t_eval=new_times, rtol=self.rtol, atol=self.atol)
     self.buffer = np.roll(self.buffer, -self.min_buff_size)
     self.buffer[self.offset:] = solution.y[0,1:]
-    #"""
+    """
 
     self.pre_syn_update(time) # Update any variables needed for the synapse to update.
 
