@@ -134,7 +134,7 @@ class oja_synapse(synapse):
         """ Update the weight according to the Oja learning rule."""
         # If the network is correctly initialized, the pre- and post-synaptic units
         # are updating their lpf_fast variables at each update() call
-        lpf_post = self.net.units[self.postID].lpf_fast  # no delays to get the postsynaptic rate
+        lpf_post = self.net.units[self.postID].get_lpf_fast(0)  # no delays to get the postsynaptic rate
         lpf_pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the Oja learning rule 
@@ -175,7 +175,7 @@ class anti_hebbian_synapse(synapse):
         """ Update the weight according to the anti-Hebbian learning rule."""
         # If the network is correctly initialized, the pre- and post-synaptic units
         # are updating their lpf_fast variables at each update() call
-        lpf_post = self.net.units[self.postID].lpf_fast
+        lpf_post = self.net.units[self.postID].get_lpf_fast(0)
         lpf_pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the anti-Hebbian learning rule 
@@ -219,7 +219,7 @@ class covariance_synapse(synapse):
         # If the network is correctly initialized, the pre-synaptic unit is updatig lpf_fast, and the 
         # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
         avg_post = self.net.units[self.postID].lpf_slow
-        post = self.net.units[self.postID].lpf_fast
+        post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the covariance learning rule 
@@ -265,7 +265,7 @@ class anti_covariance_synapse(synapse):
         # If the network is correctly initialized, the pre-synaptic unit is updatig lpf_fast, and the 
         # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
         avg_post = self.net.units[self.postID].lpf_slow
-        post = self.net.units[self.postID].lpf_fast
+        post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the anti-covariance learning rule 
@@ -307,7 +307,7 @@ class anti_cov_pre_synapse(synapse):
     
     def update(self, time):
         """ Update the weight according to the anti-covariance learning rule."""
-        post = self.net.units[self.postID].lpf_fast
+        post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         avg_pre = self.net.units[self.preID].get_lpf_slow(self.delay_steps)
         
@@ -366,7 +366,7 @@ class hebb_subsnorm_synapse(synapse):
             the inputs whose synapses have positive values.
         """
         inp_avg = self.net.units[self.postID].pos_inp_avg
-        post = self.net.units[self.postID].lpf_fast
+        post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the normalized Hebbian learning rule 
@@ -421,7 +421,7 @@ class sq_hebb_subsnorm_synapse(synapse):
             and the post-synaptic unit updates lpf_fast and its scaled sum of lpf'd inputs.
         """
         sc_inp_sum = self.net.units[self.postID].sc_inp_sum
-        post = self.net.units[self.postID].lpf_fast
+        post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the normalized Hebbian learning rule 
@@ -533,7 +533,7 @@ class bcm_synapse(synapse):
     
     def update(self, time):
         """ Update the weight using the BCM rule. """
-        post = self.net.units[self.postID].lpf_fast
+        post = self.net.units[self.postID].get_lpf_fast(0)
         avg_sq = self.net.units[self.postID].sq_lpf_slow
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
@@ -583,7 +583,7 @@ class homeo_inhib_synapse(synapse):
     
     def update(self, time):
         """ Update the weight using the homeostatic rule. """
-        act = self.net.units[self.postID].lpf_fast
+        act = self.net.units[self.postID].get_lpf_fast(0)
         # A forward Euler step 
         self.w = self.w + self.alpha * (self.des_act - act)
         if self.w > 0.: self.w = 0.  
@@ -657,7 +657,7 @@ class diff_hebb_subsnorm_synapse(synapse):
         """
         diff_avg = self.net.units[self.postID].diff_avg
         # pos_diff_avg = self.net.units[self.postID].pos_diff_avg
-        Dpost = self.net.units[self.postID].lpf_fast - self.net.units[self.postID].lpf_mid
+        Dpost = self.net.units[self.postID].get_lpf_fast(0) - self.net.units[self.postID].lpf_mid
         Dpre = ( self.net.units[self.preID].get_lpf_fast(self.delay_steps) -
                  self.net.units[self.preID].get_lpf_mid(self.delay_steps) )
         
@@ -715,7 +715,7 @@ class corr_homeo_inhib_synapse(synapse):
     
     def update(self, time):
         """ Update the weight using the homeostatic rule. """
-        post = self.net.units[self.postID].lpf_fast
+        post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
         self.w = self.w + self.alpha * pre * (self.des_act - post)

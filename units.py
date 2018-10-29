@@ -5,6 +5,7 @@ This file contains the basic unit models in the draculab simulator.
 
 from draculab import unit_types, synapse_types, syn_reqs  # names of models and requirements
 from synapses import *  # synapse models
+from requirements import *
 import numpy as np
 from cython_utils import * # interpolation and integration methods including cython_get_act*,
                            # cython_sig, euler_int, euler_maruyama, exp_euler
@@ -15,9 +16,8 @@ from array import array # optionally used for the unit's buffer
 
 
 class unit():
-    """
-    The parent class of all unit models.
-    """
+    """ The parent class of all unit models.  """
+
     def __init__(self, ID, params, network):
         """ The class constructor.
 
@@ -96,18 +96,18 @@ class unit():
 
         min_del = self.net.min_delay  # just to have shorter lines below
         self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
-        bf_type = np.dtype('d') # data type of the buffer when it is a numpy array
+        self.bf_type = np.dtype('d') # data type of the buffer when it is a numpy array
 
-        # The following buffers are for the low-pass filterd variables required by synaptic plasticity.
-        # They only store one value per update. Updated by upd_lpf_X
+        # The following buffers are for synaptic requirements.
+        # They store one value per update, in the requirement's update method.
         if syn_reqs.lpf_fast in self.syn_needs:
-            self.lpf_fast_buff = np.array( [self.init_val]*self.steps, dtype=bf_type)
+            self.lpf_fast.init_buff()
         if syn_reqs.lpf_mid in self.syn_needs:
-            self.lpf_mid_buff = np.array( [self.init_val]*self.steps, dtype=bf_type)
+            self.lpf_mid_buff = np.array( [self.init_val]*self.steps, dtype=self.bf_type)
         if syn_reqs.lpf_slow in self.syn_needs:
-            self.lpf_slow_buff = np.array( [self.init_val]*self.steps, dtype=bf_type)
+            self.lpf_slow_buff = np.array( [self.init_val]*self.steps, dtype=self.bf_type)
         if syn_reqs.lpf_mid_inp_sum in self.syn_needs:
-            self.lpf_mid_inp_sum_buff = np.array( [self.init_val]*self.steps, dtype=bf_type)
+            self.lpf_mid_inp_sum_buff = np.array( [self.init_val]*self.steps, dtype=self.bf_type)
 
         # 'source' units don't use activity buffers, so for them the method ends here
         if self.type == unit_types.source:
@@ -117,13 +117,13 @@ class unit():
         self.offset = (self.steps-1)*min_buff # an index used in the update function of derived classes
         self.buff_size = int(round(self.steps*min_buff)) # number of activation values to store
         # currently testing 3 ways of initializing the buffer:
-        #self.buffer = np.ascontiguousarray( [self.init_val]*self.buff_size, dtype=bf_type) # numpy array with
+        #self.buffer = np.ascontiguousarray( [self.init_val]*self.buff_size, dtype=self.bf_type) # numpy array with
                                                                              # previous activation values
-        #self.buffer = np.array( [self.init_val]*self.buff_size, dtype=bf_type) # numpy array with
+        #self.buffer = np.array( [self.init_val]*self.buff_size, dtype=self.bf_type) # numpy array with
         self.buffer = array('d', [self.init_val]*self.buff_size)
-        self.times = np.linspace(-self.delay, 0., self.buff_size, dtype=bf_type) # the corresponding
+        self.times = np.linspace(-self.delay, 0., self.buff_size, dtype=self.bf_type) # the corresponding
                                                                              # times #for the buffer values
-        self.times_grid = np.linspace(0, min_del, min_buff+1, dtype=bf_type) # used to create
+        self.times_grid = np.linspace(0, min_del, min_buff+1, dtype=self.bf_type) # used to create
                                                                              # values for 'times'
         self.time_bit = self.times[1] - self.times[0] + 1e-10 # time interval used by get_act.
         
@@ -367,16 +367,19 @@ class unit():
         low-pass filtered versions of pre- and post-synaptic activity, as well as to
         obtain by itself all the values required for its update.
         The function pre_syn_update(), initialized by init_pre_syn_update(), 
-        is tasked with updating all the unit variables used by the synapses to update.
+        is tasked with updating all the unit variables used by the synapses to update, or
+        for other purposes of the unit's model.
         pre_syn_update() is called once per simulation step (i.e. every min_delay period).
 
         init_pre_syn_update creates the 'functions' list, which contains all the functions
         invoked by pre_syn_update, and initializes all the variables it requires. 
         To do this, it compiles the requirements of all the unit's synapses in the set 
-        self.syn_needs. 
-        For each requirement, the unit class should already have the function to calculate it,
-        so all init_pre_syn_update needs to do is to ensure that a call to pre_syn_update
-        executes all the right functions.
+        self.syn_needs, and creates an instance of each requirement, from the classes in
+        the requirements.py file.
+
+        Each requirement is a class whose __init__ and update methods initialize the necessary
+        variables, and update them, respectively.  The __init__ method of the requirement also
+        puts its 'update' methods in the unit's 'functions' list.
 
         In addition, for each one of the unit's synapses, init_pre_syn_update will initialize 
         its delay value.
@@ -429,16 +432,33 @@ class unit():
                 else:
                     self.port_idx[syn.port].append(idx) 
 
-        # Create the pre_syn_update function and the associated variables
-        #if not hasattr(self, 'functions'): # so we don't erase previous requirements
-        #    self.functions = set() 
+        # Create instances of all the requirements to be updated by
+        # the pre_syn_update function. 
+        """
+        $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$444
+        $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$444
+        $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$444
+
+        # eventually this section should be reduced to:
+
+        for req in self.syn_needs:
+            if issubclass(type(req), syn_reqs):
+                # You create an instance of the requirement. 
+                # Its name is the requirement's name.
+                setattr(self. req.name, eval(req.name+'(self)'))
+            else:  
+                raise NotImplementedError('Asking for a requirement that is not implemented')
+
+        $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$444
+        $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$444
+        $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$444
+        """
 
         for req in self.syn_needs:
             if req is syn_reqs.lpf_fast:  # <----------------------------------
-                if not hasattr(self,'tau_fast'): 
-                    raise NameError( 'Synaptic plasticity requires unit parameter tau_fast, not yet set' )
-                self.lpf_fast = self.init_val
-                self.functions.add(self.upd_lpf_fast)
+                if issubclass(type(req), syn_reqs):
+                    name = req.name # name of the requirement as a string
+                    setattr(self, name, eval(name+'(self)')) # create an instance with that name
             elif req is syn_reqs.lpf_mid:  # <----------------------------------
                 if not hasattr(self,'tau_mid'): 
                     raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
@@ -687,35 +707,16 @@ class unit():
             else:  # <----------------------------------------------------------------------
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
-        #self.pre_syn_update = lambda time: [f(time) for f in self.functions]
-
 
     def pre_syn_update(self, time):
-        """ Call all the functions created in init_pre_syn_update. """
+        """ Call the update functions for the requirements added in init_pre_syn_update. """
         for f in self.functions:
             f(time)
         
 
-    def upd_lpf_fast(self,time):
-        """ Update the lpf_fast variable. """
-        # Source units have their own implementation
-        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-        #                                ' lpf_fast updated backwards in time']
-        cur_act = self.buffer[-1] # This doesn't work for source units
-        # This updating rule comes from analytically solving 
-        # lpf_x' = ( x - lpf_x ) / tau
-        # and assuming x didn't change much between self.last_time and time.
-        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
-        self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
-                                   np.exp( (self.last_time-time)/self.tau_fast ) )
-        # update the buffer
-        self.lpf_fast_buff = np.roll(self.lpf_fast_buff, -1)
-        self.lpf_fast_buff[-1] = self.lpf_fast
-
-
     def get_lpf_fast(self, steps):
         """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
-        return self.lpf_fast_buff[-1-steps]
+        return self.lpf_fast.get(steps)
 
 
     def upd_lpf_mid(self,time):
@@ -1270,21 +1271,6 @@ class source(unit):
 
         self.pre_syn_update(time) # update any variables needed for the synapse to update
         self.last_time = time # last_time is used to update some pre_syn_update values
-
-
-    def upd_lpf_fast(self,time):
-        """ Update the lpf_fast variable. 
-        
-            Same as unit.upd_lpf_fast, except for the line obtaining cur_act .
-        """
-        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-        #                                ' lpf_fast updated backwards in time']
-        cur_act = self.get_act(time) # current activity
-        self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
-                                   np.exp( (self.last_time-time)/self.tau_fast ) )
-        # update the buffer
-        self.lpf_fast_buff = np.roll(self.lpf_fast_buff, -1)
-        self.lpf_fast_buff[-1] = self.lpf_fast
 
 
     def upd_lpf_mid(self,time):

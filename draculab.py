@@ -1,4 +1,5 @@
-"""draculab
+"""
+draculab.py
 
 draculab.py  (Delayed-Rate Adaptively-Connected Units Laboratory)
 A simulator of rate units with delayed connections.
@@ -145,7 +146,6 @@ class synapse_types(Enum):
     anticov_pre = 14  # anticovariance rule using the presynaptic mean activity
     delta = 15 # continuous version of the delta rule
 
-
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
 
@@ -196,6 +196,7 @@ class synapse_types(Enum):
         """ Return a list with the name of all defined synapses. """
         return [name for name, member in synapse_types.__members__.items()]
 
+
 class plant_models(Enum):
     """ An enum class with all the implemented plant models. """
     pendulum = 1
@@ -230,8 +231,8 @@ class syn_reqs(Enum):
     """ This enum contains all the variables that a synapse model may ask a unit
         to maintain in order to support its learning function.
 
-        Details are in the function which updates each requirement. The updating function
-        of each requirement is specified in unit.init_pre_syn_update.
+        For each requirement here there is a class with the same name in requirements.py, 
+        with the function used to update it. 
     """
     lpf_fast = 1  # postsynaptic activity low-pass filtered with a fast time constant
     lpf_mid = 2   # postsynaptic activity low-pass filtered with a medium time constant
@@ -276,6 +277,7 @@ from network import *
 from units import *
 from custom_units import *
 from synapses import *
+from requirements import *
 from plants import *
 from topology import *
 
