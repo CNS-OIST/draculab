@@ -274,6 +274,7 @@ class syn_reqs(Enum):
 # Importing the classes used by the simulator
 from network import *
 from units import *
+from custom_units import *
 from synapses import *
 from plants import *
 from topology import *
