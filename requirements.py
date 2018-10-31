@@ -5,6 +5,7 @@ This file contains the classes implementing synaptic requirements for draculab u
 
 from draculab import unit_types, syn_reqs
 from units import *
+import numpy as np
 
 class requirement():
     """ The parent class of requirement classes.  """
@@ -13,7 +14,7 @@ class requirement():
         """ The class constructor.
 
             Args:
-                unit : a reference to the unit where the requirement is used.
+                unio : a reference to the unit where the requirement is used.
 
         """
         self.val = None
@@ -22,8 +23,8 @@ class requirement():
     def update(self, time):
         pass
 
-    def get(self, time):
-        return val
+    def get(self):
+        return self.val
 
 
 class lpf_fast(requirement):
@@ -35,10 +36,10 @@ class lpf_fast(requirement):
         The user needs to set the value of 'tau_fast' in the parameter dictionary 
         that initializes the unit.
 
-        An instance of this class is meant to be created by ini_pre_syn_update 
+        An instance of this class is meant to be created by init_pre_syn_update 
         whenever the unit has the 'lpf_fast' requiremnt. In this case, the update
-        method should be included in the unit's 'functions' list, and called at
-        each simulation step by pre_syn_update.
+        method of this class will be included in the unit's 'functions' list, and 
+        called at each simulation step by pre_syn_update.
 
         Additionally, when the unit has the 'lpf_fast' requirement, the init_buff
         method will be invoked by the unit's init_buffers method.
@@ -52,7 +53,6 @@ class lpf_fast(requirement):
             raise NameError( 'Synaptic plasticity requires unit parameter tau_fast, not yet set' )
         self.val = unit.init_val
         self.unit = unit
-        unit.functions.add(self.update)
         self.init_buff()
  
     def update(self, time):
@@ -79,13 +79,116 @@ class lpf_fast(requirement):
         return self.lpf_fast_buff[-1-steps]
 
 
+class lpf_mid(requirement):
+    """ Maintains a low-pass filtered version of the unit's activity.
+
+        The name lpf_mid indicates that the time constant of the low-pass filter,
+        whose name is 'tau_mid', should have an intermediate value. In practice 
+        this is arbitrary.
+        The user needs to set the value of 'tau_mid' in the parameter dictionary 
+        that initializes the unit.
+
+        An instance of this class is meant to be created by init_pre_syn_update 
+        whenever the unit has the 'lpf_mid' requiremnt. In this case, the update
+        method of this class will be included in the unit's 'functions' list, and 
+        called at each simulation step by pre_syn_update.
+
+        Additionally, when the unit has the 'lpf_mid' requirement, the init_buff
+        method will be invoked by the unit's init_buffers method.
+    """
+    def __init__(self, unit):
+        """ The class' constructor.
+            Args:
+                unit : the unit containing the requirement.
+        """
+        if not hasattr(unit,'tau_mid'): 
+            raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
+        self.val = unit.init_val
+        self.unit = unit
+        self.init_buff()
+ 
+    def update(self, time):
+        """ Update the lpf_fast variable. """
+        #assert time >= self.unit.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_fast updated backwards in time']
+        cur_act = self.unit.get_act(time)
+        # This updating rule comes from analytically solving 
+        # lpf_x' = ( x - lpf_x ) / tau
+        # and assuming x didn't change much between self.last_time and time.
+        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
+        self.val = cur_act + ( (self.val - cur_act) * 
+                                   np.exp( (self.unit.last_time-time)/self.unit.tau_mid ) )
+        # update the buffer
+        self.lpf_mid_buff = np.roll(self.lpf_mid_buff, -1)
+        self.lpf_mid_buff[-1] = self.val
+
+    def init_buff(self):
+        """ Initialize the buffer with past values of lpf_fast. """
+        self.lpf_mid_buff = np.array( [self.unit.init_val]*self.unit.steps, dtype=self.unit.bf_type)
+
+    def get(self, steps):
+        """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
+        return self.lpf_mid_buff[-1-steps]
+
+
+class lpf_slow(requirement):
+    """ Maintains a low-pass filtered version of the unit's activity.
+
+        The name lpf_slow indicates that the time constant of the low-pass filter,
+        whose name is 'tau_slow', should have a relatively large value. In practice 
+        this is arbitrary.
+        The user needs to set the value of 'tau_slow' in the parameter dictionary 
+        that initializes the unit.
+
+        An instance of this class is meant to be created by init_pre_syn_update 
+        whenever the unit has the 'lpf_slow' requiremnt. In this case, the update
+        method of this class will be included in the unit's 'functions' list, and 
+        called at each simulation step by pre_syn_update.
+
+        Additionally, when the unit has the 'lpf_slow' requirement, the init_buff
+        method will be invoked by the unit's init_buffers method.
+    """
+    def __init__(self, unit):
+        """ The class' constructor.
+            Args:
+                unit : the unit containing the requirement.
+        """
+        if not hasattr(unit,'tau_slow'): 
+            raise NameError( 'Synaptic plasticity requires unit parameter tau_slow, not yet set' )
+        self.val = unit.init_val
+        self.unit = unit
+        self.init_buff()
+ 
+    def update(self, time):
+        """ Update the lpf_fast variable. """
+        #assert time >= self.unit.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_fast updated backwards in time']
+        cur_act = self.unit.get_act(time)
+        # This updating rule comes from analytically solving 
+        # lpf_x' = ( x - lpf_x ) / tau
+        # and assuming x didn't change much between self.last_time and time.
+        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
+        self.val = cur_act + ( (self.val - cur_act) * 
+                                   np.exp( (self.unit.last_time-time)/self.unit.tau_slow ) )
+        # update the buffer
+        self.lpf_slow_buff = np.roll(self.lpf_slow_buff, -1)
+        self.lpf_slow_buff[-1] = self.val
+
+    def init_buff(self):
+        """ Initialize the buffer with past values of lpf_fast. """
+        self.lpf_slow_buff = np.array( [self.unit.init_val]*self.unit.steps, dtype=self.unit.bf_type)
+
+    def get(self, steps):
+        """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
+        return self.lpf_slow_buff[-1-steps]
+
+
 class lpf(requirement):
     """ A low pass filter with a given time constant. """
     def __init__(self, unit):
         self.tau = unit.lpf_tau
         self.val = unit.init_val
         self.unit = unit
-        unit.functions.add(self.update)
         self.init_buff()
  
     def update(self, time):
@@ -110,6 +213,69 @@ class lpf(requirement):
     def get(self, steps):
         """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
         return self.lpf_fast_buff[-1-steps]
+
+
+class sq_lpf_slow(requirement):
+    """ A low pass filtered version of the squared activity.
+        
+        As the name implies, the filter uses the "slow" time constant 'tau_slow'.
+        The purpose of this is to have a mean value of the square of the activity,
+        as used in some versions of the BCM learning rule. Accordingly, this 
+        requirement is used byt the bcm_synapse class.
+    """
+    def __init__(self, unit):
+        if not hasattr(unit,'tau_slow'): 
+            raise NameError( 'sq_lpf_slow requires unit parameter tau_slow, not yet set' )
+        self.tau = unit.tau_slow
+        self.val = unit.init_val
+        self.unit = unit
+
+    def update(self,time):
+        """ Update the sq_lpf_slow variable. """
+        #assert time >= self.unit.last_time, ['Unit ' + str(self.unit.ID) + 
+        #                                ' sq_lpf_slow updated backwards in time']
+        cur_sq_act = self.unit.get_act(time)**2.  
+        # This updating rule comes from analytically solving 
+        # lpf_x' = ( x - lpf_x ) / tau
+        # and assuming x didn't change much between self.last_time and time.
+        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
+        self.val = cur_sq_act + ( (self.val - cur_sq_act) * 
+                                  np.exp( (self.unit.last_time-time)/self.tau ) )
+
+class inp_vector(requirement):
+    """ A numpy array with the unit's inputs at the start of the current simulation step.
+
+        The inputs are not multiplied by synaptic weights, and come with their 
+        appropriate delays.
+
+        This input vector is used by other synaptic requirements, namely lpf_mid_inp_sum,
+        balance, and exp_scale. In this last requirement, it is used to obtain the 'mu'
+        factor used by the rule.
+    """
+    def __init__(self, unit):
+        self.unit = unit
+        self.val = np.tile(unit.init_val, len(unit.net.syns[unit.ID]))
+        self.uid = unit.ID
+
+    def update(self, time):
+        self.val = np.array([ fun(time - dely) for dely,fun in 
+                   zip(self.unit.net.delays[self.uid], self.unit.net.act[self.uid]) ])
+
+
+class mp_inputs(requirement):
+    """ Maintains a list with all the inputs, in the format of get_mp_inputs method. 
+
+        In fact, the list is updated using the get_mp_inputs method. Some requirements
+        like mp_balance and lpf_slow_mp_inp_sum use the output of get_mp_inputs, and
+        the mp_inputs requirement saves computations by ensuring that get_mp_inputs
+        only gets called once per simulation step.
+
+        Repeating the docsting of unit.get_mp_inputs:
+        This method is for units where multiport = True, and that have a port_idx attribute.
+        The i-th element of the returned list is a numpy array containing the raw (not multiplied
+        by the synaptic weight) inputs at port i. The inputs include transmision delays.
+    """
+
 
 
 

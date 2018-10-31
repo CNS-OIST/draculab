@@ -98,14 +98,14 @@ class unit():
         self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
         self.bf_type = np.dtype('d') # data type of the buffer when it is a numpy array
 
-        # The following buffers are for synaptic requirements.
+        # The following buffers are for synaptic requirements that can come from presynaptic units.
         # They store one value per update, in the requirement's update method.
         if syn_reqs.lpf_fast in self.syn_needs:
             self.lpf_fast.init_buff()
         if syn_reqs.lpf_mid in self.syn_needs:
-            self.lpf_mid_buff = np.array( [self.init_val]*self.steps, dtype=self.bf_type)
+            self.lpf_mid.init_buff()
         if syn_reqs.lpf_slow in self.syn_needs:
-            self.lpf_slow_buff = np.array( [self.init_val]*self.steps, dtype=self.bf_type)
+            self.lpf_slow.init_buff()
         if syn_reqs.lpf_mid_inp_sum in self.syn_needs:
             self.lpf_mid_inp_sum_buff = np.array( [self.init_val]*self.steps, dtype=self.bf_type)
 
@@ -200,9 +200,6 @@ class unit():
         set by the upd_exp_scale function. This is the way that exp_dist_sigmoidal units get
         their total input.
         """
-        # This accelerates the simulation, but inp_vector is incorrect (only updates every min_delay).
-        #weights = np.array([ syn.w for syn in self.net.syns[self.ID] ])
-        #return sum( self.scale_facs * weights * self.inp_vector )
         return sum( [ sc * syn.w * fun(time-dely) for sc,syn,fun,dely in zip(self.scale_facs,
                       self.net.syns[self.ID], self.net.act[self.ID], self.net.delays[self.ID]) ] )
 
@@ -367,19 +364,19 @@ class unit():
         low-pass filtered versions of pre- and post-synaptic activity, as well as to
         obtain by itself all the values required for its update.
         The function pre_syn_update(), initialized by init_pre_syn_update(), 
-        is tasked with updating all the unit variables used by the synapses to update, or
-        for other purposes of the unit's model.
+        is tasked with updating all the 'slow' unit variables, which can be either used by
+        the synapses, or by the unit itself.
         pre_syn_update() is called once per simulation step (i.e. every min_delay period).
 
         init_pre_syn_update creates the 'functions' list, which contains all the functions
         invoked by pre_syn_update, and initializes all the variables it requires. 
         To do this, it compiles the requirements of all the unit's synapses in the set 
         self.syn_needs, and creates an instance of each requirement, from the classes in
-        the requirements.py file.
+        the requirements.py file. The 'update' method of each requierement is included in
+        the 'functions' list.
 
         Each requirement is a class whose __init__ and update methods initialize the necessary
-        variables, and update them, respectively.  The __init__ method of the requirement also
-        puts its 'update' methods in the unit's 'functions' list.
+        variables, and update them, respectively.  
 
         In addition, for each one of the unit's synapses, init_pre_syn_update will initialize 
         its delay value.
@@ -443,9 +440,11 @@ class unit():
 
         for req in self.syn_needs:
             if issubclass(type(req), syn_reqs):
-                # You create an instance of the requirement. 
+                # Create an instance of the requirement. 
                 # Its name is the requirement's name.
                 setattr(self. req.name, eval(req.name+'(self)'))
+                # Add the requirement's 'update' method to 'functions'
+                eval('self.functions.add(self.'+req.name+'.update)')
             else:  
                 raise NotImplementedError('Asking for a requirement that is not implemented')
 
@@ -459,24 +458,19 @@ class unit():
                 if issubclass(type(req), syn_reqs):
                     name = req.name # name of the requirement as a string
                     setattr(self, name, eval(name+'(self)')) # create an instance with that name
+                    eval('self.functions.add(self.'+name+'.update)')
             elif req is syn_reqs.lpf_mid:  # <----------------------------------
-                if not hasattr(self,'tau_mid'): 
-                    raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
-                self.lpf_mid = self.init_val
-                self.functions.add(self.upd_lpf_mid)
+                setattr(self, req.name, eval(req.name+'(self)')) # create an instance with that name
+                eval('self.functions.add(self.'+req.name+'.update)')
             elif req is syn_reqs.lpf_slow:  # <----------------------------------
-                if not hasattr(self,'tau_slow'): 
-                    raise NameError( 'Synaptic plasticity requires unit parameter tau_slow, not yet set' )
-                self.lpf_slow = self.init_val
-                self.functions.add(self.upd_lpf_slow)
+                setattr(self, req.name, eval(req.name+'(self)')) # create an instance with that name
+                eval('self.functions.add(self.'+req.name+'.update)')
             elif req is syn_reqs.sq_lpf_slow:  # <----------------------------------
-                if not hasattr(self,'tau_slow'): 
-                    raise NameError( 'Synaptic plasticity requires unit parameter tau_slow, not yet set' )
-                self.sq_lpf_slow = self.init_val
-                self.functions.add(self.upd_sq_lpf_slow)
+                setattr(self, req.name, eval(req.name+'(self)')) # create an instance with that name
+                eval('self.functions.add(self.'+req.name+'.update)')
             elif req is syn_reqs.inp_vector: # <----------------------------------
-                self.inp_vector = np.tile(self.init_val, len(self.net.syns[self.ID]))
-                self.functions.add(self.upd_inp_vector)
+                setattr(self, req.name, eval(req.name+'(self)')) # create an instance with that name
+                eval('self.functions.add(self.'+req.name+'.update)')
             elif req is syn_reqs.mp_inputs: # <----------------------------------
                 if not hasattr(self,'port_idx'): 
                     raise NameError( 'the mp_inputs requirement is for multiport units with a port_idx list' )
@@ -719,63 +713,14 @@ class unit():
         return self.lpf_fast.get(steps)
 
 
-    def upd_lpf_mid(self,time):
-        """ Update the lpf_mid variable. """
-        # Source units have their own implementation
-        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-        #                                ' lpf_mid updated backwards in time']
-        cur_act = self.buffer[-1] # This doesn't work for source units
-        # This updating rule comes from analytically solving 
-        # lpf_x' = ( x - lpf_x ) / tau
-        # and assuming x didn't change much between self.last_time and time.
-        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
-        self.lpf_mid = cur_act + ( (self.lpf_mid - cur_act) * 
-                                   np.exp( (self.last_time-time)/self.tau_mid) )
-        # update the buffer
-        self.lpf_mid_buff = np.roll(self.lpf_mid_buff, -1)
-        self.lpf_mid_buff[-1] = self.lpf_mid
-
-
     def get_lpf_mid(self, steps):
         """ Get the mid-speed low-pass filtered activity, as it was 'steps' simulation steps before. """
-        return self.lpf_mid_buff[-1-steps]
-
-
-    def upd_lpf_slow(self,time):
-        """ Update the lpf_slow variable. """
-        # Source units have their own implementation
-        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-        #                                ' lpf_slow updated backwards in time']
-        cur_act = self.buffer[-1] # This doesn't work for source units
-        # This updating rule comes from analytically solving 
-        # lpf_x' = ( x - lpf_x ) / tau
-        # and assuming x didn't change much between self.last_time and time.
-        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
-        self.lpf_slow = cur_act + ( (self.lpf_slow - cur_act) * 
-                                   np.exp( (self.last_time-time)/self.tau_slow ) )
-        # update the buffer
-        self.lpf_slow_buff = np.roll(self.lpf_slow_buff, -1)
-        self.lpf_slow_buff[-1] = self.lpf_slow
+        return self.lpf_mid.get(steps)
 
 
     def get_lpf_slow(self, steps):
         """ Get the slow low-pass filtered activity, as it was 'steps' simulation steps before. """
-        return self.lpf_slow_buff[-1-steps]
-
-
-    def upd_sq_lpf_slow(self,time):
-        """ Update the sq_lpf_slow variable. """
-        # Source units have their own implementation
-        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-        #                                ' sq_lpf_slow updated backwards in time']
-        cur_sq_act = self.buffer[-1]**2.  # This doesn't work for source units.
-        # This updating rule comes from analytically solving 
-        # lpf_x' = ( x - lpf_x ) / tau
-        # and assuming x didn't change much between self.last_time and time.
-        # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
-        self.sq_lpf_slow = cur_sq_act + ( (self.sq_lpf_slow - cur_sq_act) * 
-                                  np.exp( (self.last_time-time)/self.tau_slow ) )
-
+        return self.lpf_slow.get(steps)
 
     def upd_inp_avg(self, time):
         """ Update the average of the inputs with hebbsnorm synapses. 
@@ -840,7 +785,7 @@ class unit():
         """ Update the lpf_mid_inp_sum variable. """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' lpf_mid_inp_sum updated backwards in time']
-        cur_inp_sum = (self.inp_vector).sum()
+        cur_inp_sum = (self.inp_vector.get()).sum()
         #cur_inp_sum = sum(self.get_inputs(time))
         # This updating rule comes from analytically solving 
         # lpf_x' = ( x - lpf_x ) / tau
@@ -881,7 +826,7 @@ class unit():
             NOTICE: this version does not restrict inputs to exp_rate_dist synapses.
         """
         #inputs = np.array(self.get_inputs(time)) # current inputs
-        inputs = self.inp_vector
+        inputs = self.inp_vector.get()
         N = len(inputs)
         r = self.buffer[-1] # current rate
         self.above = ( 0.5 * (np.sign(inputs - r) + 1.).sum() ) / N
@@ -924,12 +869,12 @@ class unit():
         ######################################################################
         #u = (np.log(r/(1.-r))/self.slope) + self.thresh  # this u lags, so I changed it
         weights = np.array([syn.w for syn in self.net.syns[self.ID]])
-        #u = np.dot(self.inp_vector[self.exc_idx], weights[self.exc_idx])
+        #u = np.dot(self.inp_vector.get()[self.exc_idx], weights[self.exc_idx])
         #u = self.get_input_sum(time)
         u = self.get_exp_sc_input_sum(time)
-        I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
-        #I = u - np.sum( self.inp_vector[self.exc_idx] * weights[self.exc_idx] ) 
-        mu_exc = np.maximum( np.sum( self.inp_vector[self.exc_idx] ), 0.001 )
+        I = np.sum( self.inp_vector.get()[self.inh_idx] * weights[self.inh_idx] ) 
+        #I = u - np.sum( self.inp_vector.get()[self.exc_idx] * weights[self.exc_idx] ) 
+        mu_exc = np.maximum( np.sum( self.inp_vector.get()[self.exc_idx] ), 0.001 )
         #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
         #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
         ss_scale = (u - I + self.Kp * error) / mu_exc
@@ -1086,12 +1031,6 @@ class unit():
         x = (x0 * syn_scale) / (x0 + (syn_scale - x0) * np.exp(-exp_tau * syn_scale * self.net.min_delay) )
         self.scale_facs_rdc[self.exc_idx_rdc] = x
  
-        
-    def upd_inp_vector(self, time):
-        """ Update a numpy array containing all the current synaptic inputs """
-        self.inp_vector = np.array([ fun(time - dely) for dely,fun in 
-                                     zip(self.net.delays[self.ID], self.net.act[self.ID]) ])
-
 
     def upd_mp_inputs(self, time):
         """ Update a copy of the results of get_mp_inputs. """
@@ -1268,46 +1207,8 @@ class source(unit):
         In the case of source units, update() only updates any values being used by
         synapses where it is the presynaptic component.
         """
-
         self.pre_syn_update(time) # update any variables needed for the synapse to update
         self.last_time = time # last_time is used to update some pre_syn_update values
-
-
-    def upd_lpf_mid(self,time):
-        """ Update the lpf_mid variable.
-
-            Same as unit.upd_lpf_mid, except for the line obtaining cur_act .
-        """
-        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-        #                                ' lpf_mid updated backwards in time']
-        cur_act = self.get_act(time) # current activity
-        self.lpf_mid = cur_act + ( (self.lpf_mid - cur_act) * 
-                                   np.exp( (self.last_time-time)/self.tau_mid) )
-        self.lpf_mid_buff = np.roll(self.lpf_mid_buff, -1)
-        self.lpf_mid_buff[-1] = self.lpf_mid
-
-
-    def upd_lpf_slow(self,time):
-        """ Update the lpf_slow variable.
-
-            Same as unit.upd_lpf_slow, except for the line obtaining cur_act .
-        """
-        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-        #                                ' lpf_slow updated backwards in time']
-        cur_act = self.get_act(time) # current activity
-        self.lpf_slow = cur_act + ( (self.lpf_slow - cur_act) * 
-                                   np.exp( (self.last_time-time)/self.tau_slow ) )
-        self.lpf_slow_buff = np.roll(self.lpf_slow_buff, -1)
-        self.lpf_slow_buff[-1] = self.lpf_slow
-
-
-    def upd_sq_lpf_slow(self,time):
-        """ Update the sq_lpf_slow variable. """
-        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-        #                                ' sq_lpf_slow updated backwards in time']
-        cur_sq_act = self.get_act(time)**2 # square of current activity
-        self.sq_lpf_slow = cur_sq_act + ( (self.sq_lpf_slow - cur_sq_act) * 
-                                  np.exp( (self.last_time-time)/self.tau_slow ) )
 
 
 class sigmoidal(unit): 

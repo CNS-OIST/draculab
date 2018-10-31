@@ -218,7 +218,7 @@ class covariance_synapse(synapse):
         """ Update the weight according to the covariance learning rule."""
         # If the network is correctly initialized, the pre-synaptic unit is updatig lpf_fast, and the 
         # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
-        avg_post = self.net.units[self.postID].lpf_slow
+        avg_post = self.net.units[self.postID].get_lpf_slow(0)
         post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
@@ -264,7 +264,7 @@ class anti_covariance_synapse(synapse):
         """ Update the weight according to the anti-covariance learning rule."""
         # If the network is correctly initialized, the pre-synaptic unit is updatig lpf_fast, and the 
         # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
-        avg_post = self.net.units[self.postID].lpf_slow
+        avg_post = self.net.units[self.postID].get_lpf_slow(0)
         post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
@@ -534,7 +534,7 @@ class bcm_synapse(synapse):
     def update(self, time):
         """ Update the weight using the BCM rule. """
         post = self.net.units[self.postID].get_lpf_fast(0)
-        avg_sq = self.net.units[self.postID].sq_lpf_slow
+        avg_sq = self.net.units[self.postID].sq_lpf_slow.get()
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
         self.w = self.w + self.alpha * post * (post - avg_sq) * pre / avg_sq
@@ -657,7 +657,8 @@ class diff_hebb_subsnorm_synapse(synapse):
         """
         diff_avg = self.net.units[self.postID].diff_avg
         # pos_diff_avg = self.net.units[self.postID].pos_diff_avg
-        Dpost = self.net.units[self.postID].get_lpf_fast(0) - self.net.units[self.postID].lpf_mid
+        Dpost = (self.net.units[self.postID].get_lpf_fast(0) - 
+                 self.net.units[self.postID].get_lpf_mid(0) )
         Dpre = ( self.net.units[self.preID].get_lpf_fast(self.delay_steps) -
                  self.net.units[self.preID].get_lpf_mid(self.delay_steps) )
         
