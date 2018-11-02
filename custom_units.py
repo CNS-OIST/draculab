@@ -360,8 +360,8 @@ class exp_dist_sigmoidal(unit):
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
-        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
-        return cython_sig(self.thresh, self.slope, arg)
+        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        #return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """

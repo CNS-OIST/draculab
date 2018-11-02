@@ -327,7 +327,7 @@ class hebb_subsnorm_synapse(synapse):
         when calculating the input average.
 
         Notice that this rule will ignore any inputs with other type of synapses 
-        when it obtains the average input value (see unit.upd_inp_avg and unit.init_pre_syn_update).
+        when it obtains the average input value (see the class pos_inp_avg_hsn in requirements.py).
 
         The equation used is 8.14 from Dayan and Abbott "Theoretical Neuroscience" (MIT Press 2001)
         Presynaptic inputs include their delays; this includes all the inputs used to
@@ -352,7 +352,7 @@ class hebb_subsnorm_synapse(synapse):
         # The Hebbian rule requires the current pre- and post-synaptic activity.
         # Substractive normalization requires the average input value, obtained from lpf_fast values.
         # The average input value obtained only considers units with positive synaptic weights.
-        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.pos_inp_avg])
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.pos_inp_avg_hsn])
         assert self.type is synapse_types.hebbsnorm, ['Synapse from ' + str(self.preID) + ' to ' +
                                                        str(self.postID) + ' instantiated with the wrong type']
     
@@ -362,10 +362,10 @@ class hebb_subsnorm_synapse(synapse):
             If the network is correctly initialized, the pre-synaptic unit updates lpf_fast, 
             and the post-synaptic unit updates lpf_fast and its input average.
 
-            Notice the average input currently comes from pos_inp_avg, which only considers
+            Notice the average input currently comes from pos_inp_avg_hsn, which only considers
             the inputs whose synapses have positive values.
         """
-        inp_avg = self.net.units[self.postID].pos_inp_avg
+        inp_avg = self.net.units[self.postID].reqs['pos_inp_avg_hsn'].val
         post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
@@ -534,7 +534,7 @@ class bcm_synapse(synapse):
     def update(self, time):
         """ Update the weight using the BCM rule. """
         post = self.net.units[self.postID].get_lpf_fast(0)
-        avg_sq = self.net.units[self.postID].sq_lpf_slow.get()
+        avg_sq = self.net.units[self.postID].reqs['sq_lpf_slow'].val
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
         self.w = self.w + self.alpha * post * (post - avg_sq) * pre / avg_sq

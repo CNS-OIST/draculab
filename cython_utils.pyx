@@ -17,8 +17,8 @@ from scipy.integrate import odeint
 @cython.wraparound(False)
 #def cython_get_act2(double time, double t0, double t1, np.array[double, ndim=1] times, 
 #                    int b_size, np.ndarray[double, ndim=1] buff):
-def cython_get_act2(double time, double t0, double t1, double[:] times, int b_size, double[:] buff):
-#def cython_get_act2(float time, float t0, float t1, np.ndarray[np.float_t, ndim=1] times, int b_size, np.ndarray[np.float_t, ndim=1] buff):
+#def cython_get_act2(double time, double t0, double t1, double[:] times, int b_size, double[:] buff):
+def cython_get_act2(float time, float t0, float t1, np.ndarray[np.float64_t, ndim=1] times, int b_size, np.ndarray[np.float64_t, ndim=1] buff):
     """
         The Cython version of the second implementation of unit.get_act()
 
@@ -30,13 +30,14 @@ def cython_get_act2(double time, double t0, double t1, double[:] times, int b_si
             b_size : self.buff_size
             buff : self.buffer
     """
-    #cdef float t = min( max(time, t0), t1 ) # clipping 'time'
-    cdef double t = min( max(time, t0), t1 ) # clipping 'time'
-    #cdef float frac = (t-t0)/(t1-t0)
+    cdef float t = min( max(time, t0), t1 ) # clipping 'time'
+    #cdef double t = min( max(time, t0), t1 ) # clipping 'time'
+    cdef float frac = (t-t0)/(t1-t0)
     #cdef double frac = (t-t0)/(t1-t0)
     frac = (t-t0)/(t1-t0)
     cdef int base = <int>(frac*(b_size-1)) # biggest index s.t. times[index] <= time
-    cdef double frac2 = ( t-times[base] ) / ( times[min(base+1,b_size-1)] - times[base] + 1e-8 )
+    #cdef double frac2 = ( t-times[base] ) / ( times[min(base+1,b_size-1)] - times[base] + 1e-8 )
+    cdef float frac2 = ( t-times[base] ) / ( times[min(base+1,b_size-1)] - times[base] + 1e-8 )
     return buff[base] + frac2 * ( buff[min(base+1,b_size-1)] - buff[base] )
     """
     cdef int i = 0
@@ -53,7 +54,8 @@ def cython_get_act2(double time, double t0, double t1, double[:] times, int b_si
 @cython.boundscheck(False)
 @cython.wraparound(False)
 #def cython_get_act3(float time, float times0, float time_bit, int b_size, np.ndarray[float, ndim=1] buff):
-def cython_get_act3(double time, double times0, double time_bit, Py_ssize_t b_size, double[:] buff):
+def cython_get_act3(float time, float times0, float time_bit, int b_size, np.ndarray[np.float64_t, ndim=1] buff):
+#def cython_get_act3(double time, double times0, double time_bit, Py_ssize_t b_size, double[:] buff):
     """
         The Cython version of the third implementation of unit.get_act()
 
@@ -64,11 +66,14 @@ def cython_get_act3(double time, double times0, double time_bit, Py_ssize_t b_si
             b_size : self.buff_size
             buff : self.buffer
     """
-    cdef double t = time - times0
+    #cdef double t = time - times0
+    cdef float t = time - times0
     cdef Py_ssize_t base = <int>(t // time_bit)
-    cdef double rem = t % time_bit
+    #cdef double rem = t % time_bit
+    cdef float rem = t % time_bit
     base = max( 0, min( base, b_size-2 ) )
-    cdef double frac2 = rem / time_bit
+    #cdef double frac2 = rem / time_bit
+    cdef float frac2 = rem / time_bit
     return buff[base] + frac2 * ( buff[base+1] - buff[base] )
 
 
@@ -144,8 +149,8 @@ cdef euler_maruyama_impl(derivatives, double[::1] buff, double t0, Py_ssize_t of
 
 def euler_maruyama(derivatives, double[::1] buff, double t0, Py_ssize_t offset, 
                        double dt, double mu, double sigma):
-#def euler_maruyama(derivatives,  np.array[float, ndim=1] buff, double t0, int offset, 
-#                       double dt, double mu, double sigma):
+#def euler_maruyama(derivatives,  np.ndarray[np.float64_t, ndim=1] buff, float t0, Py_ssize_t offset, 
+#                       float dt, float mu, float sigma):
     """ The Euler-Maruyama method for stochastic differential equations.
 
         This solver turns the neural model into a Langevin equation by adding white noise.
@@ -171,9 +176,10 @@ def euler_maruyama(derivatives, double[::1] buff, double t0, Py_ssize_t offset,
     cdef double t = t0
     cdef double factor = sigma*np.sqrt(dt)
     cdef double mudt = mu*dt
-    cdef double[:] noise = np.random.normal(loc=0., scale=1., size=buff.shape[0]-offset)
+    #cdef float[:] noise = np.random.normal(loc=0., scale=1., size=buff.shape[0]-offset)
     sqrdt = np.sqrt(dt)
     for step in range(offset, len(buff)):
+        #buff[step] = buff[step-1] + ( dt * derivatives([buff[step-1]], t) + mudt
         buff[step] = buff[step-1] + ( dt * <double>derivatives([buff[step-1]], t) + mudt
                                   + sigma * np.random.normal(loc=0., scale=sqrdt) )
         buff[step] = max(buff[step], 0.)
