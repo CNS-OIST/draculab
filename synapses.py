@@ -327,7 +327,7 @@ class hebb_subsnorm_synapse(synapse):
         when calculating the input average.
 
         Notice that this rule will ignore any inputs with other type of synapses 
-        when it obtains the average input value (see the class pos_inp_avg_hsn in requirements.py).
+        when it obtains the average input value (see pos_inp_avg_hsn in requirements.py).
 
         The equation used is 8.14 from Dayan and Abbott "Theoretical Neuroscience" (MIT Press 2001)
         Presynaptic inputs include their delays; this includes all the inputs used to
@@ -365,7 +365,8 @@ class hebb_subsnorm_synapse(synapse):
             Notice the average input currently comes from pos_inp_avg_hsn, which only considers
             the inputs whose synapses have positive values.
         """
-        inp_avg = self.net.units[self.postID].reqs['pos_inp_avg_hsn'].val
+        inp_avg = self.net.units[self.postID].pos_inp_avg_hsn
+        #inp_avg = self.net.units[self.postID].reqs['pos_inp_avg_hsn'].val
         post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
@@ -381,7 +382,8 @@ class sq_hebb_subsnorm_synapse(synapse):
         This rule keeps the sum of the squared synaptic weights asymptotically approaching omega,
         and w will not go from positive to negative.
         This implementation will ignore any inputs with other type of synapses when it obtains 
-        the average input value (see unit.upd_sc_inp_sum and unit.init_pre_syn_update).
+        the average input value (see unit.upd_sc_inp_sum_sqhsn in units.py,  and add_sc_inp_sum 
+        in requirements.py).
 
         The equation used is taken from:
         Moldakarimov, MacClelland and Ermentrout 2006, "A homeostatic rule for inhibitory synapses 
@@ -410,7 +412,7 @@ class sq_hebb_subsnorm_synapse(synapse):
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The Hebbian rule requires the current pre- and post-synaptic activity.
         # Substractive normalization requires the scaled input sum, obtained from lpf_fast values.
-        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.sc_inp_sum])
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.sc_inp_sum_sqhsn])
         assert self.type is synapse_types.sq_hebbsnorm, ['Synapse from ' + str(self.preID) + ' to ' +
                                                           str(self.postID) + ' instantiated with the wrong type']
     
@@ -420,7 +422,7 @@ class sq_hebb_subsnorm_synapse(synapse):
             If the network is correctly initialized, the pre-synaptic unit updates lpf_fast, 
             and the post-synaptic unit updates lpf_fast and its scaled sum of lpf'd inputs.
         """
-        sc_inp_sum = self.net.units[self.postID].sc_inp_sum
+        sc_inp_sum = self.net.units[self.postID].sc_inp_sum_sqhsn
         post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
@@ -534,7 +536,7 @@ class bcm_synapse(synapse):
     def update(self, time):
         """ Update the weight using the BCM rule. """
         post = self.net.units[self.postID].get_lpf_fast(0)
-        avg_sq = self.net.units[self.postID].reqs['sq_lpf_slow'].val
+        avg_sq = self.net.units[self.postID].sq_lpf_slow
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         # A forward Euler step 
         self.w = self.w + self.alpha * post * (post - avg_sq) * pre / avg_sq
@@ -665,6 +667,7 @@ class diff_hebb_subsnorm_synapse(synapse):
         # A forward Euler step with the normalized differential Hebbian learning rule 
         self.w = self.w + self.alpha *  Dpost * (Dpre - diff_avg)
         #if self.w < 0: self.w = 0
+
 
 class corr_homeo_inhib_synapse(synapse):
     """ An inhibitory synapse with activity-dependent potentiation and depression.

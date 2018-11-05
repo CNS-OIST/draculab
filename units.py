@@ -102,11 +102,11 @@ class unit():
         # The following buffers are for synaptic requirements that can come from presynaptic units.
         # They store one value per update, in the requirement's update method.
         if syn_reqs.lpf_fast in self.syn_needs:
-            self.init_lpf_fast_buff()
+            self.lpf_fast_buff = np.array( [self.init_val]*self.steps, dtype=self.bf_type)
         if syn_reqs.lpf_mid in self.syn_needs:
-            self.reqs['lpf_mid'].init_buff()
+            self.lpf_mid_buff= np.array( [self.init_val]*self.steps, dtype=self.bf_type)
         if syn_reqs.lpf_slow in self.syn_needs:
-            self.reqs['lpf_slow'].init_buff()
+            self.lpf_slow_buff = np.array( [self.init_val]*self.steps, dtype=self.bf_type)
         if syn_reqs.lpf_mid_inp_sum in self.syn_needs:
             self.lpf_mid_inp_sum_buff = np.array( [self.init_val]*self.steps, dtype=self.bf_type)
 
@@ -365,7 +365,7 @@ class unit():
   
     def init_pre_syn_update(self):
         """
-        Create a pre_syn_update function according to current synaptic requirements.
+        Configure the pre_syn_update function according to current synaptic requirements.
 
         Correlational learning rules require the pre- and post-synaptic activity, in this
         case low-pass filtered in order to implement a running average. Moreover, for
@@ -426,7 +426,7 @@ class unit():
         There are 2 strategies under consideration to deal with the elif wall:
         1) Moving the requirements' variables, initialization, and update routines to
            classes in the requirements.py files. What init_pre_syn update does in this
-           case is to create instances of the requirement classes to be used in the
+           case is to create instances of the requirement classes, placing them in the 
            'reqs' dictionary. This way, pre_syn_update operates by calling the 'update' 
            method of all requirements in 'reqs'.
            This organizes things very nicely, but unfortunately it also slows down
@@ -445,14 +445,11 @@ class unit():
            can be brought down, there is still separation between the initialization of
            the requierements' data structures and its update method.
 
-        I will probably go with option 2. Moreover, to reduce the number of upd_ methods
+        I currently go with option 2. Moreover, to reduce the number of upd_ methods
         in 'unit', for those requirements that are specific to particular unit types, I
         will put the upd_ methods in those units. This should apply mostly to the family
         of exponential rate distribution units.
 
-        Currently lpf_fast uses option2, whereas lpf_mid, lpf_slow, sq_lpf_slow, inp_vector,
-        mp_inputs, inp_avg_hsn, and pos_inp_avg_hsn are using option 1. The rest of the
-        requirements don't use either option.
         """ 
         assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
                                          str(self.ID) + ' when simulation time is not zero']
@@ -530,70 +527,41 @@ class unit():
                 eval('add_'+req.name+'(self)')
                 eval('self.functions.add(self.upd_'+req.name+')')
             elif req is syn_reqs.lpf_mid:  # <----------------------------------
-                self.reqs[req.name] = eval(req.name+'(self)')
+                eval('add_'+req.name+'(self)')
+                eval('self.functions.add(self.upd_'+req.name+')')
             elif req is syn_reqs.lpf_slow:  # <----------------------------------
-                self.reqs[req.name] = eval(req.name+'(self)')
+                eval('add_'+req.name+'(self)')
+                eval('self.functions.add(self.upd_'+req.name+')')
             elif req is syn_reqs.sq_lpf_slow:  # <----------------------------------
-                self.reqs[req.name] = eval(req.name+'(self)')
+                eval('add_'+req.name+'(self)')
+                eval('self.functions.add(self.upd_'+req.name+')')
             elif req is syn_reqs.inp_vector: # <----------------------------------
-                self.reqs[req.name] = eval(req.name+'(self)')
+                eval('add_'+req.name+'(self)')
+                eval('self.functions.add(self.upd_'+req.name+')')
             elif req is syn_reqs.mp_inputs: # <----------------------------------
-                self.reqs[req.name] = eval(req.name+'(self)')
+                eval('add_'+req.name+'(self)')
+                eval('self.functions.add(self.upd_'+req.name+')')
             elif req is syn_reqs.inp_avg_hsn:  # <----------------------------------
-                self.reqs[req.name] = eval(req.name+'(self)')
+                eval('add_'+req.name+'(self)')
+                eval('self.functions.add(self.upd_'+req.name+')')
             elif req is syn_reqs.pos_inp_avg_hsn:  # <----------------------------------
-                self.reqs[req.name] = eval(req.name+'(self)')
+                eval('add_'+req.name+'(self)')
+                eval('self.functions.add(self.upd_'+req.name+')')
             elif req is syn_reqs.err_diff:  # <----------------------------------
-                self.err_idx = [] # a list with the indexes of the units that provide errors
-                self.pred_idx = [] # a list with the indexes of the units that provide predictors 
-                self.err_dels = [] # a list with the delays for each unit in err_idx
-                self.err_diff = 0. # approximation of error derivative, updated by upd_err_diff
-                for syn in self.net.syns[self.ID]:
-                    if syn.type is synapse_types.inp_corr:
-                        if syn.input_type == 'error':
-                            self.err_idx.append(syn.preID)
-                            self.err_dels.append(syn.delay_steps)
-                        elif syn.input_type == 'pred': 
-                            self.pred_idx.append(syn.preID) # not currently using this list
-                        else:
-                            raise ValueError('Incorrect input_type ' + str(syn.input_type) + ' found in synapse')
-                self.err_idx_dels = list(zip(self.err_idx, self.err_dels)) # both lists zipped
-                self.functions.add(self.upd_err_diff)
-            elif req is syn_reqs.sc_inp_sum: # <----------------------------------
-                sq_snorm_units = [] # a list with all the presynaptic neurons providing
-                                        # sq_hebbsnorm synapses
-                sq_snorm_syns = []  # a list with all the sq_hebbsnorm synapses
-                sq_snorm_dels = []  # a list with the delay steps for the sq_hebbsnorm synapses
-                for syn in self.net.syns[self.ID]:
-                    if syn.type is synapse_types.sq_hebbsnorm:
-                        sq_snorm_syns.append(syn)
-                        sq_snorm_units.append(self.net.units[syn.preID])
-                        sq_snorm_dels.append(syn.delay_steps)
-                self.u_d_syn = list(zip(sq_snorm_units, sq_snorm_dels, sq_snorm_syns)) # all lists zipped
-                self.sc_inp_sum = 0.2  # an arbitrary initialization of the scaled input value
-                self.functions.add(self.upd_sc_inp_sum)
+                eval('add_'+req.name+'(self)')
+                eval('self.functions.add(self.upd_'+req.name+')')
+            elif req is syn_reqs.sc_inp_sum_sqhsn: # <----------------------------------
+                eval('add_'+req.name+'(self)')
+                eval('self.functions.add(self.upd_'+req.name+')')
             elif req is syn_reqs.diff_avg: # <----------------------------------
-                self.dsnorm_list = [] # list with all presynaptic units providing
-                                      # diff_hebb_subsnorm synapses
-                self.dsnorm_dels = [] # list with delay steps for each connection in dsnorm_list
-                for syn in self.net.syns[self.ID]:
-                    if syn.type is synapse_types.diff_hebbsnorm:
-                        self.dsnorm_list.append(self.net.units[syn.preID])
-                        self.dsnorm_dels.append(syn.delay_steps)
-                self.n_dhebbsnorm = len(self.dsnorm_list) # number of diff_hebbsnorm synapses received
-                self.diff_avg = 0.2  # an arbitrary initialization of the input derivatives average 
-                self.dsnorm_list_dels = list(zip(self.dsnorm_list, self.dsnorm_dels)) # both lists zipped
-                self.functions.add(self.upd_diff_avg)
+                eval('add_'+req.name+'(self)')
+                eval('self.functions.add(self.upd_'+req.name+')')
             elif req is syn_reqs.lpf_mid_inp_sum:  # <----------------------------------
-                if not hasattr(self,'tau_mid'): 
-                    raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
-                if not syn_reqs.inp_vector in self.syn_needs:
-                    raise AssertionError('lpf_mid_inp_sum requires the inp_vector requirement to be set')
-                self.lpf_mid_inp_sum = self.init_val # this initialization is rather arbitrary
-                self.functions.add(self.upd_lpf_mid_inp_sum)
-            elif req is syn_reqs.n_erd:  # <---------------------------------- ONLY USED IN LEGACY CODE
-                self.n_erd = len([s for s in self.net.syns[self.ID] if s.type is synapse_types.exp_rate_dist])
-                # n_erd doesn't need to be updated :)
+                eval('add_'+req.name+'(self)')
+                eval('self.functions.add(self.upd_'+req.name+')')
+            elif req is syn_reqs.lpf_slow_mp_inp_sum:  # <----------------------------------
+                eval('add_'+req.name+'(self)')
+                eval('self.functions.add(self.upd_'+req.name+')')
             elif req is syn_reqs.balance:  # <----------------------------------
                 if not syn_reqs.inp_vector in self.syn_needs:
                     raise AssertionError('balance requirement has the inp_vector requirement as a prerequisite')
@@ -642,13 +610,6 @@ class unit():
                 if not self.multiport:
                     raise AssertionError('The slide_thr_shrp is for multiport units only')
                 self.functions.add(self.upd_thr_shrp)
-            elif req is syn_reqs.lpf_slow_mp_inp_sum:  # <----------------------------------
-                if not hasattr(self,'tau_slow'): 
-                    raise NameError( 'Requirement lpf_slow_mp_inp_sum requires parameter tau_slow, not yet set' )
-                if not syn_reqs.mp_inputs in self.syn_needs:
-                    raise AssertionError('lpf_slow_mp_inp_sum requires the mp_inputs requirement')
-                self.lpf_slow_mp_inp_sum = [ 0.2 for _ in range(self.n_ports) ]
-                self.functions.add(self.upd_lpf_slow_mp_inp_sum)
             elif req is syn_reqs.slide_thr_hr:  # <----------------------------------
                 if not syn_reqs.mp_inputs in self.syn_needs:
                     raise AssertionError('slide_thr_hr requires the mp_inputs requirement to be set')
@@ -742,6 +703,10 @@ class unit():
                 raise NotImplementedError('Asking for a requirement that is not implemented')
     
 
+    ###################################
+    # UPDATE METHODS FOR REQUIREMENTS #
+    ###################################
+
     def upd_lpf_fast(self, time):
         """ Update the lpf_fast variable. """
         #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
@@ -764,14 +729,75 @@ class unit():
         #return self.reqs['lpf_fast'].get(steps)
 
 
+    def upd_lpf_mid(self, time):
+        """ Update the lpf_mid variable. """
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_mid updated backwards in time']
+        cur_act = self.get_act(time)
+        # Same update method as in upd_lpf_fast
+        self.lpf_mid = cur_act + ( (self.lpf_mid - cur_act) * 
+                                   np.exp( (self.last_time-time)/self.tau_mid) )
+        # update the buffer
+        self.lpf_mid_buff = np.roll(self.lpf_mid_buff, -1)
+        self.lpf_mid_buff[-1] = self.lpf_mid
+ 
+
     def get_lpf_mid(self, steps):
         """ Get the mid-speed low-pass filtered activity, as it was 'steps' simulation steps before. """
-        return self.reqs['lpf_mid'].get(steps)
+        return self.lpf_mid_buff[-1-steps]
 
+
+    def upd_lpf_slow(self, time):
+        """ Update the lpf_slow variable. """
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_slow updated backwards in time']
+        cur_act = self.get_act(time)
+        # Same update method as in upd_lpf_fast
+        self.lpf_slow = cur_act + ( (self.lpf_slow - cur_act) * 
+                                   np.exp( (self.last_time-time)/self.tau_slow) )
+        # update the buffer
+        self.lpf_slow_buff = np.roll(self.lpf_slow_buff, -1)
+        self.lpf_slow_buff[-1] = self.lpf_slow
+ 
 
     def get_lpf_slow(self, steps):
         """ Get the slow low-pass filtered activity, as it was 'steps' simulation steps before. """
-        return self.reqs['lpf_slow'].get(steps)
+        return self.lpf_slow_buff[-1-steps]
+
+
+    def upd_sq_lpf_slow(self,time):
+        """ Update the sq_lpf_slow variable. """
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' sq_lpf_slow updated backwards in time']
+        cur_sq_act = self.get_act(time)**2.  
+        # Same update method as in upd_lpf_fast
+        self.sq_lpf_slow = cur_sq_act + ( (self.sq_lpf_slow - cur_sq_act) * 
+                                  np.exp( (self.last_time-time)/self.tau_slow ) )
+
+    
+    def upd_inp_vector(self, time):
+        """ Update the inp_vector variable. """
+        self.inp_vector = np.array([ fun(time - dely) for dely,fun in 
+                   zip(self.net.delays[self.ID], self.net.act[self.ID]) ])
+
+
+    def upd_mp_inputs(self, time):
+        """ Update the mp_inputs variable. """
+        self.mp_inputs = self.get_mp_inputs(time)
+
+
+    def upd_inp_avg_hsn(self, time):
+        """ Update the inp_avg_hsn variable. """
+        self.inp_avg_hsn = ( sum([u.get_lpf_fast(s) for u,s in self.snorm_list_dels]) 
+                             / self.n_hebbsnorm )
+
+
+    def upd_pos_inp_avg_hsn(self, time):
+        """ Update the pos_inp_avg_hsn variable. """
+        # first, update the n vector from Eq. 8.14, pg. 290 in Dayan & Abbott
+        self.n_vec = [ 1. if syn.w>0. else 0. for syn in self.snorm_syns ]
+        self.pos_inp_avg_hsn = sum([n*(u.get_lpf_fast(s)) for n,u,s in 
+                        zip(self.n_vec, self.snorm_units, self.snorm_delys)]) / sum(self.n_vec)
 
 
     def upd_err_diff(self, time):
@@ -785,14 +811,14 @@ class unit():
                           sum([ self.net.units[i].get_lpf_mid(s) for i,s in self.err_idx_dels ]) )
        
 
-    def upd_sc_inp_sum(self, time):
+    def upd_sc_inp_sum_sqhsn(self, time):
         """ Update the sum of the inputs multiplied by their synaptic weights.
         
             The actual value being summed is lpf_fast of the presynaptic units.
         """
-        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-                                        ' sc_inp_sum updated backwards in time']
-        self.sc_inp_sum = sum([u.get_lpf_fast(d) * syn.w for u,d,syn in self.u_d_syn])
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' sc_inp_sum_sqhsn updated backwards in time']
+        self.sc_inp_sum_sqhsn = sum([u.get_lpf_fast(d) * syn.w for u,d,syn in self.u_d_syn])
         
         
     def upd_diff_avg(self, time):
@@ -802,16 +828,17 @@ class unit():
             which are roughly proportional to them, coming from the difference 
             lpf_fast - lpf_mid . 
         """
-        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-                                        ' diff_avg updated backwards in time']
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' diff_avg updated backwards in time']
         self.diff_avg = ( sum([u.get_lpf_fast(s) - u.get_lpf_mid(s) for u,s in self.dsnorm_list_dels]) 
                           / self.n_dhebbsnorm )
 
+
     def upd_lpf_mid_inp_sum(self,time):
         """ Update the lpf_mid_inp_sum variable. """
-        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-                                        ' lpf_mid_inp_sum updated backwards in time']
-        cur_inp_sum = (self.reqs['inp_vector'].val).sum()
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_mid_inp_sum updated backwards in time']
+        cur_inp_sum = self.inp_vector.sum()
         #cur_inp_sum = sum(self.get_inputs(time))
         # This updating rule comes from analytically solving 
         # lpf_x' = ( x - lpf_x ) / tau
@@ -833,7 +860,7 @@ class unit():
         """ Update the slow LPF'd scaled sum of inputs at individual ports, returning them in a list. """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' lpf_slow_mp_inp_sum updated backwards in time']
-        inputs = self.reqs['mp_inputs'].val  # updated due to the mp_inputs synaptic requirement
+        inputs = self.mp_inputs    # updated because mp_inputs is a requirement variable
         weights = self.get_mp_weights(time)
         dots = [ np.dot(i, w) for i, w in zip(inputs, weights) ]
         # same update rule from other upd_lpf_X methods above, put in a list comprehension
@@ -841,6 +868,7 @@ class unit():
                                    np.exp( (self.last_time-time)/self.tau_slow ) for i in range(self.n_ports)]
 
 
+#---------------
     def upd_balance(self, time):
         """ Updates two numbers called  below, and above.
 
@@ -852,7 +880,7 @@ class unit():
             NOTICE: this version does not restrict inputs to exp_rate_dist synapses.
         """
         #inputs = np.array(self.get_inputs(time)) # current inputs
-        inputs = self.reqs['inp_vector'].val
+        inputs = self.inp_vector
         N = len(inputs)
         r = self.buffer[-1] # current rate
         self.above = ( 0.5 * (np.sign(inputs - r) + 1.).sum() ) / N
@@ -872,7 +900,7 @@ class unit():
 
             This is the same as upd_balance, but ports other than the rdc_port are ignored.
         """
-        inputs = self.reqs['mp_inputs'].val[self.rdc_port]
+        inputs = self.mp_inputs[self.rdc_port]
         N = len(inputs)
         r = self.buffer[-1] # current rate
         self.above = ( 0.5 * (np.sign(inputs - r) + 1.).sum() ) / N
@@ -895,12 +923,12 @@ class unit():
         ######################################################################
         #u = (np.log(r/(1.-r))/self.slope) + self.thresh  # this u lags, so I changed it
         weights = np.array([syn.w for syn in self.net.syns[self.ID]])
-        #u = np.dot(self.reqs['inp_vector'].val[self.exc_idx], weights[self.exc_idx])
+        #u = np.dot(self.inp_vector[self.exc_idx], weights[self.exc_idx])
         #u = self.get_input_sum(time)
         u = self.get_exp_sc_input_sum(time)
-        I = np.sum( (self.reqs['inp_vector'].val)[self.inh_idx] * weights[self.inh_idx] ) 
-        #I = u - np.sum( self.reqs['inp_vector'].get()[self.exc_idx] * weights[self.exc_idx] ) 
-        mu_exc = np.maximum( np.sum( self.reqs['inp_vector'].val[self.exc_idx] ), 0.001 )
+        I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
+        #I = u - np.sum( self.inp_vector.get()[self.exc_idx] * weights[self.exc_idx] ) 
+        mu_exc = np.maximum( np.sum( self.inp_vector[self.exc_idx] ), 0.001 )
         #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
         #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
         ss_scale = (u - I + self.Kp * error) / mu_exc
@@ -937,7 +965,7 @@ class unit():
         # First APCTP version (12/13/17)
         ######################################################################
         #u = (np.log(r/(1.-r))/self.slope) + self.thresh
-        rdc_inp = self.reqs['mp_inputs'].val[self.rdc_port]
+        rdc_inp = self.mp_inputs[self.rdc_port]
         rdc_w = self.get_mp_weights(time)[self.rdc_port]
         u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*rdc_inp[self.exc_idx_rdc]*rdc_w[self.exc_idx_rdc])
         I = u - self.get_mp_input_sum(time)     
@@ -967,7 +995,7 @@ class unit():
             array produced in init_pre_syn_update. 
         """
         # The equations come from the APCTP notebook, 8/28/18.
-        exc_rdc_inp = self.reqs['mp_inputs'].val[self.rdc_port][self.exc_idx_rdc] # Exc. inputs at the rdc port
+        exc_rdc_inp = self.mp_inputs[self.rdc_port][self.exc_idx_rdc] # Exc. inputs at the rdc port
         exc_rdc_w = self.get_mp_weights(time)[self.rdc_port][self.exc_idx_rdc] # Exc. weights at rdc port
         r = self.buffer[-1] # current rate
         if not self.autapse: # if unit has no autapses, put a fake one with zero weight
@@ -998,7 +1026,7 @@ class unit():
             sharpening port. When the sum of inputs at this port is smaller than 0.5 the scale factors
             return to 1 with a time constant of tau_relax.
         """
-        if np.dot(self.reqs['mp_inputs'].val[self.sharpen_port], self.get_mp_weights(time)[self.sharpen_port]) < 0.5:
+        if np.dot(self.mp_inputs[self.sharpen_port], self.get_mp_weights(time)[self.sharpen_port]) < 0.5:
             a = self.rdc_exc_ones   
             exp_tau = self.tau_relax
         else: 
@@ -1008,7 +1036,7 @@ class unit():
             exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
             error = self.below - self.above - 2.*exp_cdf + 1. 
             #u = (np.log(r/(1.-r))/self.slope) + self.thresh
-            rdc_inp = self.reqs['mp_inputs'].val[self.rdc_port]
+            rdc_inp = self.mp_inputs[self.rdc_port]
             rdc_w = self.get_mp_weights(time)[self.rdc_port]
             u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*rdc_inp[self.exc_idx_rdc]*rdc_w[self.exc_idx_rdc])
             I = u - self.get_mp_input_sum(time)     
@@ -1030,11 +1058,11 @@ class unit():
             sharpening port. When the sum of inputs at this port is smaller than 0.5 the scale factors
             return to 1 with a time constant of tau_relax.
         """
-        if np.dot(self.reqs['mp_inputs'].val[self.sharpen_port], self.get_mp_weights(time)[self.sharpen_port]) < 0.5:
+        if np.dot(self.mp_inputs[self.sharpen_port], self.get_mp_weights(time)[self.sharpen_port]) < 0.5:
             syn_scale = 1.
             exp_tau = self.tau_relax
         else: # input at sharpen port >= 0.5
-            exc_rdc_inp = self.reqs['mp_inputs'].val[self.rdc_port][self.exc_idx_rdc] # Exc. inputs at the rdc port
+            exc_rdc_inp = self.mp_inputs[self.rdc_port][self.exc_idx_rdc] # Exc. inputs at the rdc port
             exc_rdc_w = self.get_mp_weights(time)[self.rdc_port][self.exc_idx_rdc] # Exc. weights at rdc port
             r = self.buffer[-1] # current rate
             if not self.autapse: # if unit has no autapses, put a fake one with zero weight
@@ -1077,7 +1105,7 @@ class unit():
             The algorithm is based on upd_thresh.
         """
         idxs = self.port_idx[self.sharpen_port]
-        inps = self.reqs['mp_inputs'].val[self.sharpen_port]
+        inps = self.mp_inputs[self.sharpen_port]
         ws = [self.net.syns[self.ID][idx].w for idx in idxs]
         sharpen = sum( [w*i for w,i in zip(ws, inps)] )
             
@@ -1094,7 +1122,7 @@ class unit():
 
     def upd_slide_thr_hr(self, time):
         """ Updates the threshold of units with 'rate harmonization'. """
-        inputs = self.reqs['mp_inputs'].val[self.hr_port]
+        inputs = self.mp_inputs[self.hr_port]
         mean_inp = np.mean(inputs) 
         r = self.get_lpf_fast(0)
         self.thresh -= self.tau_thr * ( mean_inp - r )
@@ -1108,12 +1136,12 @@ class unit():
             at the port hr_port. 
         """
         # Other than the 'error', it's all as in upd_exp_scale_mp
-        inputs = self.reqs['mp_inputs'].val[self.hr_port]
+        inputs = self.mp_inputs[self.hr_port]
         mean_inp = np.mean(inputs) 
         r = self.get_lpf_fast(0)
         error =  mean_inp - r
 
-        hr_inputs = self.reqs['mp_inputs'].val[self.hr_port]
+        hr_inputs = self.mp_inputs[self.hr_port]
         hr_weights = self.get_mp_weights(time)[self.hr_port]
         u = np.dot(hr_inputs[self.exc_idx_hr], hr_weights[self.exc_idx_hr])
         I = u - self.get_mp_input_sum(time) 
@@ -1130,7 +1158,7 @@ class unit():
         # Reliance on mp_inputs would normally be discouraged, since it slows things
         # down, and can be replaced by the commented code below. However, because I also
         # have the inp_l2 requirement in delta units, mp_inputs is available anyway.
-        inputs = self.reqs['mp_inputs'].val
+        inputs = self.mp_inputs
         weights = self.get_mp_weights(time)
         if self.learning > 0.5:
             port1 = np.dot(inputs[1], weights[1])
@@ -1159,7 +1187,7 @@ class unit():
 
     def upd_inp_l2(self, time):
         """ Update the L2 norm of the inputs at port 0. """
-        self.inp_l2 = np.linalg.norm(self.reqs['mp_inputs'].val[0])
+        self.inp_l2 = np.linalg.norm(self.mp_inputs[0])
 
 
 class source(unit):

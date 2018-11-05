@@ -231,8 +231,8 @@ class syn_reqs(Enum):
     """ This enum contains all the variables that a synapse model may ask a unit
         to maintain in order to support its learning function.
 
-        For each requirement here there is a class with the same name in requirements.py, 
-        with the function used to update it. 
+        For each requirement here there is a corresponding function or class in requirements.py,
+        in which further descriptions can be found.
     """
     lpf_fast = 1  # postsynaptic activity low-pass filtered with a fast time constant
     lpf_mid = 2   # postsynaptic activity low-pass filtered with a medium time constant
@@ -244,8 +244,7 @@ class syn_reqs(Enum):
     inp_avg_hsn = 8   # Sum of fast-LPF'd hebbsnorm inputs, divided by number of hebbsnorm inputs 
     pos_inp_avg_hsn = 9 # as inp_avg_hsn, but only considers inputs with positive synaptic weights
     err_diff = 10 # The approximate derivative of the error signal used in input correlation
-    sc_inp_sum = 11 # Scaled input sum. This is the sum of presynaptic inputs, each multiplied 
-                    # by its synaptic weight.
+    sc_inp_sum_sqhsn = 11 # Scaled input sum from sq_hebssnorm synapses. 
     diff_avg = 12 # Average of derivatives for inputs with diff_hebb_subsnorm synapses.
     pos_diff_avg = 13 # As diff_avg, but only considers inputs with positive synaptic weights
     lpf_mid_inp_sum = 14 # LPF'd sum of presynaptic inputs with a medium time constant.
