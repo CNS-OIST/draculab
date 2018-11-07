@@ -380,7 +380,7 @@ class ssrdc_sharp_base(unit):
     Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
     Synaptic weights initialized to zero will be considered excitatory.
 
-    The method to usd for rate distribution control can be specified through the sort_rdc
+    The method to use for rate distribution control can be specified through the sort_rdc
     parameter given to the constructor.
     """
     # The issue of updating the scaling factors according to the inputs at the sharpen_port is 
@@ -407,7 +407,7 @@ class ssrdc_sharp_base(unit):
                 'sharpen_port' : port ID where the inputs controlling rdc arrive.
                 OPTIONAL PARAMETERS
                 'sort_rdc' : A boolean value specifying whether to use the 'sorting' type of
-                             rdc control, which uses the exp_scale_sort_mp requirement.
+                             rdc control, which uses the exp_scale_sort_sharp requirement.
                              If sort_rdc is absent or false, the default is non-sorting rdc.
 
         Raises:
@@ -423,6 +423,8 @@ class ssrdc_sharp_base(unit):
 
         if self.n_ports < 2:
             raise ValueError('ssrdc_sharp units are expected to have at least 2 ports')
+        elif params['sharpen_port'] >= self.n_ports:
+            raise ValueError('sharpen_port exceeds the number of ports in an ssrdc_sharp unit')
         else:
             self.multiport = True # This causes the port_idx list to be created in init_pre_syn_update
         self.rdc_port = params['rdc_port'] # port for rate distribution control
@@ -438,6 +440,71 @@ class ssrdc_sharp_base(unit):
             self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, 
                                    syn_reqs.exp_scale_shrp, syn_reqs.lpf_fast]) 
 
+    def upd_exp_scale_shrp(self, time):
+        """ Updates the synaptic scaling factor used in ssrdc_sharp units.
+
+            The algorithm is the same as upd_exp_scale_mp, but controlled by the inputs at the
+            sharpening port. When the sum of inputs at this port is smaller than 0.5 the scale factors
+            return to 1 with a time constant of tau_relax.
+        """
+        if np.dot(self.mp_inputs[self.sharpen_port], self.get_mp_weights(time)[self.sharpen_port]) < 0.5:
+            a = self.rdc_exc_ones   
+            exp_tau = self.tau_relax
+        else: 
+            #r = self.get_lpf_fast(0)  # lpf'd rate
+            r = self.buffer[-1] # current rate
+            r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
+            exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+            error = self.below - self.above - 2.*exp_cdf + 1. 
+            #u = (np.log(r/(1.-r))/self.slope) + self.thresh
+            rdc_inp = self.mp_inputs[self.rdc_port]
+            rdc_w = self.get_mp_weights(time)[self.rdc_port]
+            u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*rdc_inp[self.exc_idx_rdc]*rdc_w[self.exc_idx_rdc])
+            I = u - self.get_mp_input_sum(time)     
+            mu_exc = np.maximum( np.sum( rdc_inp[self.exc_idx_rdc] ), 0.001 )
+            #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
+            #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc # adjusting for sigmoidal's slope
+            ss_scale = (u - I + self.Kp * error) / mu_exc
+            a = ss_scale / np.maximum(rdc_w[self.exc_idx_rdc],.001)
+            a = np.minimum( a, 10.) # hard bound above
+            exp_tau = self.tau_scale
+        x0 = self.scale_facs_rdc[self.exc_idx_rdc]
+        self.scale_facs_rdc[self.exc_idx_rdc] = (x0*a) / (x0+(a-x0)*np.exp(-exp_tau*a*self.net.min_delay))
+
+    def upd_exp_scale_sort_shrp(self, time):
+        """ Updates the synaptic scale factor optionally used in some ssrdc_sharp units.
+
+            The algorithm is the same as upd_exp_scale_sort_mp, but controlled by the inputs at the
+            sharpening port. When the sum of inputs at this port is smaller than 0.5 the scale factors
+            return to 1 with a time constant of tau_relax.
+        """
+        if np.dot(self.mp_inputs[self.sharpen_port], self.get_mp_weights(time)[self.sharpen_port]) < 0.5:
+            syn_scale = 1.
+            exp_tau = self.tau_relax
+        else: # input at sharpen port >= 0.5
+            exc_rdc_inp = self.mp_inputs[self.rdc_port][self.exc_idx_rdc] # Exc. inputs at the rdc port
+            exc_rdc_w = self.get_mp_weights(time)[self.rdc_port][self.exc_idx_rdc] # Exc. weights at rdc port
+            r = self.buffer[-1] # current rate
+            if not self.autapse: # if unit has no autapses, put a fake one with zero weight
+                exc_rdc_inp = np.concatenate((exc_rdc_inp, [r]))
+                exc_rdc_w = np.concatenate((exc_rdc_w, [0]))
+                self.autapse_idx = len(exc_rdc_inp) - 1
+            rate_rank = np.argsort(exc_rdc_inp)  # array index that sorts exc_rdc_inp
+            ideal_exc_inp = np.dot(exc_rdc_w[rate_rank], self.ideal_rates)
+            my_ideal_rate = self.ideal_rates[np.where(rate_rank == self.autapse_idx)[0][0]]
+            if self.autapse:
+                u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc] * exc_rdc_inp * exc_rdc_w)
+            else:
+                u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*exc_rdc_inp[:-1]*exc_rdc_w[:-1])
+            I = u - self.get_mp_input_sum(time)     
+            syn_scale = (my_ideal_rate - I) / (ideal_exc_inp)
+            syn_scale = min(syn_scale, 10.) # hard_bound_above
+            exp_tau = self.tau_scale
+        # same soft weight bounding as upd_exp_scale_mp
+        x0 = self.scale_facs_rdc[self.exc_idx_rdc][0] # x0 is scalar cuz all Exc. factors are equal
+        x = (x0 * syn_scale) / (x0 + (syn_scale - x0) * np.exp(-exp_tau * syn_scale * self.net.min_delay) )
+        self.scale_facs_rdc[self.exc_idx_rdc] = x
+ 
 
 class sig_ssrdc_sharp(ssrdc_sharp_base): 
     """
@@ -480,7 +547,7 @@ class sig_ssrdc_sharp(ssrdc_sharp_base):
                 'sharpen_port' : port ID where the inputs controlling rdc arrive.
                 OPTIONAL PARAMETERS
                 'sort_rdc' : A boolean value specifying whether to use the 'sorting' type of
-                             rdc control, which uses the exp_scale_sort_mp requirement.
+                             rdc control, which uses the exp_scale_sort_sharp requirement.
                              If sort_rdc is absent or false, the default is non-sorting rdc.
 
         Raises:
@@ -599,6 +666,37 @@ class sig_ssrdc(unit):
             else:
                 acc_sum += np.dot(weights[port], inps[port]) 
         return acc_sum 
+
+    def upd_exp_scale_sort_mp(self, time):
+        """ Updates the synaptic scale factor optionally used in some multiport ssrdc units.
+
+            This method implements the exp_scale_sort_mp requirement. It uses the 'ideal_rates' 
+            array produced in init_pre_syn_update. 
+        """
+        # The equations come from the APCTP notebook, 8/28/18.
+        exc_rdc_inp = self.mp_inputs[self.rdc_port][self.exc_idx_rdc] # Exc. inputs at the rdc port
+        exc_rdc_w = self.get_mp_weights(time)[self.rdc_port][self.exc_idx_rdc] # Exc. weights at rdc port
+        r = self.buffer[-1] # current rate
+        if not self.autapse: # if unit has no autapses, put a fake one with zero weight
+            exc_rdc_inp = np.concatenate((exc_rdc_inp, [r]))
+            exc_rdc_w = np.concatenate((exc_rdc_w, [0]))
+            self.autapse_idx = len(exc_rdc_inp) - 1
+        rate_rank = np.argsort(exc_rdc_inp)  # array index that sorts exc_rdc_inp
+        ideal_exc_inp = np.dot(exc_rdc_w[rate_rank], self.ideal_rates)
+        my_ideal_rate = self.ideal_rates[np.where(rate_rank == self.autapse_idx)[0][0]]
+        if self.autapse:
+            u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc] * exc_rdc_inp * exc_rdc_w)
+        else:
+            u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*exc_rdc_inp[:-1]*exc_rdc_w[:-1])
+        I = u - self.get_mp_input_sum(time)     
+        syn_scale = (my_ideal_rate - I) / (ideal_exc_inp)
+        # same weight bounding as upd_exp_scale_mp
+        syn_scale = min(syn_scale, 10.) # hard_bound_above
+        x0 = self.scale_facs_rdc[self.exc_idx_rdc][0] # x0 is scalar cuz all Exc. factors are equal
+        t = self.net.min_delay
+        x = (x0 * syn_scale) / (x0 + (syn_scale - x0) * np.exp(-self.tau_scale * syn_scale * t) )
+        self.scale_facs_rdc[self.exc_idx_rdc] = x
+
 
     
 class exp_dist_sig_thr(unit): 
@@ -743,7 +841,8 @@ class trdc_sharp_base(unit):
     to a default value called "thr_fix", with time constant reciprocal to "tau_fix".
     
     """
-    # The only difference with multiport_trdc_base is the use of the slide_thr_shrp instead of slide_thresh
+    # The only difference with multiport_trdc_base is the use of the slide_thresh_shrp 
+    # instead of slide_thresh
 
     def __init__(self, ID, params, network):
         """ The unit constructor.
@@ -785,7 +884,8 @@ class trdc_sharp_base(unit):
         self.thr_fix = params['thr_fix']  # the value where the threshold returns
         self.tau_fix = params['tau_fix']  # the speed of the threshold's return to thr_fix
         self.sharpen_port = params['sharpen_port']
-        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thr_shrp, syn_reqs.lpf_fast])
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, 
+                               syn_reqs.slide_thresh_shrp, syn_reqs.lpf_fast])
         # next line is for debugging
         #self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thresh, syn_reqs.lpf_fast])
 
@@ -1339,7 +1439,7 @@ class ds_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
                      zero input will contribute (0.5 - phi) times the branch weight.
                 OPTIONAL PARAMETERS
                 'sort_rdc' : A boolean value specifying whether to use the 'sorting' type of
-                             rdc control, which uses the exp_scale_sort_mp requirement.
+                             rdc control, which uses the exp_scale_sort_shrp requirement.
                              If sort_rdc is absent or false, the default is non-sorting rdc.
 
         """
@@ -2040,6 +2140,113 @@ class sigma_double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
                for o,th,sl,y,w,i in zip(self.br_w, self.threshs, self.slopes, lpf_inp_sum[1:], w[1:], inp[1:]) ] )
  
 
+class sds_n_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base): 
+    """
+    Sigma double-sigma unit normalized branch inputs and switchable synaptic-scaling rate distribution control.
+    Double sigma units are inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+    There are two types of inputs. Somatic inputs arrive at port 0 (the default port), and are
+    just like inputs to the sigmoidal units. Dendritic inputs arrive at ports with with ID 
+    larger than 0, and are just like inputs to double_sigma units.
+    Each dendritic input belongs to a particular "branch". All inputs from the same branch
+    add linearly, are normalized, and the normalized sum is fed into a sigmoidal function 
+    that produces the output of the branch. The output of all the branches is added linearly 
+    to produce the total input to the unit, which is fed into a sigmoidal function to produce 
+    the output of the unit.
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use synaptic-scaling based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the scale factors will decay exponentially
+    to the default value 1, with a rate set by the "tau_relax" parameter.
+    In this version the inputs at the rdc_port are not normalized, since this interacts with the scaling.
+    Also, notice that when the rdc_port is not 0 (e.g. at the soma), the ability to maintain the
+    rate distribution will be compromised, although scaling should still bias things in the right direction.
+    ~~~~ Because of this, these units make sense when the rdc port is 0 (e.g. the soma) ~~~~
+    Nevertheless, this is not enforced.
+    The inputs at the sharpen port will not contribute to the activation of the unit. 
+    The method to use for rate distribution control can be specified through the sort_rdc
+    parameter given to the constructor.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                n_ports: number of inputs ports. Needs a valuer > 1
+                tau_fast: Time constant for the fast low-pass filter.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                slope: Slope of the sigmoidal function.
+                thresh: Threshold of the sigmoidal function.
+                tau: Time constant of the update dynamics.
+                tau_scale: sets the speed of change for the scaling factor
+                tau_relax: controls how fast the scaling factors return to 1 when rdc is off
+                c: Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
+                rdc_port: port ID of inputs used for rate distribution control.
+                sharpen_port: port ID where the inputs controlling rdc arrive.
+                branch_params: A dictionary with the following 3 entries:
+                    branch_w: The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list plus one. For example, if branch_w=[.2, .8], then
+                            input port 0 is at the soma, input port 1 has weight .2, port 2 weight .8, and
+                            port 3 is the sharpening port.
+                    slopes: Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    threshs: Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                phi: This value is substracted from the branches' contribution. In this manner, a branch
+                        with no inputs may not contribute to the unit's activation.
+                OPTIONAL PARAMETERS
+                'sort_rdc' : A boolean value specifying whether to use the 'sorting' type of
+                             rdc control, which uses the exp_scale_sort_mp requirement.
+                             If sort_rdc is absent or false, the default is non-sorting rdc.
+        """
+        self.extra_ports = 2 # The soma and the sharpen port 
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        ssrdc_sharp_base.__init__(self, ID, params, network)
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum])
+
+        self.nm_prts = list(range(self.n_ports)) # port list without the 0, rdc, and sharpen ports
+        if self.rdc_port != 0:
+            del self.nm_prts[max(self.rdc_port,self.sharpen_port)]
+            del self.nm_prts[min(self.rdc_port,self.sharpen_port)]
+            self.nm_prts = self.nm_prts[1:] # removes port 0
+        else:
+            del self.nm_prts[self.sharpen_port]
+            del self.nm_prts[0]
+        #self.nm_prts = np.array(self.nm_prts, dtype='uint32')
+        
+    def get_mp_input_sum(self, time):
+        """ The input function of the sds_ssrdc_sharp unit. """
+        ws = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        rdcp = self.rdc_port # to make lines shorter
+        # Removing zero or near-zero values from lpf_slow_mp_inp_sum
+        # If I ever use this unit seriously, this should be done at upd_lpf_slow_mp_inp_sum
+        lpf_i = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
+        acc_sum = 0
+        # Adding input from soma
+        if rdcp != 0:
+            acc_sum += (np.dot(ws[0], inps[0]) - lpf_i[0]) / lpf_i[0]
+        # Adding input from rdc port (not normalized)
+        acc_sum += self.br_w[rdcp] * ( self.f( self.threshs[rdcp], self.slopes[rdcp], 
+                   np.sum(self.scale_facs_rdc * ws[rdcp] * inps[rdcp] ) - self.phi ) )
+        # Adding inputs from the other ports
+        acc_sum += sum( [ self.br_w[p-1] * ( self.f( self.threshs[p-1], self.slopes[p-1], 
+                          (np.dot(ws[p],inps[p])-lpf_i[p])/lpf_i[p] - self.phi ) ) for p in self.nm_prts ] )
+        return acc_sum 
 
 
 class sliding_threshold_harmonic_rate_sigmoidal(unit):
@@ -2055,7 +2262,7 @@ class sliding_threshold_harmonic_rate_sigmoidal(unit):
     It is expected that one input port will have the inputs to be used for the rate harmonization,
     usually the internal connections, and another port will have the external inputs, which are
     ignored for rate harmonization. Thus, the number of ports should be at least 2, and the port
-    whose inputs are used to harmonize the rate hare in the hr_port parameter.
+    whose inputs are used to harmonize the rate are in the hr_port parameter.
     """
 
     def __init__(self, ID, params, network):
@@ -2106,6 +2313,17 @@ class sliding_threshold_harmonic_rate_sigmoidal(unit):
         inps = self.get_mp_inputs(time)
         return sum([np.dot(weights[prt], inps[prt]) for prt in range(self.n_ports)])
      
+    def upd_slide_thr_hr(self, time):
+        """ Updates the threshold of units with rate harmonization.
+        
+            This is the update method of the slide_thr_hr requirement. 
+        """
+        inputs = self.mp_inputs[self.hr_port]
+        mean_inp = np.mean(inputs) 
+        r = self.get_lpf_fast(0)
+        self.thresh -= self.tau_thr * ( mean_inp - r )
+        self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
+
 
 
 class synaptic_scaling_harmonic_rate_sigmoidal(unit): 
@@ -2122,7 +2340,7 @@ class synaptic_scaling_harmonic_rate_sigmoidal(unit):
     It is expected that one input port will have the inputs to be used for the rate harmonization,
     usually the internal connections, and another port will have the external inputs, which are
     ignored for rate harmonization. Thus, the number of ports should be at least 2, and the port
-    whose inputs are used to harmonize the rate hare in the hr_port parameter.
+    whose inputs are used to harmonize the rate are in the hr_port parameter.
  
     Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
     Synaptic weights initialized to zero will be considered excitatory.
@@ -2148,8 +2366,8 @@ class synaptic_scaling_harmonic_rate_sigmoidal(unit):
         Raises:
             ValueError
 
-        The actual values used for scaling are calculated in unit.upd_syn_scale_hr(), which updates
-        the array self.scale_facs .
+        The actual values used for scaling are calculated in upd_syn_scale_hr (below), 
+        which updates the array self.scale_facs .
         """
         if params['n_ports'] < 2:
             raise ValueError('At least two ports whould be used with the ss_hr_sig units')
@@ -2190,6 +2408,31 @@ class synaptic_scaling_harmonic_rate_sigmoidal(unit):
             else:
                 acc_sum += np.dot(weights[port], inps[port]) 
         return acc_sum 
+
+    def upd_syn_scale_hr(self, time):
+        """ Update the synaptic scale for units with 'rate harmonization'. 
+            
+            The scaling factors in self.scale_facs_hr correspond to the excitatory synapses
+            at the port hr_port. 
+
+            exc_idx_hr, and scale_facs_hr are initialized in add_syn_scale_hr, in
+            requirements.py .
+        """
+        # Other than the 'error', it's all as in upd_exp_scale_mp
+        inputs = self.mp_inputs[self.hr_port]
+        mean_inp = np.mean(inputs) 
+        r = self.get_lpf_fast(0)
+        error =  mean_inp - r
+        hr_inputs = self.mp_inputs[self.hr_port]
+        hr_weights = self.get_mp_weights(time)[self.hr_port]
+        u = np.dot(hr_inputs[self.exc_idx_hr], hr_weights[self.exc_idx_hr])
+        I = u - self.get_mp_input_sum(time) 
+        mu_exc = np.maximum( np.sum( hr_inputs[self.exc_idx_hr] ), 0.001 )
+        ss_scale = (u - I + self.Kp * error) / mu_exc
+        a = ss_scale / np.maximum(hr_weights[self.exc_idx_hr],.001)
+        x0 = self.scale_facs_hr[self.exc_idx_hr]
+        t = self.net.min_delay
+        self.scale_facs_hr[self.exc_idx_hr] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
 
 
 class delta_linear(unit):
@@ -2261,6 +2504,41 @@ class delta_linear(unit):
         """ This function returns the derivatives of the state variables at a given point in time. """
         return ( self.gain * self.get_mp_input_sum(t) + self.bias  - y[0] ) / self.tau
 
+    def upd_error(self, time):
+        """ update the error used by delta units."""
+        # Reliance on mp_inputs would normally be discouraged, since it slows things
+        # down, and can be replaced by the commented code below. However, because I also
+        # have the inp_l2 requirement in delta units, mp_inputs is available anyway.
+        inputs = self.mp_inputs
+        weights = self.get_mp_weights(time)
+        if self.learning > 0.5:
+            port1 = np.dot(inputs[1], weights[1])
+            #port1 = sum( [syn.w * act(time - dely) for syn, act, dely in zip(
+            #             [self.net.syns[self.ID][i] for i in self.port_idx[1]],
+            #             [self.net.act[self.ID][i] for i in self.port_idx[1]],
+            #             [self.net.delays[self.ID][i] for i in self.port_idx[1]])] ) 
+            self.error = port1 - self.get_lpf_fast(0)
+            self.bias += self.bias_lrate * self.error
+            # to update 'learning' we can use the known solution to e' = -tau*e, namely
+            # e(t) = e(t0) * exp((t-t0)/tau), instead of the forward Euler rule
+            self.learning *= np.exp((self.last_time-time)/self.tau_e)
+        else: # learning <= 0.5
+            self.error = 0.
+            # input at port 2
+            port2 = np.dot(inputs[2], weights[2])
+            #port2 = sum( [syn.w * act(time - dely) for syn, act, dely in zip(
+            #             [self.net.syns[self.ID][i] for i in self.port_idx[2]],
+            #             [self.net.act[self.ID][i] for i in self.port_idx[2]],
+            #             [self.net.delays[self.ID][i] for i in self.port_idx[2]])] )
+            if port2 >= 0.5:
+                self.learning = 1.
+            else: 
+                self.learning *= np.exp((self.last_time-time)/self.tau_e)
+
+
+    def upd_inp_l2(self, time):
+        """ Update the L2 norm of the inputs at port 0. """
+        self.inp_l2 = np.linalg.norm(self.mp_inputs[0])
 
 
 

@@ -256,7 +256,7 @@ class syn_reqs(Enum):
     lpf_slow_mp_inp_sum = 20 # slow LPF'd scaled sum of inputs from individual ports
     mp_inputs = 21 # the multiport inputs, as returned by the get_mp_inputs method
     balance_mp = 22 # the multiport version of the 'balance' requirement above
-    slide_thr_shrp = 23 # move threshold to produce exp rate distro if 'sharpen' input > 0.5
+    slide_thresh_shrp = 23 # move threshold to produce exp rate distro if 'sharpen' input > 0.5
     exp_scale_mp = 24 # scale factors to produce exp distro in multiport units
     slide_thr_hr = 25 # Sliding threshold that produces "harmonic" rate patterns (multiport units)
     syn_scale_hr = 26 # Synaptic scaling that produces "harmonic" rate patterns (multiport units)

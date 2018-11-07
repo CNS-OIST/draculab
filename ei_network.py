@@ -1329,6 +1329,9 @@ class ei_layer():
                     elif hasattr(self.net.units[u], 'scale_facs_rdc'):
                         syn = s%(len(self.net.units[u].scale_facs_rdc))
                         return lambda x: self.net.units[u].scale_facs_rdc[syn]
+                    elif hasattr(self.net.units[u], 'scale_facs_hr'):
+                        syn = s%(len(self.net.units[u].scale_facs_hr))
+                        return lambda x: self.net.units[u].scale_facs_hr[syn]
                     else:
                         return lambda x: 1.
                 for uid,u in enumerate(which_u):

@@ -72,16 +72,14 @@ class unit():
                                     # order to support customized get_mp_input* functions
         else:
             self.multiport = True
-
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
-        self.reqs = {} # This dictionary will contain all requirement objects c
-                       # corresponding to the entries in syn_needs
+        #self.reqs = {} # This dictionary will contain all requirement objects c
+        #               # corresponding to the entries in syn_needs. DEPRECATED.
         self.last_time = 0.  # time of last call to the update function
                             # Used by the upd_lpf_X functions
         self.init_buffers() # This will create the buffers that store states and times
-        #self.pre_syn_update = lambda time : None # See init_pre_syn_update below
-        self.functions = set()
+        self.functions = set() # will contain all the functions that update requirements
 
      
     def init_buffers(self):
@@ -356,9 +354,8 @@ class unit():
 
     def pre_syn_update(self, time):
         """ Call the update functions for the requirements added in init_pre_syn_update. """
-        for r in self.reqs:
-            self.reqs[r].update(time)
-        # temporal
+        #for r in self.reqs:
+        #    self.reqs[r].update(time)
         for f in self.functions:
             f(time)
 
@@ -417,13 +414,13 @@ class unit():
         """
         """
         DEVELOPER'S NOTES2: 
-        Currently this method has a for loop with a giant wall of elif statements,
+        Previously this method had a for loop with a giant wall of elif statements,
         each one initializing data structures for a particular requirement. This wall
-        of elif statements has poor readability, and the update methods of the
-        requirements are away from the initialization, which can make working with
-        requirements a scroll-intensive deal.
+        of elif statements had poor readability, and the update methods of the
+        requirements were away from the initialization (they still are), which can 
+        make working with requirements a scrolling-intensive deal.
 
-        There are 2 strategies under consideration to deal with the elif wall:
+        There were 2 strategies under consideration to deal with the elif wall:
         1) Moving the requirements' variables, initialization, and update routines to
            classes in the requirements.py files. What init_pre_syn update does in this
            case is to create instances of the requirement classes, placing them in the 
@@ -447,8 +444,7 @@ class unit():
 
         I currently go with option 2. Moreover, to reduce the number of upd_ methods
         in 'unit', for those requirements that are specific to particular unit types, I
-        will put the upd_ methods in those units. This should apply mostly to the family
-        of exponential rate distribution units.
+        put the upd_ methods in those units. 
 
         """ 
         assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
@@ -490,218 +486,23 @@ class unit():
                 else:
                     self.port_idx[syn.port].append(idx) 
 
-        # Create instances of all the requirements to be updated by
-        # the pre_syn_update function. 
+        # Prepare all the requirements to be updated by the pre_syn_update function. 
         """
-        $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$444
-        $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$444
-
         # under option 1 the rest of the method would be reduced to:
-
         for req in self.syn_needs:
             if issubclass(type(req), syn_reqs):
-                # Create an instance of the requirement. 
-                # Its name is the requirement's class name.
                 self.reqs[req.name] = eval(req.name+'(self)')
             else:  
                 raise NotImplementedError('Asking for a requirement that is not implemented')
-
-        # under option 2 the rest of the method would be:
+        """
+        # Option 2:
         for req in self.syn_needs:
             if issubclass(type(req), syn_reqs):
                 eval('add_'+req.name+'(self)')
                 eval('self.functions.add(self.upd_'+req.name+')')
-
-        $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$444
-        $$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$$444
-        """
-
-        for req in self.syn_needs:
-            #--------------------------------------------
-            # the if-elif wall from the developer's notes
-            #--------------------------------------------
-            if req is syn_reqs.lpf_fast:  # <----------------------------------
-                # Option 1:
-                #self.reqs[req.name] = eval(req.name+'(self)')
-                # Option 2:
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.lpf_mid:  # <----------------------------------
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.lpf_slow:  # <----------------------------------
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.sq_lpf_slow:  # <----------------------------------
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.inp_vector: # <----------------------------------
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.mp_inputs: # <----------------------------------
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.inp_avg_hsn:  # <----------------------------------
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.pos_inp_avg_hsn:  # <----------------------------------
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.err_diff:  # <----------------------------------
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.sc_inp_sum_sqhsn: # <----------------------------------
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.diff_avg: # <----------------------------------
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.lpf_mid_inp_sum:  # <----------------------------------
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.lpf_slow_mp_inp_sum:  # <----------------------------------
-                eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
-            elif req is syn_reqs.balance:  # <----------------------------------
-                if not syn_reqs.inp_vector in self.syn_needs:
-                    raise AssertionError('balance requirement has the inp_vector requirement as a prerequisite')
-                self.below = 0.5 # this initialization is rather arbitrary
-                self.above = 0.5 
-                self.functions.add(self.upd_balance)
-            elif req is syn_reqs.balance_mp:  # <----------------------------------
-                if not syn_reqs.mp_inputs in self.syn_needs:
-                    raise AssertionError('balance_mp requirement has the mp_inputs requirement as a prerequisite')
-                self.below = 0.5 # this initialization is rather arbitrary
-                self.above = 0.5 
-                self.functions.add(self.upd_balance_mp)
-            elif req is syn_reqs.exp_scale:  # <----------------------------------
-                if not syn_reqs.balance in self.syn_needs:
-                    raise AssertionError('exp_scale requires the balance requirement to be set')
-                if not syn_reqs.lpf_fast in self.syn_needs:
-                    raise AssertionError('exp_scale requires the lpf_fast requirement to be set')
-                self.scale_facs= np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
-                # exc_idx = numpy array with index of all excitatory units in the input vector 
-                self.exc_idx = [ idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w >= 0]
-                # ensure the integer data type; otherwise you can't index numpy arrays
-                self.exc_idx = np.array(self.exc_idx, dtype='uint32')
-                # inh_idx = numpy array with index of all inhibitory units 
-                self.inh_idx = [idx for idx,syn in enumerate(self.net.syns[self.ID]) if syn.w < 0]
-                self.inh_idx = np.array(self.inh_idx, dtype='uint32')
-                self.functions.add(self.upd_exp_scale)
-            elif req is syn_reqs.exp_scale_mp:  # <----------------------------------
-                if not syn_reqs.balance_mp in self.syn_needs:
-                    raise AssertionError('exp_scale_mp requires the balance_mp requirement to be set')
-                if not syn_reqs.lpf_fast in self.syn_needs:
-                    raise AssertionError('exp_scale_mp requires the lpf_fast requirement to be set')
-                self.scale_facs_rdc = np.tile(1., len(self.port_idx[self.rdc_port])) # array with scale factors
-                # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
-                self.exc_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
-                                     for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
-                # ensure the integer data type; otherwise you can't index numpy arrays
-                self.exc_idx_rdc = np.array(self.exc_idx_rdc, dtype='uint32')
-                self.functions.add(self.upd_exp_scale_mp)
-            elif req is syn_reqs.slide_thresh:  # <----------------------------------
-                if (not syn_reqs.balance in self.syn_needs) and (not syn_reqs.balance_mp in self.syn_needs):
-                    raise AssertionError('slide_thresh requires the balance(_mp) requirement to be set')
-                self.functions.add(self.upd_thresh)
-            elif req is syn_reqs.slide_thr_shrp:  # <----------------------------------
-                if not syn_reqs.balance_mp in self.syn_needs:
-                    raise AssertionError('slide_thr_shrp requires the balance_mp requirement to be set')
-                if not self.multiport:
-                    raise AssertionError('The slide_thr_shrp is for multiport units only')
-                self.functions.add(self.upd_thr_shrp)
-            elif req is syn_reqs.slide_thr_hr:  # <----------------------------------
-                if not syn_reqs.mp_inputs in self.syn_needs:
-                    raise AssertionError('slide_thr_hr requires the mp_inputs requirement to be set')
-                if not self.multiport:
-                    raise AssertionError('The slide_thr_hr requirment is for multiport units only')
-                self.functions.add(self.upd_slide_thr_hr)
-            elif req is syn_reqs.syn_scale_hr:  # <----------------------------------
-                if not syn_reqs.mp_inputs in self.syn_needs:
-                    raise AssertionError('syn_scale_hr requires the mp_inputs requirement to be set')
-                if not self.multiport:
-                    raise AssertionError('The syn_scale_hr requirment is for multiport units only')
-                if not syn_reqs.lpf_fast in self.syn_needs:
-                    raise AssertionError('syn_scale_hr requires the lpf_fast requirement to be set')
-                # exc_idx_hr = numpy array with index of all excitatory units at hr port
-                self.exc_idx_hr = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
-                                     for i in self.port_idx[self.hr_port]]) if syn.w >= 0 ]
-                # ensure the integer data type; otherwise you can't index numpy arrays
-                self.exc_idx_hr = np.array(self.exc_idx_hr, dtype='uint32')
-                #self.scale_facs = np.tile(1., len(self.net.syns[self.ID])) # array with scale factors
-                self.scale_facs_hr = np.tile(1., len(self.port_idx[self.hr_port])) # array with scale factors
-                self.functions.add(self.upd_syn_scale_hr)
-            elif req is syn_reqs.exp_scale_shrp:  # <----------------------------------
-                if not syn_reqs.balance_mp in self.syn_needs:
-                    raise AssertionError('exp_scale_shrp requires the balance_mp requirement to be set')
-                if not self.multiport:
-                    raise AssertionError('The exp_scale_shrp requirement is for multiport units only')
-                if not syn_reqs.lpf_fast in self.syn_needs:
-                    raise AssertionError('exp_scale_shrp requires the lpf_fast requirement to be set')
-                self.scale_facs_rdc = np.tile(1., len(self.port_idx[self.rdc_port])) # array with scale factors
-                # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
-                self.exc_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
-                                     for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
-                # ensure the integer data type; otherwise you can't index numpy arrays
-                self.exc_idx_rdc = np.array(self.exc_idx_rdc, dtype='uint32')
-                self.rdc_exc_ones = np.tile(1., len(self.exc_idx_rdc))
-                self.functions.add(self.upd_exp_scale_shrp)
-            elif req is syn_reqs.error:  # <----------------------------------
-                if not syn_reqs.mp_inputs in self.syn_needs:
-                    raise AssertionError('The error requirement needs the mp_inputs requirement.')
-                self.error = 0.
-                self.learning = 0.
-                self.functions.add(self.upd_error)
-            elif req is syn_reqs.inp_l2:  # <----------------------------------
-                if not syn_reqs.mp_inputs in self.syn_needs:
-                    raise AssertionError('The inp_l2 requirement needs the mp_inputs requirement.')
-                self.inp_l2 = 1.
-                self.functions.add(self.upd_inp_l2)
-            elif req is syn_reqs.exp_scale_sort_mp:  # <----------------------------------
-                if not self.multiport:
-                    raise AssertionError('The exp_scale_sort_mp requirement is for multiport units only')
-                self.scale_facs_rdc = np.tile(1., len(self.port_idx[self.rdc_port])) # array with scale factors
-                # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
-                self.exc_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
-                                     for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
-                self.autapse = False
-                for idx, syn in enumerate([self.net.syns[self.ID][eir] for eir in self.exc_idx_rdc]):
-                    if syn.preID == self.ID: # if there is an excitatory autapse at the rdc port
-                        self.autapse_idx = idx
-                        self.autapse = True
-                        break
-                # Gotta produce the array of ideal rates given the truncated exponential distribution
-                if self.autapse:
-                    N = len(self.exc_idx_rdc)
-                else:
-                    N = len(self.exc_idx_rdc) + 1 # an extra point for the fake autapse
-                points = [ (k + 0.5) / (N + 1.) for k in range(N) ]
-                self.ideal_rates = np.array([-(1./self.c) * np.log(1.-(1.-np.exp(-self.c))*pt) for pt in points])
-                self.functions.add(self.upd_exp_scale_sort_mp)
-            elif req is syn_reqs.exp_scale_sort_shrp:  # <----------------------------------
-                if not self.multiport:
-                    raise AssertionError('The exp_scale_sort_shrp requirement is for multiport units only')
-                self.scale_facs_rdc = np.tile(1., len(self.port_idx[self.rdc_port])) # array with scale factors
-                # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
-                self.exc_idx_rdc = [ idx for idx,syn in enumerate([self.net.syns[self.ID][i] 
-                                     for i in self.port_idx[self.rdc_port]]) if syn.w >= 0 ]
-                self.autapse = False
-                for idx, syn in enumerate([self.net.syns[self.ID][eir] for eir in self.exc_idx_rdc]):
-                    if syn.preID == self.ID: # if there is an excitatory autapse at the rdc port
-                        self.autapse_idx = idx
-                        self.autapse = True
-                        break
-                # Gotta produce the array of ideal rates given the truncated exponential distribution
-                if self.autapse:
-                    N = len(self.exc_idx_rdc)
-                else:
-                    N = len(self.exc_idx_rdc) + 1 # an extra point for the fake autapse
-                points = [ (k + 0.5) / (N + 1.) for k in range(N) ]
-                self.ideal_rates = np.array([-(1./self.c) * np.log(1.-(1.-np.exp(-self.c))*pt) for pt in points])
-                self.functions.add(self.upd_exp_scale_sort_shrp)
-            else:  # <----------------------------------------------------------------------
+            else:  
                 raise NotImplementedError('Asking for a requirement that is not implemented')
-    
+
 
     ###################################
     # UPDATE METHODS FOR REQUIREMENTS #
@@ -868,7 +669,6 @@ class unit():
                                    np.exp( (self.last_time-time)/self.tau_slow ) for i in range(self.n_ports)]
 
 
-#---------------
     def upd_balance(self, time):
         """ Updates two numbers called  below, and above.
 
@@ -879,7 +679,6 @@ class unit():
 
             NOTICE: this version does not restrict inputs to exp_rate_dist synapses.
         """
-        #inputs = np.array(self.get_inputs(time)) # current inputs
         inputs = self.inp_vector
         N = len(inputs)
         r = self.buffer[-1] # current rate
@@ -896,7 +695,7 @@ class unit():
             above = fraction of inputs with rate higher than this unit.
 
             Those numbers are useful to produce a given firing rate distribtuion among
-            the population of units that connect to port 0.
+            the population of units that connect to the 'rdc_port'.
 
             This is the same as upd_balance, but ports other than the rdc_port are ignored.
         """
@@ -987,106 +786,8 @@ class unit():
         t = self.net.min_delay
         self.scale_facs_rdc[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
 
-    
-    def upd_exp_scale_sort_mp(self, time):
-        """ Updates the synaptic scale factor optionally used in some multiport ssrdc units.
 
-            This method implements the exp_scale_sort_mp requirement. It uses the 'ideal_rates' 
-            array produced in init_pre_syn_update. 
-        """
-        # The equations come from the APCTP notebook, 8/28/18.
-        exc_rdc_inp = self.mp_inputs[self.rdc_port][self.exc_idx_rdc] # Exc. inputs at the rdc port
-        exc_rdc_w = self.get_mp_weights(time)[self.rdc_port][self.exc_idx_rdc] # Exc. weights at rdc port
-        r = self.buffer[-1] # current rate
-        if not self.autapse: # if unit has no autapses, put a fake one with zero weight
-            exc_rdc_inp = np.concatenate((exc_rdc_inp, [r]))
-            exc_rdc_w = np.concatenate((exc_rdc_w, [0]))
-            self.autapse_idx = len(exc_rdc_inp) - 1
-        rate_rank = np.argsort(exc_rdc_inp)  # array index that sorts exc_rdc_inp
-        ideal_exc_inp = np.dot(exc_rdc_w[rate_rank], self.ideal_rates)
-        my_ideal_rate = self.ideal_rates[np.where(rate_rank == self.autapse_idx)[0][0]]
-        if self.autapse:
-            u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc] * exc_rdc_inp * exc_rdc_w)
-        else:
-            u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*exc_rdc_inp[:-1]*exc_rdc_w[:-1])
-        I = u - self.get_mp_input_sum(time)     
-        syn_scale = (my_ideal_rate - I) / (ideal_exc_inp)
-        # same weight bounding as upd_exp_scale_mp
-        syn_scale = min(syn_scale, 10.) # hard_bound_above
-        x0 = self.scale_facs_rdc[self.exc_idx_rdc][0] # x0 is scalar cuz all Exc. factors are equal
-        t = self.net.min_delay
-        x = (x0 * syn_scale) / (x0 + (syn_scale - x0) * np.exp(-self.tau_scale * syn_scale * t) )
-        self.scale_facs_rdc[self.exc_idx_rdc] = x
-
-
-    def upd_exp_scale_shrp(self, time):
-        """ Updates the synaptic scaling factor used in ssrdc_sharp units.
-
-            The algorithm is the same as upd_exp_scale_mp, but controlled by the inputs at the
-            sharpening port. When the sum of inputs at this port is smaller than 0.5 the scale factors
-            return to 1 with a time constant of tau_relax.
-        """
-        if np.dot(self.mp_inputs[self.sharpen_port], self.get_mp_weights(time)[self.sharpen_port]) < 0.5:
-            a = self.rdc_exc_ones   
-            exp_tau = self.tau_relax
-        else: 
-            #r = self.get_lpf_fast(0)  # lpf'd rate
-            r = self.buffer[-1] # current rate
-            r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
-            exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
-            error = self.below - self.above - 2.*exp_cdf + 1. 
-            #u = (np.log(r/(1.-r))/self.slope) + self.thresh
-            rdc_inp = self.mp_inputs[self.rdc_port]
-            rdc_w = self.get_mp_weights(time)[self.rdc_port]
-            u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*rdc_inp[self.exc_idx_rdc]*rdc_w[self.exc_idx_rdc])
-            I = u - self.get_mp_input_sum(time)     
-            mu_exc = np.maximum( np.sum( rdc_inp[self.exc_idx_rdc] ), 0.001 )
-            #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
-            #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc # adjusting for sigmoidal's slope
-            ss_scale = (u - I + self.Kp * error) / mu_exc
-            a = ss_scale / np.maximum(rdc_w[self.exc_idx_rdc],.001)
-            a = np.minimum( a, 10.) # hard bound above
-            exp_tau = self.tau_scale
-        x0 = self.scale_facs_rdc[self.exc_idx_rdc]
-        self.scale_facs_rdc[self.exc_idx_rdc] = (x0*a) / (x0+(a-x0)*np.exp(-exp_tau*a*self.net.min_delay))
-
-
-    def upd_exp_scale_sort_shrp(self, time):
-        """ Updates the synaptic scale factor optionally used in some ssrdc_sharp units.
-
-            The algorithm is the same as upd_exp_scale_sort_mp, but controlled by the inputs at the
-            sharpening port. When the sum of inputs at this port is smaller than 0.5 the scale factors
-            return to 1 with a time constant of tau_relax.
-        """
-        if np.dot(self.mp_inputs[self.sharpen_port], self.get_mp_weights(time)[self.sharpen_port]) < 0.5:
-            syn_scale = 1.
-            exp_tau = self.tau_relax
-        else: # input at sharpen port >= 0.5
-            exc_rdc_inp = self.mp_inputs[self.rdc_port][self.exc_idx_rdc] # Exc. inputs at the rdc port
-            exc_rdc_w = self.get_mp_weights(time)[self.rdc_port][self.exc_idx_rdc] # Exc. weights at rdc port
-            r = self.buffer[-1] # current rate
-            if not self.autapse: # if unit has no autapses, put a fake one with zero weight
-                exc_rdc_inp = np.concatenate((exc_rdc_inp, [r]))
-                exc_rdc_w = np.concatenate((exc_rdc_w, [0]))
-                self.autapse_idx = len(exc_rdc_inp) - 1
-            rate_rank = np.argsort(exc_rdc_inp)  # array index that sorts exc_rdc_inp
-            ideal_exc_inp = np.dot(exc_rdc_w[rate_rank], self.ideal_rates)
-            my_ideal_rate = self.ideal_rates[np.where(rate_rank == self.autapse_idx)[0][0]]
-            if self.autapse:
-                u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc] * exc_rdc_inp * exc_rdc_w)
-            else:
-                u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*exc_rdc_inp[:-1]*exc_rdc_w[:-1])
-            I = u - self.get_mp_input_sum(time)     
-            syn_scale = (my_ideal_rate - I) / (ideal_exc_inp)
-            syn_scale = min(syn_scale, 10.) # hard_bound_above
-            exp_tau = self.tau_scale
-        # same soft weight bounding as upd_exp_scale_mp
-        x0 = self.scale_facs_rdc[self.exc_idx_rdc][0] # x0 is scalar cuz all Exc. factors are equal
-        x = (x0 * syn_scale) / (x0 + (syn_scale - x0) * np.exp(-exp_tau * syn_scale * self.net.min_delay) )
-        self.scale_facs_rdc[self.exc_idx_rdc] = x
- 
-
-    def upd_thresh(self, time):
+    def upd_slide_thresh(self, time):
         """ Updates the threshold of exp_dist_sig_thr units and some other 'trdc' units.
 
             The algorithm is an adapted version of the  one used in exp_rate_dist synapses.
@@ -1099,10 +800,10 @@ class unit():
         self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
         
 
-    def upd_thr_shrp(self, time):
+    def upd_slide_thresh_shrp(self, time):
         """ Updates the threshold of trdc units when input at 'sharpen' port is larger than 0.5 .
 
-            The algorithm is based on upd_thresh.
+            The algorithm is based on upd_slide_thresh.
         """
         idxs = self.port_idx[self.sharpen_port]
         inps = self.mp_inputs[self.sharpen_port]
@@ -1120,74 +821,9 @@ class unit():
         self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
 
 
-    def upd_slide_thr_hr(self, time):
-        """ Updates the threshold of units with 'rate harmonization'. """
-        inputs = self.mp_inputs[self.hr_port]
-        mean_inp = np.mean(inputs) 
-        r = self.get_lpf_fast(0)
-        self.thresh -= self.tau_thr * ( mean_inp - r )
-        self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
-
-
-    def upd_syn_scale_hr(self, time):
-        """ Update the synaptic scale for units with 'rate harmonization'. 
-            
-            The scaling factors in self.scale_facs_hr correspond to the excitatory synapses
-            at the port hr_port. 
-        """
-        # Other than the 'error', it's all as in upd_exp_scale_mp
-        inputs = self.mp_inputs[self.hr_port]
-        mean_inp = np.mean(inputs) 
-        r = self.get_lpf_fast(0)
-        error =  mean_inp - r
-
-        hr_inputs = self.mp_inputs[self.hr_port]
-        hr_weights = self.get_mp_weights(time)[self.hr_port]
-        u = np.dot(hr_inputs[self.exc_idx_hr], hr_weights[self.exc_idx_hr])
-        I = u - self.get_mp_input_sum(time) 
-        mu_exc = np.maximum( np.sum( hr_inputs[self.exc_idx_hr] ), 0.001 )
-        ss_scale = (u - I + self.Kp * error) / mu_exc
-        a = ss_scale / np.maximum(hr_weights[self.exc_idx_hr],.001)
-        x0 = self.scale_facs_hr[self.exc_idx_hr]
-        t = self.net.min_delay
-        self.scale_facs_hr[self.exc_idx_hr] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
-
-
-    def upd_error(self, time):
-        """ update the error used by delta units."""
-        # Reliance on mp_inputs would normally be discouraged, since it slows things
-        # down, and can be replaced by the commented code below. However, because I also
-        # have the inp_l2 requirement in delta units, mp_inputs is available anyway.
-        inputs = self.mp_inputs
-        weights = self.get_mp_weights(time)
-        if self.learning > 0.5:
-            port1 = np.dot(inputs[1], weights[1])
-            #port1 = sum( [syn.w * act(time - dely) for syn, act, dely in zip(
-            #             [self.net.syns[self.ID][i] for i in self.port_idx[1]],
-            #             [self.net.act[self.ID][i] for i in self.port_idx[1]],
-            #             [self.net.delays[self.ID][i] for i in self.port_idx[1]])] ) 
-            self.error = port1 - self.get_lpf_fast(0)
-            self.bias += self.bias_lrate * self.error
-            # to update 'learning' we can use the known solution to e' = -tau*e, namely
-            # e(t) = e(t0) * exp((t-t0)/tau), instead of the forward Euler rule
-            self.learning *= np.exp((self.last_time-time)/self.tau_e)
-        else: # learning <= 0.5
-            self.error = 0.
-            # input at port 2
-            port2 = np.dot(inputs[2], weights[2])
-            #port2 = sum( [syn.w * act(time - dely) for syn, act, dely in zip(
-            #             [self.net.syns[self.ID][i] for i in self.port_idx[2]],
-            #             [self.net.act[self.ID][i] for i in self.port_idx[2]],
-            #             [self.net.delays[self.ID][i] for i in self.port_idx[2]])] )
-            if port2 >= 0.5:
-                self.learning = 1.
-            else: 
-                self.learning *= np.exp((self.last_time-time)/self.tau_e)
-
-
-    def upd_inp_l2(self, time):
-        """ Update the L2 norm of the inputs at port 0. """
-        self.inp_l2 = np.linalg.norm(self.mp_inputs[0])
+    ##########################################
+    # END OF UPDATE METHODS FOR REQUIREMENTS #
+    ##########################################
 
 
 class source(unit):

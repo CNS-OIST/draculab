@@ -255,6 +255,250 @@ def add_lpf_slow_mp_inp_sum(unit):
     setattr(unit, 'lpf_slow_mp_inp_sum', [ 0.4 for _ in range(unit.n_ports) ])
 
 
+def add_balance(unit):
+    """ Adds two numbers called  below, and above.
+
+        below = fraction of inputs with rate lower than the unit.
+        above = fraction of inputs with rate higher than the unit.
+
+        Those numbers are useful to produce a given firing rate distribtuion by the
+        various trdc and ssrdc models.
+    """
+    if not syn_reqs.inp_vector in unit.syn_needs:
+        raise AssertionError('balance requirement has the inp_vector requirement as a prerequisite')
+    setattr(unit, 'below', 0.5)
+    setattr(unit, 'above', 0.5)
+
+
+def add_balance_mp(unit):
+    """ Updates two numbers called  below, and above. Used in multiport units.
+
+        below = fraction of inputs with rate lower than the unit.
+        above = fraction of inputs with rate higher than the unit.
+
+        Those numbers are useful to produce a given firing rate distribtuion among
+        the population of units that connect to the 'rdc_port'.
+
+        This is the same as upd_balance, but ports other than the rdc_port are ignored.
+    """
+    if not syn_reqs.mp_inputs in unit.syn_needs:
+        raise AssertionError('balance_mp requirement has the mp_inputs requirement as a prerequisite')
+    setattr(unit, 'below', 0.5)
+    setattr(unit, 'above', 0.5)
+
+
+def add_exp_scale(unit):
+    """ Adds the 'scale_facs' list, which specifies a scale factor for each weight.
+
+        The scale factors are calculated so that the network acquires an exponential
+        distribution of firing rates.
+    """
+    if not syn_reqs.balance in unit.syn_needs:
+        raise AssertionError('exp_scale requires the balance requirement to be set')
+    if not syn_reqs.lpf_fast in unit.syn_needs:
+        raise AssertionError('exp_scale requires the lpf_fast requirement to be set')
+    scale_facs= np.tile(1., len(unit.net.syns[unit.ID])) # array with scale factors
+    # exc_idx = numpy array with index of all excitatory units in the input vector 
+    exc_idx = [ idx for idx,syn in enumerate(unit.net.syns[unit.ID]) if syn.w >= 0]
+    # ensure the integer data type; otherwise you can't index numpy arrays
+    exc_idx = np.array(exc_idx, dtype='uint32')
+    # inh_idx = numpy array with index of all inhibitory units 
+    inh_idx = [idx for idx,syn in enumerate(unit.net.syns[unit.ID]) if syn.w < 0]
+    inh_idx = np.array(inh_idx, dtype='uint32')
+    setattr(unit, 'exc_idx', exc_idx)
+    setattr(unit, 'inh_idx', inh_idx)
+    setattr(unit, 'scale_facs', scale_facs)
+
+
+def add_exp_scale_mp(unit):
+    """ Adds the synaptic scaling factors used in multiport ssrdc units.
+
+        The algorithm is the same as upd_exp_scale, but only the inputs at the rdc_port
+        are considered.
+    """
+    if not syn_reqs.balance_mp in unit.syn_needs:
+        raise AssertionError('exp_scale_mp requires the balance_mp requirement to be set')
+    if not syn_reqs.lpf_fast in unit.syn_needs:
+        raise AssertionError('exp_scale_mp requires the lpf_fast requirement to be set')
+    scale_facs_rdc = np.tile(1., len(unit.port_idx[unit.rdc_port])) # array with scale factors
+    # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
+    exc_idx_rdc = [ idx for idx,syn in enumerate([unit.net.syns[unit.ID][i] 
+                         for i in unit.port_idx[unit.rdc_port]]) if syn.w >= 0 ]
+    # ensure the integer data type; otherwise you can't index numpy arrays
+    exc_idx_rdc = np.array(exc_idx_rdc, dtype='uint32')
+    setattr(unit, 'exc_idx_rdc', exc_idx_rdc)
+    setattr(unit, 'scale_facs_rdc', scale_facs_rdc)
+
+
+def add_slide_thresh(unit):
+    """ Adds a 'sliding threshold' for single-port trdc sigmoidal units.
+    
+        The sliding threshold is meant to produce an exponential distribution of firing
+        rates in a population of units. The first unit type to use trdc (Threshold-based
+        Rate Distribution Control) was exp_dist_sig_thr, which uses this requirement.
+
+        Since the requirement adjusts the 'thresh' attribute already present in
+        sigmoidal models, this initialization code adds no variables.
+    """
+    if (not syn_reqs.balance in unit.syn_needs) and (not syn_reqs.balance_mp in unit.syn_needs):
+        raise AssertionError('slide_thresh requires the balance(_mp) requirement to be set')
+
+
+def add_slide_thresh_shrp(unit):
+    """ Adds a sliding threshold that falls back to a default value when signalled.
+
+        The sliding threshold is meant to produce an exponential distribution of firing
+        rates in a population of units. Units using this requirement will have a
+        'sharpen_port', and when its signal is smaller than 0.5 the trdc will cease,
+        and the threshold will revert to a fixed value.
+
+        The units that use this requirement are those derived from the trdc_sharp_base
+        class.
+    """
+    if not syn_reqs.balance_mp in unit.syn_needs:
+        raise AssertionError('slide_thresh_shrp requires the balance_mp requirement to be set')
+    if not unit.multiport:
+        raise AssertionError('The slide_thresh_shrp is for multiport units only')
+
+
+def add_slide_thr_hr(unit):
+    """ Adds a sliding threshold that aims to produce a harmonic pattern of firing rates.
+
+        See the sliding_threshold_harmonic_rate_sigmoidal unit type for the
+        meaning of this.
+    """
+    if not syn_reqs.mp_inputs in unit.syn_needs:
+        raise AssertionError('slide_thr_hr requires the mp_inputs requirement to be set')
+    if not unit.multiport:
+        raise AssertionError('The slide_thr_hr requirment is for multiport units only')
+
+
+def add_syn_scale_hr(unit):
+    """ Adds factors to scale the synaptic weights, producing 'harmonic rates'.
+
+        Too see what this means see the synaptic_scaling_harmonic_rate_sigmoidal
+        unit type.
+    """
+    if not syn_reqs.mp_inputs in unit.syn_needs:
+        raise AssertionError('syn_scale_hr requires the mp_inputs requirement to be set')
+    if not unit.multiport:
+        raise AssertionError('The syn_scale_hr requirment is for multiport units only')
+    if not syn_reqs.lpf_fast in unit.syn_needs:
+        raise AssertionError('syn_scale_hr requires the lpf_fast requirement to be set')
+    # exc_idx_hr = numpy array with index of all excitatory units at hr port
+    exc_idx_hr = [ idx for idx,syn in enumerate([unit.net.syns[unit.ID][i] 
+                         for i in unit.port_idx[unit.hr_port]]) if syn.w >= 0 ]
+    # ensure the integer data type; otherwise you can't index numpy arrays
+    exc_idx_hr = np.array(exc_idx_hr, dtype='uint32')
+    #scale_facs = np.tile(1., len(unit.net.syns[unit.ID])) # array with scale factors
+    scale_facs_hr = np.tile(1., len(unit.port_idx[unit.hr_port])) # array with scale factors
+    setattr(unit, 'exc_idx_hr', exc_idx_hr)
+    setattr(unit, 'scale_facs_hr', scale_facs_hr)
+
+
+def add_exp_scale_shrp(unit):
+    """ Adds the scaling factors used in ssrdc_sharp units not using sort_rdc.
+
+        This requirement is found in units that inherit from the ssrdc_sharp_base class.
+    """
+    if not syn_reqs.balance_mp in unit.syn_needs:
+        raise AssertionError('exp_scale_shrp requires the balance_mp requirement to be set')
+    if not unit.multiport:
+        raise AssertionError('The exp_scale_shrp requirement is for multiport units only')
+    if not syn_reqs.lpf_fast in unit.syn_needs:
+        raise AssertionError('exp_scale_shrp requires the lpf_fast requirement to be set')
+    scale_facs_rdc = np.tile(1., len(unit.port_idx[unit.rdc_port])) # array with scale factors
+    # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
+    exc_idx_rdc = [ idx for idx,syn in enumerate([unit.net.syns[unit.ID][i] 
+                         for i in unit.port_idx[unit.rdc_port]]) if syn.w >= 0 ]
+    # ensure the integer data type; otherwise you can't index numpy arrays
+    exc_idx_rdc = np.array(exc_idx_rdc, dtype='uint32')
+    rdc_exc_ones = np.tile(1., len(exc_idx_rdc))
+    setattr(unit, 'exc_idx_rdc', exc_idx_rdc)
+    setattr(unit, 'rdc_exc_ones', rdc_exc_ones)
+    setattr(unit, 'scale_facs_rdc', scale_facs_rdc)
+
+
+def add_exp_scale_sort_mp(unit):
+    """ Adds the scaling factors used in the sig_ssrdc unit when sort_rdc==True.  """
+    if not unit.multiport:
+        raise AssertionError('The exp_scale_sort_mp requirement is for multiport units only')
+    scale_facs_rdc = np.tile(1., len(unit.port_idx[unit.rdc_port])) # array with scale factors
+    # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
+    exc_idx_rdc = [ idx for idx,syn in enumerate([unit.net.syns[unit.ID][i] 
+                         for i in unit.port_idx[unit.rdc_port]]) if syn.w >= 0 ]
+    autapse = False
+    autapse_idx = len(exc_idx_rdc) - 1
+    for idx, syn in enumerate([unit.net.syns[unit.ID][eir] for eir in exc_idx_rdc]):
+        if syn.preID == unit.ID: # if there is an excitatory autapse at the rdc port
+            autapse_idx = idx
+            autapse = True
+            break
+    # Gotta produce the array of ideal rates given the truncated exponential distribution
+    if autapse:
+        N = len(exc_idx_rdc)
+    else:
+        N = len(exc_idx_rdc) + 1 # an extra point for the fake autapse
+    points = [ (k + 0.5) / (N + 1.) for k in range(N) ]
+    ideal_rates = np.array([-(1./unit.c) * np.log(1.-(1.-np.exp(-unit.c))*pt) for pt in points])
+    setattr(unit, 'scale_facs_rdc', scale_facs_rdc) 
+    setattr(unit, 'exc_idx_rdc', exc_idx_rdc) 
+    setattr(unit, 'autapse', autapse) 
+    setattr(unit, 'autapse_idx', autapse_idx) 
+    setattr(unit, 'ideal_rates', ideal_rates) 
+
+
+def add_exp_scale_sort_shrp(unit):
+    """ Adds the scaling factors used in ssrdc_sharp units where sort_rdc==False.  
+    
+        This requirement is found in units that inherit from the ssrdc_sharp_base class.
+        This initialization function is identical to add_exp_scale_sort_mp
+    """
+    if not unit.multiport:
+        raise AssertionError('The exp_scale_sort_mp requirement is for multiport units only')
+    scale_facs_rdc = np.tile(1., len(unit.port_idx[unit.rdc_port])) # array with scale factors
+    # exc_idx_rdc = numpy array with index of all excitatory units at rdc port
+    exc_idx_rdc = [ idx for idx,syn in enumerate([unit.net.syns[unit.ID][i] 
+                         for i in unit.port_idx[unit.rdc_port]]) if syn.w >= 0 ]
+    autapse = False
+    autapse_idx = len(exc_idx_rdc) - 1
+    for idx, syn in enumerate([unit.net.syns[unit.ID][eir] for eir in exc_idx_rdc]):
+        if syn.preID == unit.ID: # if there is an excitatory autapse at the rdc port
+            autapse_idx = idx
+            autapse = True
+            break
+    # Gotta produce the array of ideal rates given the truncated exponential distribution
+    if autapse:
+        N = len(exc_idx_rdc)
+    else:
+        N = len(exc_idx_rdc) + 1 # an extra point for the fake autapse
+    points = [ (k + 0.5) / (N + 1.) for k in range(N) ]
+    ideal_rates = np.array([-(1./unit.c) * np.log(1.-(1.-np.exp(-unit.c))*pt) for pt in points])
+    setattr(unit, 'scale_facs_rdc', scale_facs_rdc) 
+    setattr(unit, 'exc_idx_rdc', exc_idx_rdc) 
+    setattr(unit, 'autapse', autapse) 
+    setattr(unit, 'autapse_idx', autapse_idx) 
+    setattr(unit, 'ideal_rates', ideal_rates) 
+
+
+def add_error(unit):
+    """ Adds the error value used by delta_linear units. """
+    if not syn_reqs.mp_inputs in unit.syn_needs:
+        raise AssertionError('The error requirement needs the mp_inputs requirement.')
+    setattr(unit, 'error', 0.)
+    setattr(unit, 'learning', 0.)
+
+
+def add_inp_l2(unit):
+    """ Adds the L2-norm of the vector with all inputs at port 0. 
+    
+        This requirement is used by delta_linear units to normalize their inputs.
+    """
+    if not syn_reqs.mp_inputs in unit.syn_needs:
+        raise AssertionError('The inp_l2 requirement needs the mp_inputs requirement.')
+    setattr(unit, 'inp_l2', 1.)
+
+
 #-------------------------------------------------------------------------------------
 class requirement():
     """ The parent class of requirement classes.  """
