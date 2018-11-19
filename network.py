@@ -694,12 +694,12 @@ class network():
         Returns:
             The method returns a 3-tuple (times, unit_store, plant_store): 
             times: a numpy array with  the simulation times when the update functions 
-                      were called. These times will begin at the initial simulation time, and
-                      advance in 'min_delay' increments until 'total_time' is completed.
-            unit_store: a 2-dimensional numpy array. unit_store[i][j] contains the activity
-                           of the i-th unit at time j-th timepoint (e.g. at times[j]).
-            plant_store: a 3-dimensional numpy array. plant_store[i][j][k] is the value
-                            of the k-th state variable, at the j-th timepoint, for the i-th plant.
+                      were called. These times will begin at the initial simulation time, 
+                      and advance in 'min_delay' increments until 'total_time' is completed.
+            unit_store: a list of numpy arrays. unit_store[i][j] contains the activity
+                        of the i-th unit at time j-th timepoint (e.g. at times[j]).
+            plant_store: a list of 2-dimensional numpy arrays. plant_store[i][j][k] is the value
+                         of the k-th state variable, at the j-th timepoint, for the i-th plant.
 
         """
         Nsteps = int(total_time/self.min_delay)  # total number of simulatin steps
