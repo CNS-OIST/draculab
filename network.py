@@ -8,6 +8,10 @@ from units import *
 from synapses import *
 from plants import *
 import numpy as np
+from cython_utils import * # interpolation and integration methods including cython_get_act*,
+from requirements import *
+from array import array # optionally used for the unit's buffer
+#from numba import jit
 #import ray
 
 class network():
@@ -53,6 +57,7 @@ class network():
         else: self.rtol = 1e-6 
         if 'atol' in params: self.atol = params['atol']
         else: self.atol = 1e-6 
+        self.flat = False # This network ha not been "flattened"
         
 
     def create(self, n, params):
@@ -71,6 +76,8 @@ class network():
             return self.create_plant(n, params)
         else:
             raise TypeError('Tried to create an object of an unknown type')
+        if self.flat:
+            raise AssertionError("Adding elements to a flattened network")
 
 
     def create_plant(self, n, params):
@@ -267,6 +274,9 @@ class network():
         # A quick test first (all unit ID's are in the right range)
         if (np.amax(from_list + to_list) > self.n_units-1) or (np.amin(from_list + to_list) < 0):
             raise ValueError('Attempting to connect units with an ID out of range')
+        # Ensuring the network hasn't been flattened
+        if self.flat:
+            raise AssertionError("Adding connections to a flattened network")
 
         # Retrieve the synapse class from its type object
         syn_class = syn_spec['type'].get_class()
@@ -677,6 +687,167 @@ class network():
             self.units[u].init_buffers() # this should go second, so it uses the new syn_needs
 
 
+    def flatten(self):
+        """ Move unit and synapse data structures into the network. """
+        if self.sim_time > 0.:  # the network has been run before
+            raise AssertionError("The network should not be flattened after simulating") 
+
+        # obtain the maximum delay
+        self.max_del = max([0. if len(l)==0 else max(l) for l in self.delays])        
+        self.max_del += self.min_delay # because unit delays get min_delay added (see 'connect')
+        # initialize the ts array (called 'times' in units)
+        self.bf_type = np.float64  # data type of the buffers when using numpy arrays
+        self.max_steps = int(round(self.max_del/self.min_delay)) # max number of min_del steps in all delays
+        self.ts_buff_size = int(round(self.max_steps*self.min_buff_size)) # number of activation values to store
+        self.ts = np.linspace(-self.max_del, 0., self.ts_buff_size, dtype=self.bf_type) # the corresponding
+                                                                             # times #for the buffer values
+        self.ts_grid = np.linspace(0., self.min_delay, self.min_buff_size+1, dtype=self.bf_type) # used to
+                                                                             # create values for 'times'
+        self.ts_bit = self.min_delay / self.min_buff_size
+        # copy all the unit buffers into the network object
+        self.unit_buffs = [None for _ in range(self.n_units)]
+        self.has_buffer = [False] * self.n_units
+        self.steps = [self.max_steps] * self.n_units
+        self.init_idx = [0] * self.n_units # first index of ts to consider for each unit 
+        self.buff_len = [0] * self.n_units # length of buffer for each unit
+        for uid, u in enumerate(self.units):
+            if hasattr(u, 'buffer'):
+                self.unit_buffs[uid] = u.buffer
+                self.has_buffer[uid] = True
+                self.buff_len[uid]  = len(u.buffer)
+                self.init_idx[uid] = self.ts_buff_size - len(u.buffer)
+            self.steps[uid] = u.steps
+        # get a delays list where the time unit is the number of min_delay intervals
+        self.step_dels = [ [ self.min_buff_size*int(round(d/self.min_delay)) for d in l] 
+                                                                   for l in self.delays]
+        # initialize a vector with the sum of scaled inputs for all units
+        self.inp_sums = [ np.zeros(self.min_buff_size) for l in self.step_dels]
+        # For each unit obtain a vector with the IDs of input units
+        self.inp_src = [ [syn.preID for syn in l] for l in self.syns ]
+        self.flat = True
+
+    
+    def get_act(self, uid, t):
+        """ Get the activity of unit with ID 'uid' at time 't'.
+
+            t should be within the range of values in the unit's buffer.
+        """
+        if not self.has_buffer[uid]:
+            return self.units[uid].get_act(t)
+        return cython_get_act3(t, self.ts[self.init_idx[uid]], self.ts_bit, self.buff_len[uid],
+                               self.unit_buffs[uid])
+
+
+    def get_act_by_step(self, uid, s):
+        """ Get the activity of unit with ID 'uid' as it was 's' buffer time steps before.
+
+            's' should not be larger than the number of steps in the unit's buffer.
+            A buffer time steps corresponds to the time interval between consecutive
+            buffer entries, namely min_delay/min_buff_size.
+        """
+        if not self.has_buffer[uid]:
+            return self.units[uid].get_act(self.sim_time-s*self.ts_bit)
+        return self.unit_buffs[uid][-1 - s]
+    
+    
+    def upd_inp_sums(self):
+        """ Update a vector with the scaled sum of inputs for all units. """
+        for uid, u in enumerate(self.units):
+            if u.type is unit_types.source:
+                continue
+            for entry in range(self.min_buff_size):
+                # using get_act:
+                """
+                self.inp_sums[uid][entry] = sum( [syn.w * 
+                            self.get_act(src, self.sim_time-dely+entry*self.ts_bit)
+                                for syn, dely, src in
+                            zip(self.syns[uid], self.delays[uid], self.inp_src[uid]) ] )
+                """
+                # using get_act_by_step:
+                #"""
+                self.inp_sums[uid][entry] = sum( [syn.w * 
+                             self.get_act_by_step(src, sd-entry)
+                                 for syn,sd,src in 
+                            zip(self.syns[uid], self.step_dels[uid], self.inp_src[uid]) ] )
+                #"""
+            # alternate version for numba. It's slower. Would need to use more numpy.
+            """
+            for entry in range(self.min_buff_size):
+                sums = 0.
+                for idx in range(len(self.syns[uid])):
+                    sums += self.syns[uid][idx].w * (
+                       self.get_act_by_step(self.inp_src[uid][idx], self.step_dels[uid][idx]-entry) )
+                self.inp_sums[uid][entry] = sums
+            """
+        
+    def dt_custom_fi(self, u, y, t):
+        """ Returns the derivative of custom_fi unit 'u' at time 't' when its activity is y. """
+        assert u.type is unit_types.custom_fi, 'dt_custom_fi called for the wrong unit type'
+        return ( u.f(self.inp_sums[u.ID][t]) - y ) * u.rtau
+
+
+    def test_update(self, time):
+        """ Updates all state variables by advancing them one min_delay time step. """
+        self.upd_inp_sums()
+
+        self.ts = np.roll(self.ts, -self.min_buff_size)
+        self.ts[self.ts_buff_size-self.min_buff_size:] = self.ts_grid[1:]+time
+
+        for uid, u in enumerate(self.units):
+            # update buffer
+            if not u.type is unit_types.source:
+                # rotate buffer
+                self.unit_buffs[uid] = np.roll(self.unit_buffs[uid], -self.min_buff_size)
+                # calculate new values
+                t = time
+                strt_idx = self.buff_len[uid]-self.min_buff_size
+                for idx in range(strt_idx, self.buff_len[uid]):
+                    self.unit_buffs[uid][idx] = self.unit_buffs[uid][idx-1] + ( self.ts_bit * 
+                        u.dt_fun(self.unit_buffs[uid][idx-1], idx-strt_idx) )
+                         #self.dt_custom_fi(u, self.unit_buffs[uid][idx-1], t) )
+                    t = t + self.ts_bit
+            # handle synaptic requirements
+            u.pre_syn_update(time)
+            u.last_time = time # important to have it after pre_syn_update
+        for synli in self.syns:
+            for syn in synli:
+                syn.update(time)
+
+
+    def flat_run(self, total_time):
+        """ Simulate a flattened network for the given time. """
+        if not self.flat:
+            self.flatten()
+        Nsteps = int(total_time/self.min_delay)  # total number of simulation steps
+        unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # arrays to store unit activities
+        plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # arrays to store plant steps
+        times = np.zeros(Nsteps) + self.sim_time # array to store initial time of simulation steps
+
+        for step in range(Nsteps):
+            times[step] = self.sim_time # self.sim_time persists between calls to network.run()
+            
+            # store current unit activities
+            for uid, unit in enumerate(self.units):
+                #unit_store[uid][step] = self.get_act(uid, self.sim_time)
+                unit_store[uid][step] = self.get_act_by_step(uid, 0)
+           
+            # store current plant state variables 
+            for pid, plant in enumerate(self.plants):
+                plant_store[pid][step,:] = plant.get_state(self.sim_time)
+            
+            # update units
+            self.test_update(self.sim_time)
+
+            # update plants
+            for plant in self.plants:
+                plant.update(self.sim_time)
+
+            self.sim_time += self.min_delay
+
+        return times, unit_store, plant_store
+
+           
+
 
     def run(self, total_time):
         """
@@ -701,8 +872,12 @@ class network():
             plant_store: a list of 2-dimensional numpy arrays. plant_store[i][j][k] is the value
                          of the k-th state variable, at the j-th timepoint, for the i-th plant.
 
+        Raises:
+            AssertionError
         """
-        Nsteps = int(total_time/self.min_delay)  # total number of simulatin steps
+        if self.flat:
+            raise AssertionError('The run method is not used with flattened networks')
+        Nsteps = int(total_time/self.min_delay)  # total number of simulation steps
         unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # arrays to store unit activities
         plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # arrays to store plant steps
         times = np.zeros(Nsteps) + self.sim_time # array to store initial time of simulation steps

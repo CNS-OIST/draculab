@@ -121,10 +121,10 @@ class unit():
         #self.buffer = np.array( [self.init_val]*self.buff_size, dtype=self.bf_type) # numpy array with
         #self.buffer = array('d', [self.init_val]*self.buff_size)
         self.times = np.linspace(-self.delay, 0., self.buff_size, dtype=self.bf_type) # the corresponding
-                                                                             # times #for the buffer values
+                                                                             # times for the buffer values
         self.times_grid = np.linspace(0, min_del, min_buff+1, dtype=self.bf_type) # used to create
-                                                                             # values for 'times'
-        self.time_bit = self.times[1] - self.times[0] + 1e-10 # time interval used by get_act.
+                                     # values for 'times'. Initially its interval differs with 'times'
+        self.time_bit = min_del / min_buff # time interval used by get_act
         
         
     def get_inputs(self, time):
@@ -242,13 +242,13 @@ class unit():
         # TO USE A PARTICULAR SOLVER, UNCOMMENT ITS CODE, COMMENT OTHER SOLVERS
         #---------------------------------------------------------------------
         # odeint
-        #"""
+        """
         # odeint also returns the initial condition, so to produce min_buff_size new values
         # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
         new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times, rtol=self.rtol, atol=self.atol)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:,0]
-        #"""
+        """
         #---------------------------------------------------------------------
         # solve_ivp --- REQUIRES ADDITIONAL STEPS (see below)
         """
@@ -265,7 +265,7 @@ class unit():
         """
         #---------------------------------------------------------------------
         # Euler
-        """
+        #"""
         # This is an implementation with forward Euler integration. Although this may be
         # imprecise and unstable in some cases, it is a first step to implement the
         # Euler-Maruyama method. And it's also faster than odeint.
@@ -275,7 +275,7 @@ class unit():
         new_buff = euler_int(self.derivatives, self.buffer[-1], time, len(new_times), dt)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:]
-        """
+        #"""
         #---------------------------------------------------------------------
         # Euler-Maruyama
         """
@@ -324,7 +324,6 @@ class unit():
         # Below the code for the second implementation.
         # This linear interpolation takes advantage of the ordered, regularly-spaced buffer.
         # Time values outside the buffer range receive the buffer endpoints.
-        # The third implementation is faster, but for small buffer sizes this gives more exact results.
         """
         time = min( max(time,self.times[0]), self.times[-1] ) # clipping 'time'
         frac = (time-self.times[0])/(self.times[-1]-self.times[0])
@@ -349,7 +348,14 @@ class unit():
         #return cython_get_act2(time, self.times[0], self.times[-1], self.times, self.buff_size, self.buffer)
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # This is the third implementation, written in Cython
-        return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
+        #return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        # This is for flat networks
+        if self.net.flat:
+            return self.net.get_act(self.ID, time)
+        else:
+            return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
+        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
     def pre_syn_update(self, time):
@@ -944,6 +950,10 @@ class sigmoidal(unit):
         """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
         return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        return ( self.f(self.net.inp_sums[self.ID][s]) - y ) * self.rtau
     
 
 class noisy_sigmoidal(unit): 
@@ -1074,6 +1084,11 @@ class linear(unit):
         """
         return( self.get_input_sum(t) - y[0] ) * self.rtau
    
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        return ( self.net.inp_sums[self.ID][s] - y ) * self.rtau
+
 
 class noisy_linear(unit):
     """ A linear unit with passive decay and a noisy update function.
