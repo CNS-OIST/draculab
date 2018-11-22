@@ -11,7 +11,7 @@ import numpy as np
 from cython_utils import * # interpolation and integration methods including cython_get_act*,
 from requirements import *
 from array import array # optionally used for the unit's buffer
-#from numba import jit
+from numba import jit
 #import ray
 
 class network():
@@ -716,6 +716,9 @@ class network():
                 self.has_buffer[uid] = True
                 self.buff_len[uid]  = len(u.buffer)
                 self.init_idx[uid] = self.ts_buff_size - len(u.buffer)
+            else: # initialize init_idx for source units
+                self.init_idx[uid] = self.ts_buff_size - (int(round(u.delay/self.min_delay)) 
+                                                          * self.min_buff_size)
             self.steps[uid] = u.steps
         # get a delays list where the time unit is the number of buffer intervals
         self.step_dels = [ [ self.min_buff_size*int(round(d/self.min_delay)) for d in l] 
@@ -733,12 +736,15 @@ class network():
         self.acts_idx = [[] for _ in range(self.n_units)]
         for uid, u in enumerate(self.units):
             if hasattr(u, 'buffer'):
+                self.acts[uid,self.init_idx[uid]:] = u.init_val  # initializing acts
                 idx1 = [ [src]*self.min_buff_size for src in self.inp_src[uid] ]
                 idx2 = [list(range(self.ts_buff_size-self.step_dels[uid][inp], 
                         self.ts_buff_size-self.step_dels[uid][inp] + self.min_buff_size))
                         for inp in range(len(self.inp_src[uid]))]
                 self.acts_idx[uid] = (idx1, idx2)
-
+            else:  # for source units, also initialize acts
+                self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
+                                        t in self.ts[self.init_idx[uid]:] ])
         self.flat = True
 
     
@@ -749,8 +755,10 @@ class network():
         """
         if not self.has_buffer[uid]:
             return self.units[uid].get_act(t)
+        #return cython_get_act3(t, self.ts[self.init_idx[uid]], self.ts_bit, self.buff_len[uid],
+        #                       self.unit_buffs[uid])
         return cython_get_act3(t, self.ts[self.init_idx[uid]], self.ts_bit, self.buff_len[uid],
-                               self.unit_buffs[uid])
+                               self.acts[uid])
 
 
     def get_act_by_step(self, uid, s):
@@ -762,7 +770,8 @@ class network():
         """
         if not self.has_buffer[uid]:
             return self.units[uid].get_act(self.sim_time-s*self.ts_bit)
-        return self.unit_buffs[uid][-1 - s]
+        #return self.unit_buffs[uid][-1 - s]
+        return self.acts[uid][-1 - s]
     
     
     def upd_inp_sums(self):
@@ -837,6 +846,7 @@ class network():
                 w_vec = np.array([syn.w for syn in self.syns[uid]])
                 self.inp_sums[uid] = np.matmul(step_inps.transpose(), w_vec)
 
+        # update the times array
         self.ts = np.roll(self.ts, -self.min_buff_size)
         self.ts[self.ts_buff_size-self.min_buff_size:] = self.ts_grid[1:]+time
 
@@ -857,6 +867,10 @@ class network():
                     #    u.dt_fun(self.unit_buffs[uid][idx-1], idx-strt_idx) )
                          #self.dt_custom_fi(u, self.unit_buffs[uid][idx-1], t) )
                     t = t + self.ts_bit
+            else: # put values of source units in acts
+                self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
+                                        t in self.ts[self.init_idx[uid]:] ])
+
             # handle synaptic requirements
             u.pre_syn_update(time)
             u.last_time = time # important to have it after pre_syn_update
