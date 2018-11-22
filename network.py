@@ -717,13 +717,28 @@ class network():
                 self.buff_len[uid]  = len(u.buffer)
                 self.init_idx[uid] = self.ts_buff_size - len(u.buffer)
             self.steps[uid] = u.steps
-        # get a delays list where the time unit is the number of min_delay intervals
+        # get a delays list where the time unit is the number of buffer intervals
         self.step_dels = [ [ self.min_buff_size*int(round(d/self.min_delay)) for d in l] 
                                                                    for l in self.delays]
         # initialize a vector with the sum of scaled inputs for all units
         self.inp_sums = [ np.zeros(self.min_buff_size) for l in self.step_dels]
         # For each unit obtain a vector with the IDs of input units
         self.inp_src = [ [syn.preID for syn in l] for l in self.syns ]
+
+        # EXTRA ATTRIBUTES FOR SECOND VERSION!
+        # The full array of activities (not yet masked)
+        self.acts = np.zeros((self.n_units, len(self.ts)))
+        #self.acts_mask = np.zeros_like(ts)
+        # The indices to extract the array of step inputs
+        self.acts_idx = [[] for _ in range(self.n_units)]
+        for uid, u in enumerate(self.units):
+            if hasattr(u, 'buffer'):
+                idx1 = [ [src]*self.min_buff_size for src in self.inp_src[uid] ]
+                idx2 = [list(range(self.ts_buff_size-self.step_dels[uid][inp], 
+                        self.ts_buff_size-self.step_dels[uid][inp] + self.min_buff_size))
+                        for inp in range(len(self.inp_src[uid]))]
+                self.acts_idx[uid] = (idx1, idx2)
+
         self.flat = True
 
     
@@ -753,22 +768,21 @@ class network():
     def upd_inp_sums(self):
         """ Update a vector with the scaled sum of inputs for all units. """
         for uid, u in enumerate(self.units):
-            if u.type is unit_types.source:
+            if not self.has_buffer[uid]:
                 continue
+            sy_sd_src = tuple(zip(self.syns[uid], self.step_dels[uid], self.inp_src[uid]))
             for entry in range(self.min_buff_size):
                 # using get_act:
                 """
                 self.inp_sums[uid][entry] = sum( [syn.w * 
                             self.get_act(src, self.sim_time-dely+entry*self.ts_bit)
-                                for syn, dely, src in
-                            zip(self.syns[uid], self.delays[uid], self.inp_src[uid]) ] )
+                                for syn, dely, src in sy_sd_src ] )
                 """
                 # using get_act_by_step:
                 #"""
                 self.inp_sums[uid][entry] = sum( [syn.w * 
-                             self.get_act_by_step(src, sd-entry)
-                                 for syn,sd,src in 
-                            zip(self.syns[uid], self.step_dels[uid], self.inp_src[uid]) ] )
+                                                  self.get_act_by_step(src, sd-entry)
+                                                  for syn,sd,src in sy_sd_src ] )
                 #"""
             # alternate version for numba. It's slower. Would need to use more numpy.
             """
@@ -814,6 +828,44 @@ class network():
                 syn.update(time)
 
 
+    def test_update2(self, time):
+        """ Updates all state variables by advancing them one min_delay time step. """
+        # updating the input sums
+        for uid, u in enumerate(self.units):
+            if not u.type is unit_types.source:
+                step_inps = self.acts[self.acts_idx[uid]]
+                w_vec = np.array([syn.w for syn in self.syns[uid]])
+                self.inp_sums[uid] = np.matmul(step_inps.transpose(), w_vec)
+
+        self.ts = np.roll(self.ts, -self.min_buff_size)
+        self.ts[self.ts_buff_size-self.min_buff_size:] = self.ts_grid[1:]+time
+
+        for uid, u in enumerate(self.units):
+            # update buffer
+            if not u.type is unit_types.source:
+                # rotate buffer
+                self.acts[uid][self.init_idx[uid]:] = np.roll(self.acts[uid][self.init_idx[uid]:],
+                                                              -self.min_buff_size)
+                # calculate new values
+                t = time
+                strt_idx = self.ts_buff_size - self.min_buff_size
+                for idx in range(strt_idx, self.ts_buff_size):
+                    self.acts[uid][idx] = self.acts[uid][idx-1] + ( self.ts_bit * 
+                        u.dt_fun(self.acts[uid][idx-1], idx-strt_idx) )
+
+                    #self.unit_buffs[uid][idx] = self.unit_buffs[uid][idx-1] + ( self.ts_bit * 
+                    #    u.dt_fun(self.unit_buffs[uid][idx-1], idx-strt_idx) )
+                         #self.dt_custom_fi(u, self.unit_buffs[uid][idx-1], t) )
+                    t = t + self.ts_bit
+            # handle synaptic requirements
+            u.pre_syn_update(time)
+            u.last_time = time # important to have it after pre_syn_update
+        for synli in self.syns:
+            for syn in synli:
+                syn.update(time)
+
+
+
     def flat_run(self, total_time):
         """ Simulate a flattened network for the given time. """
         if not self.flat:
@@ -829,6 +881,7 @@ class network():
             # store current unit activities
             for uid, unit in enumerate(self.units):
                 #unit_store[uid][step] = self.get_act(uid, self.sim_time)
+                # don't use unles get_act_by_step is compatible with source units
                 unit_store[uid][step] = self.get_act_by_step(uid, 0)
            
             # store current plant state variables 
@@ -836,7 +889,8 @@ class network():
                 plant_store[pid][step,:] = plant.get_state(self.sim_time)
             
             # update units
-            self.test_update(self.sim_time)
+            #self.test_update(self.sim_time)
+            self.test_update2(self.sim_time)
 
             # update plants
             for plant in self.plants:
