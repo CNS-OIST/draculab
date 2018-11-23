@@ -753,8 +753,8 @@ class network():
 
             t should be within the range of values in the unit's buffer.
         """
-        if not self.has_buffer[uid]:
-            return self.units[uid].get_act(t)
+        #if not self.has_buffer[uid]:
+        #    return self.units[uid].get_act(t)
         #return cython_get_act3(t, self.ts[self.init_idx[uid]], self.ts_bit, self.buff_len[uid],
         #                       self.unit_buffs[uid])
         return cython_get_act3(t, self.ts[self.init_idx[uid]], self.ts_bit, self.buff_len[uid],
@@ -768,8 +768,8 @@ class network():
             A buffer time steps corresponds to the time interval between consecutive
             buffer entries, namely min_delay/min_buff_size.
         """
-        if not self.has_buffer[uid]:
-            return self.units[uid].get_act(self.sim_time-s*self.ts_bit)
+        #if not self.has_buffer[uid]:
+        #    return self.units[uid].get_act(self.sim_time-s*self.ts_bit)
         #return self.unit_buffs[uid][-1 - s]
         return self.acts[uid][-1 - s]
     
@@ -844,7 +844,8 @@ class network():
             if not u.type is unit_types.source:
                 step_inps = self.acts[self.acts_idx[uid]]
                 w_vec = np.array([syn.w for syn in self.syns[uid]])
-                self.inp_sums[uid] = np.matmul(step_inps.transpose(), w_vec)
+                #self.inp_sums[uid] = np.matmul(step_inps.transpose(), w_vec)
+                self.inp_sums[uid] = np.matmul(w_vec, step_inps)
 
         # update the times array
         self.ts = np.roll(self.ts, -self.min_buff_size)
