@@ -49,7 +49,8 @@ class unit():
         self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
         self.min_buff_size = network.min_buff_size # a local copy just to avoid the extra reference
         # The delay of a unit is the maximum delay among the projections it sends.
-        # The final value of 'delay' should be set by network.connect(), after the unit is created.
+        # The final value of 'delay' should be set by network.connect(), after the unit is created;
+        # it will have an extra net.min_delay added to the actual delay.
         if 'delay' in params:
             self.delay = params['delay']
             # delay must be a multiple of net.min_delay. Next line checks that.
@@ -120,11 +121,11 @@ class unit():
                                                                              # previous activation values
         #self.buffer = np.array( [self.init_val]*self.buff_size, dtype=self.bf_type) # numpy array with
         #self.buffer = array('d', [self.init_val]*self.buff_size)
-        self.times = np.linspace(-self.delay, 0., self.buff_size, dtype=self.bf_type) # the corresponding
-                                                                             # times for the buffer values
+        self.time_bit = min_del / min_buff # time interval used by get_act
+        self.times = np.linspace(-self.delay+self.time_bit, 0., self.buff_size, dtype=self.bf_type) # the 
+                                                               #corresponding times for the buffer values
         self.times_grid = np.linspace(0, min_del, min_buff+1, dtype=self.bf_type) # used to create
                                      # values for 'times'. Initially its interval differs with 'times'
-        self.time_bit = min_del / min_buff # time interval used by get_act
         
         
     def get_inputs(self, time):
