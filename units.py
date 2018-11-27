@@ -13,6 +13,8 @@ from scipy.integrate import odeint # to integrate ODEs
 from array import array # optionally used for the unit's buffer
 #from scipy.integrate import solve_ivp # to integrate ODEs
 #from scipy.interpolate import interp1d # to interpolate values
+#from numba import jit
+#import ray
 
 
 class unit():
@@ -831,7 +833,26 @@ class unit():
     ##########################################
     # END OF UPDATE METHODS FOR REQUIREMENTS #
     ##########################################
-
+    
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # METHODS FOR FLAT NETWORKS ~~~~~~~~~~~~~
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #@ray.remote
+    def flat_euler_update(self, time):
+        """ The update method used with network.flat_update3. """
+        # update the input sum
+        self.step_inps = self.acts[self.acts_idx].reshape(self.n_inps, self.min_buff_size)
+        w_vec = np.array([syn.w for syn in self.net.syns[self.ID]])
+        self.inp_sum = np.matmul(w_vec, self.step_inps)
+        # roll the buffer
+        base = self.buffer.size - self.min_buff_size
+        self.buffer[0:base] = self.buffer[self.min_buff_size:]
+        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        # put new values in buffer
+        for idx in range(self.min_buff_size):
+            self.buffer[base+idx] = self.buffer[base+idx-1] + ( self.time_bit *
+                                    self.dt_fun3(self.buffer[base+idx-1], idx) )
+ 
 
 class source(unit):
     """ The class of units whose activity comes from some Python function.
@@ -843,7 +864,6 @@ class source(unit):
         Source units are also useful to track the value of any simulation variable that
         can be retrieved with a function.
     """
-    
     def __init__(self, ID, params, network):
         """ The class constructor.
 
@@ -950,25 +970,15 @@ class sigmoidal(unit):
         # there is only one state variable (the activity)
         return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
 
-    def dt_fun(self, y, s):
+    def dt_fun2(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        return ( self.f(self.net.inp_sums[self.ID][s]) - y ) * self.rtau
+
+    def dt_fun3(self, y, s):
         """ The derivatives function used when the network is flat. """
         return ( self.f(self.inp_sum[s]) - y ) * self.rtau
 
-    def flat_euler_update(self, time):
-        """ The update method used with network.flat_update3. """
-        # update the input sum
-        self.step_inps = self.acts[self.acts_idx].reshape(self.n_inps, self.min_buff_size)
-        w_vec = np.array([syn.w for syn in self.net.syns[self.ID]])
-        self.inp_sum = np.matmul(w_vec, self.step_inps)
-        # roll the buffer
-        base = self.buffer.size - self.min_buff_size
-        self.buffer[0:base] = self.buffer[self.min_buff_size:]
-        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
-        # put new values in buffer
-        for idx in range(self.min_buff_size):
-            self.buffer[base+idx] = self.buffer[base+idx-1] + ( self.time_bit *
-                                    self.dt_fun(self.buffer[base+idx-1], idx) )
-    
+   
 
 class noisy_sigmoidal(unit): 
     """

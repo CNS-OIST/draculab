@@ -55,9 +55,13 @@ class custom_fi(unit):
         # there is only one state variable (the activity)
         return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
  
-    def dt_fun(self, y, s):
+    def dt_fun2(self, y, s):
         """ The derivatives function used when the network is flat. """
         return ( self.f(self.net.inp_sums[self.ID][s]) - y ) * self.rtau
+
+    def dt_fun3(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        return ( self.f(self.inp_sum[s]) - y ) * self.rtau
 
     def set_fi(self, fun):
         """ Set the f-I curve with the given function. """

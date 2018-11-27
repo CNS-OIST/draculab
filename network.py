@@ -11,7 +11,7 @@ import numpy as np
 from cython_utils import * # interpolation and integration methods including cython_get_act*,
 from requirements import *
 from array import array # optionally used for the unit's buffer
-from numba import jit
+#from numba import jit
 #import ray
 
 
@@ -927,7 +927,7 @@ class network():
                 t = time
                 for idx in range(strt_idx, self.ts_buff_size):
                     self.acts[uid][idx] = self.acts[uid][idx-1] + ( self.ts_bit * 
-                        u.dt_fun(self.acts[uid][idx-1], idx-strt_idx) )
+                        u.dt_fun2(self.acts[uid][idx-1], idx-strt_idx) )
                     t = t + self.ts_bit
             else: # put values of source units in acts
                 self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
@@ -974,6 +974,7 @@ class network():
             relatively slow for small networks, but they are the fastest option for large
             networks.
         """
+        #ray.init(num_cpus=10, ignore_reinit_error=True)
         if not self.flat:
             self.flatten(flat_type)
         Nsteps = int(total_time/self.min_delay)  # total number of simulation steps
