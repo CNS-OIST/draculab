@@ -891,7 +891,6 @@ class source(unit):
                     if syn.preID == self.ID:
                         inp_list[idx] = self.get_act
                         
-
     def update(self, time):
         """ 
         Update the unit's state variables.
@@ -917,7 +916,6 @@ class sigmoidal(unit):
     tau * u' = f(inp) - u,
     where 'inp' is the sum of inputs, and 'u' is the firing rate.
     """
-
     def __init__(self, ID, params, network):
         """ The unit constructor.
 
@@ -955,6 +953,11 @@ class sigmoidal(unit):
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
         return ( self.f(self.net.inp_sums[self.ID][s]) - y ) * self.rtau
+
+    def flat_euler_update(self, time):
+        """ The update method used with network.flat_update3. """
+        w_vec = np.array([syn.w for syn in self.net.syns[uid]])
+        self.inp_sums = np.matmul(w_vec, self.step_inps)
     
 
 class noisy_sigmoidal(unit): 

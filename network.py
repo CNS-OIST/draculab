@@ -704,7 +704,7 @@ class network():
             self.get_act = self.get_act1
             self.get_act_by_step = self.get_act_by_step1
             self.flat_update = self.flat_update1
-        elif flat_type == 2:
+        elif flat_type == 2 or flat_type == 3:
             self.get_act = self.get_act2
             self.get_act_by_step = self.get_act_by_step2
             self.flat_update = self.flat_update2
@@ -736,7 +736,7 @@ class network():
                 self.buff_len[uid]  = len(u.buffer)
                 self.init_idx[uid] = self.ts_buff_size - len(u.buffer)
             else: # initialize init_idx for source units
-                self.init_idx[uid] = self.ts_buff_size - (int(round(u.delay/self.min_delay)) # (u.delay-self.min_delay)/self.min_delay
+                self.init_idx[uid] = self.ts_buff_size - (int(round(u.delay/self.min_delay))
                                                           * self.min_buff_size)
             self.steps[uid] = u.steps
         # get a delays list where the time unit is the number of buffer intervals
@@ -747,7 +747,7 @@ class network():
         # For each unit obtain a vector with the IDs of input units
         self.inp_src = [ [syn.preID for syn in l] for l in self.syns ]
 
-        if flat_type == 2:
+        if flat_type == 2 or flat_type == 3:
             # EXTRA ATTRIBUTES FOR SECOND VERSION!
             del self.unit_buffs # no need for these buffers
             # The full array of activities (not masked)
@@ -767,6 +767,23 @@ class network():
                 else:  # for source units, also initialize acts
                     self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
                                             t in self.ts[self.init_idx[uid]:] ])
+
+        if flat_type == 3: # unit buffers become slices of network.acts
+            # step_inps is a list of 2D numpy arrays. step_inps[i][j,k] provides the activity
+            # of the j-th input to unit i in the k-th substep of the current timestep.
+            for uid, u in enumerate(self.units):
+                if self.has_buffer[uid]:
+                    u.buffer = np.ndarray(shape=(self.buff_len[uid]), 
+                                          buffer=self.acts[uid,self.init_idx[uid]:],
+                                          dtype=self.bf_type)
+                    u.times = np.ndarray(shape=(self.buff_len[uid]), 
+                                         buffer=self.ts[self.init_idx[uid]:], dtype=self.bf_type)
+                    u.acts = np.frombuffer(self.acts.data)
+                    # Using frombuffer creates a 'flat' view, which the unit will address
+                    # using a 1-D array that we'll create next
+                    u.acts_idx = [False] * net.acts.size
+                    u.acts_idx = self.acts_idx[uid]
+                    u.step_inps = self.acts[self.acts_idx[uid]]
         self.flat = True
 
     
@@ -877,7 +894,6 @@ class network():
                 syn.update(time)
 
 
-    @jit
     def flat_update2(self, time):
         """ Updates all state variables by advancing them one min_delay time step. """
         # updating the input sums
@@ -915,6 +931,48 @@ class network():
         for synli in self.syns:
             for syn in synli:
                 syn.update(time)
+
+    def flat_update3(self, time):
+        """ Updates all state variables by advancing them one min_delay time step. """
+
+        # update the times array
+        self.ts = np.roll(self.ts, -self.min_buff_size)
+        self.ts[self.ts_buff_size-self.min_buff_size:] = self.ts_grid[1:]+time
+
+        # updating the input vectors is now done in the units
+        #for uid in range(self.n_units):
+        #    if self.has_buffer[uid]:
+                # Using a simple assignment, such as
+                # self.step_inps[uid] = self.acts[self.acts_idx[uid]]
+                # changes the step_inps[uid] object, so the view in the unit is not updated.
+                # On the other hand, copyto is waaay slower...
+                # np.copyto(self.step_inps[uid], self.acts[self.acts_idx[uid]])
+                
+
+        strt_idx = self.ts_buff_size - self.min_buff_size # index used below
+        for uid, u in enumerate(self.units):
+            # update buffer
+            if not u.type is unit_types.source:
+                # rotate buffer
+                self.acts[uid][self.init_idx[uid]:] = np.roll(self.acts[uid][self.init_idx[uid]:],
+                                                              -self.min_buff_size)
+                # calculate new values
+                t = time
+                for idx in range(strt_idx, self.ts_buff_size):
+                    self.acts[uid][idx] = self.acts[uid][idx-1] + ( self.ts_bit * 
+                        u.dt_fun(self.acts[uid][idx-1], idx-strt_idx) )
+                    t = t + self.ts_bit
+            else: # put values of source units in acts
+                self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
+                                        t in self.ts[self.init_idx[uid]:] ])
+
+            # handle synaptic requirements
+            u.pre_syn_update(time)
+            u.last_time = time # important to have it after pre_syn_update
+        for synli in self.syns:
+            for syn in synli:
+                syn.update(time)
+
 
 
 
