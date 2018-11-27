@@ -704,10 +704,14 @@ class network():
             self.get_act = self.get_act1
             self.get_act_by_step = self.get_act_by_step1
             self.flat_update = self.flat_update1
-        elif flat_type == 2 or flat_type == 3:
+        elif flat_type == 2:
             self.get_act = self.get_act2
             self.get_act_by_step = self.get_act_by_step2
             self.flat_update = self.flat_update2
+        elif flat_type == 3: 
+            self.get_act = self.get_act2
+            self.get_act_by_step = self.get_act_by_step2
+            self.flat_update = self.flat_update3
         else:
             raise ValueError("flat_type argument to network.flatten is neither 1 nor 2.")
 
@@ -780,9 +784,13 @@ class network():
                                          buffer=self.ts[self.init_idx[uid]:], dtype=self.bf_type)
                     u.acts = np.frombuffer(self.acts.data)
                     # Using frombuffer creates a 'flat' view, which the unit will address
-                    # using a 1-D array that we'll create next
-                    u.acts_idx = [False] * net.acts.size
-                    u.acts_idx = self.acts_idx[uid]
+                    # using a 1-D 'acts_idx' array that we'll create next
+                    u.acts_idx = [False] * self.acts.size
+                    idx = self.acts_idx[uid]
+                    for i,l in enumerate(idx[0]):
+                        for j,e in enumerate(l):
+                            u.acts_idx[e*self.ts_buff_size + idx[1][i][j]] = True
+                    u.n_inps = len(idx[0])
                     u.step_inps = self.acts[self.acts_idx[uid]]
         self.flat = True
 
@@ -934,46 +942,23 @@ class network():
 
     def flat_update3(self, time):
         """ Updates all state variables by advancing them one min_delay time step. """
-
         # update the times array
         self.ts = np.roll(self.ts, -self.min_buff_size)
         self.ts[self.ts_buff_size-self.min_buff_size:] = self.ts_grid[1:]+time
 
-        # updating the input vectors is now done in the units
-        #for uid in range(self.n_units):
-        #    if self.has_buffer[uid]:
-                # Using a simple assignment, such as
-                # self.step_inps[uid] = self.acts[self.acts_idx[uid]]
-                # changes the step_inps[uid] object, so the view in the unit is not updated.
-                # On the other hand, copyto is waaay slower...
-                # np.copyto(self.step_inps[uid], self.acts[self.acts_idx[uid]])
-                
-
-        strt_idx = self.ts_buff_size - self.min_buff_size # index used below
         for uid, u in enumerate(self.units):
             # update buffer
             if not u.type is unit_types.source:
-                # rotate buffer
-                self.acts[uid][self.init_idx[uid]:] = np.roll(self.acts[uid][self.init_idx[uid]:],
-                                                              -self.min_buff_size)
-                # calculate new values
-                t = time
-                for idx in range(strt_idx, self.ts_buff_size):
-                    self.acts[uid][idx] = self.acts[uid][idx-1] + ( self.ts_bit * 
-                        u.dt_fun(self.acts[uid][idx-1], idx-strt_idx) )
-                    t = t + self.ts_bit
+                u.flat_euler_update(time)
             else: # put values of source units in acts
                 self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
                                         t in self.ts[self.init_idx[uid]:] ])
-
             # handle synaptic requirements
             u.pre_syn_update(time)
             u.last_time = time # important to have it after pre_syn_update
         for synli in self.syns:
             for syn in synli:
                 syn.update(time)
-
-
 
 
     def flat_run(self, total_time, flat_type=1):

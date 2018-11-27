@@ -952,12 +952,22 @@ class sigmoidal(unit):
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
-        return ( self.f(self.net.inp_sums[self.ID][s]) - y ) * self.rtau
+        return ( self.f(self.inp_sum[s]) - y ) * self.rtau
 
     def flat_euler_update(self, time):
         """ The update method used with network.flat_update3. """
-        w_vec = np.array([syn.w for syn in self.net.syns[uid]])
-        self.inp_sums = np.matmul(w_vec, self.step_inps)
+        # update the input sum
+        self.step_inps = self.acts[self.acts_idx].reshape(self.n_inps, self.min_buff_size)
+        w_vec = np.array([syn.w for syn in self.net.syns[self.ID]])
+        self.inp_sum = np.matmul(w_vec, self.step_inps)
+        # roll the buffer
+        base = self.buffer.size - self.min_buff_size
+        self.buffer[0:base] = self.buffer[self.min_buff_size:]
+        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        # put new values in buffer
+        for idx in range(self.min_buff_size):
+            self.buffer[base+idx] = self.buffer[base+idx-1] + ( self.time_bit *
+                                    self.dt_fun(self.buffer[base+idx-1], idx) )
     
 
 class noisy_sigmoidal(unit): 
