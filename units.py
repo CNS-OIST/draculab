@@ -37,10 +37,11 @@ class unit():
                 'tau_mid' : time constant for the medium-speed low-pass filter.
                 'tau_slow' : time constant for the slow low-pass filter.
                 'n_ports' : number of inputs ports. Defaults to 1.
+                'integ_meth' : a string specifying an integration method for the unit.
             network: the network where the unit lives.
 
         Raises:
-            AssertionError.
+            AssertionError, ValueError
         """
         self.ID = ID # unit's unique identifier
         # Copying parameters from dictionary into unit's attributes
@@ -69,12 +70,40 @@ class unit():
         if 'tau_slow' in params: self.tau_slow = params['tau_slow']
         if 'n_ports' in params: self.n_ports = params['n_ports']
         else: self.n_ports = 1
-
         if self.n_ports < 2:
             self.multiport = False # If True, the port_idx list is created in init_pre_syn_update in
                                     # order to support customized get_mp_input* functions
         else:
             self.multiport = True
+        if 'integ_meth' in params: # a particular integration method is specified for the unit
+            if self.type is unit_types.source:
+                raise AssertionError('Specifying an integration method for source units can result in errors')
+            if params['integ_meth'] == "euler":
+                self.update = self.euler_update
+            elif params['integ_meth'] == "euler_maru":
+                if not 'mu' in params or not 'sigma' in params:
+                    raise AssertionError('Euler-Maruyama integration requires mu and sigma parameters')
+                self.update = self.euler_maru_update
+            elif params['integ_meth'] == "exp_euler":
+                if not 'lambda' in params:
+                    raise AssertionError('The exponential Euler method requires a lambda parameter')
+                self.update = self.exp_euler_update
+            elif params['integ_meth'] == "odeint":
+                self.update = self.odeint_update
+            elif params['integ_meth'] == "solve_ivp":
+                self.update = self.solve_ivp
+                from warnings import warn
+                warn(['Additional code modifications are required for solve_ivp. \
+                      See unit.solve_ivp_update documentation'], UserWarning)
+            elif params['integ_meth'] == 'custom':
+                pass
+            else:
+                raise ValueError('integ_method was incorrectly specified.')
+            self.integ_meth = params['integ_meth']
+        else:
+            if not self.type is unit_types.source:
+                self.update = self.odeint_update # default solver
+                self.integ_meth = "odeint"
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
         #self.reqs = {} # This dictionary will contain all requirement objects c
@@ -224,9 +253,8 @@ class unit():
         return [ np.array([self.net.syns[self.ID][idx].w for idx in idx_list]) for idx_list in self.port_idx ]
 
 
-    def update(self,time):
-        """
-        Advance the dynamics from time to time+min_delay.
+    def odeint_update(self, time):
+        """ Advance the dynamics from time to time+min_delay.
 
         This update function will replace the values in the activation buffer
         corresponding to the latest "min_delay" time units, introducing "min_buff_size" new values.
@@ -241,6 +269,117 @@ class unit():
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.min_buff_size)
         self.times[self.offset:] = new_times[1:]
+        # odeint also returns the initial condition, so to produce min_buff_size new values
+        # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
+        new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times, rtol=self.rtol, atol=self.atol)
+        self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        self.buffer[self.offset:] = new_buff[1:,0]
+        self.upd_reqs_n_syns(time)
+
+
+    def solve_ivp_update(self, time):
+        """
+        Advance the dynamics from time to time+min_delay.
+
+        This update function will replace the values in the activation buffer
+        corresponding to the latest "min_delay" time units, introducing "min_buff_size" new 
+        values. In addition, all the synapses of the unit are updated.
+        source and kwta units override this with shorter update functions.
+
+        NOTICE: solve_ivp requires that the derivatives function has its parameters in the
+                opposite of the order used by odeint. Thus, to make it work you need to change
+                the order of the arguments in all the derivatives functions, from 
+                derivatives(self, y, t) to derivatives(self, t, y).
+                In vi it takes one command: :%s/derivatives(self, y, t)/derivatives(self, t, y)/
+                Also, make sure that the import command at the top is uncommented for solve_ivp.
+                One more thing: to use the stiff solvers the derivatives must return a list or 
+                array, sothe returned value must be enclosed in square brackets in 
+                <unit_type>.derivatives.
+        """
+        #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
+        new_times = self.times[-1] + self.times_grid
+        self.times = np.roll(self.times, -self.min_buff_size)
+        self.times[self.offset:] = new_times[1:]
+        solution = solve_ivp(self.derivatives, (new_times[0], new_times[-1]), [self.buffer[-1]], method='LSODA',
+                                                t_eval=new_times, rtol=self.rtol, atol=self.atol)
+        self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        self.buffer[self.offset:] = solution.y[0,1:]
+        self.upd_reqs_n_syns(time)
+
+
+    def euler_update(self, time):
+        """ Advance the dynamics from time to time+min_delay using the forward Euler method. 
+
+            This implementation uses forward Euler integration. Although this may be
+            imprecise and unstable in some cases, it is a first step to implement the
+            Euler-Maruyama method. And it's also faster than odeint.
+            Notice the atol and rtol network parameters are not used in this case.
+            Precision is controlled by the step size, which is min_delay/min_buff_size.
+        """
+        new_times = self.times[-1] + self.times_grid
+        self.times = np.roll(self.times, -self.min_buff_size)
+        self.times[self.offset:] = new_times[1:]
+        dt = new_times[1] - new_times[0]
+        # euler_int is defined in cython_utils.pyx
+        new_buff = euler_int(self.derivatives, self.buffer[-1], time, len(new_times), dt)
+        self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        self.buffer[self.offset:] = new_buff[1:]
+        self.upd_reqs_n_syns(time)
+
+
+    def euler_maru_update(self, time):
+        """ Advance the dynamics from time to time+min_delay with the Euler-Maruyama method.
+
+            The Euler-Maruyama implementation is basically the same as forward Euler.
+            The atol and rtol values are meaningless in this case.
+
+            This solver does the buuffer's "rolling" by itself.
+            The unit needs to have 'mu' and 'sigma' attributes.
+            self.mu = 0. # Mean of the white noise
+            self.sigma = 0.0 # standard deviation of Wiener process.
+        """
+        # euler_maruyama_ is defined in cython_utils.pyx
+        euler_maruyama(self.derivatives, self.buffer, time,
+                        self.buff_size-self.min_buff_size, self.time_bit, self.mu, self.sigma)
+        self.upd_reqs_n_syns(time)
+
+    def exp_euler_update(self, time):
+        """ Advance the dynamics from time to time+min_delay with the exponential Euler method.
+
+            This method can only be used when the unit model has noisy dynamics where the 
+            activity follows an instaneous input function with a particular decay rate. 
+            This includes the noisy_linear and noisy_sigmoidal models.
+        """
+        new_times = self.times[-1] + self.times_grid
+        self.times = np.roll(self.times, -self.min_buff_size) 
+        self.times[self.offset:] = new_times[1:] 
+
+        new_buff = exp_euler(self.diff, self.buffer[-1], time, len(new_times),
+                             self.time_bit, self.mu, self.sigma, self.eAt, self.c2, self.c3)
+        new_buff = np.maximum(new_buff, 0.)
+        self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        self.buffer[self.offset:] = new_buff[1:] 
+        self.upd_reqs_n_syns(time)
+
+
+    #************ I WILL ERASE update AFTER TESTING *************
+    #def update(self,time):
+        """
+        Advance the dynamics from time to time+min_delay.
+
+        This update function will replace the values in the activation buffer
+        corresponding to the latest "min_delay" time units, introducing "min_buff_size" new values.
+        In addition, all the synapses of the unit are updated.
+        source and kwta units override this with shorter update functions.
+        """
+        # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
+
+        # Maybe there should be a single 'times' array in the network, to avoid those rolls,
+        # but they add very little to the simualation times
+        #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
+        #new_times = self.times[-1] + self.times_grid
+        #self.times = np.roll(self.times, -self.min_buff_size)
+        #self.times[self.offset:] = new_times[1:]
         
         # TO USE A PARTICULAR SOLVER, UNCOMMENT ITS CODE, COMMENT OTHER SOLVERS
         #---------------------------------------------------------------------
@@ -273,11 +412,11 @@ class unit():
         # imprecise and unstable in some cases, it is a first step to implement the
         # Euler-Maruyama method. And it's also faster than odeint.
         # Notice the atol and rtol values are not used in this case.
-        dt = new_times[1] - new_times[0]
+        #dt = new_times[1] - new_times[0]
         # euler_int is defined in cython_utils.pyx
-        new_buff = euler_int(self.derivatives, self.buffer[-1], time, len(new_times), dt)
-        self.buffer = np.roll(self.buffer, -self.min_buff_size)
-        self.buffer[self.offset:] = new_buff[1:]
+        #new_buff = euler_int(self.derivatives, self.buffer[-1], time, len(new_times), dt)
+        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        #self.buffer[self.offset:] = new_buff[1:]
         #"""
         #---------------------------------------------------------------------
         # Euler-Maruyama
@@ -294,17 +433,19 @@ class unit():
                         self.buff_size-self.min_buff_size, dt, self.mu, self.sigma)
         """
         #---------------------------------------------------------------------
+        
+    def upd_reqs_n_syns(self, time):
+        """ Update the unit's requirements and its synapses.
 
+            This should be called at every min_delay integration step, after the unit's
+            buffers have been updated.
+        """
         self.pre_syn_update(time) # Update any variables needed for the synapse to update.
                                   # It is important this is done after the buffer has been updated.
         # For each synapse on the unit, update its state
         for pre in self.net.syns[self.ID]:
             pre.update(time)
-
         self.last_time = time # last_time is used to update some pre_syn_update values
-        #"""
-        # EXPERIMENTAL AND CURRENTLY INEFFICIENT CYTHON VERSION:
-        #cython_update(self, time)
 
 
     def get_act(self,time):
@@ -837,21 +978,34 @@ class unit():
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # METHODS FOR FLAT NETWORKS ~~~~~~~~~~~~~
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    #@ray.remote
-    def flat_euler_update(self, time):
-        """ The update method used with network.flat_update3. """
+    def upd_flat_inp_sum(self,time):
+        """ Updates the vector with input sums for each substep of the current step. """
+        # experimental "throwback" update
+        self.step_inps = self.acts[self.acts_idx]
         # update the input sum
-        self.step_inps = self.acts[self.acts_idx].reshape(self.n_inps, self.min_buff_size)
+        #self.step_inps = self.acts[self.acts_idx].reshape(self.n_inps, self.min_buff_size)
         w_vec = np.array([syn.w for syn in self.net.syns[self.ID]])
         self.inp_sum = np.matmul(w_vec, self.step_inps)
-        # roll the buffer
+
+
+    def flat_euler_update(self, time):
+        """ The forward Euler integration method used with network.flat_update3. """
+        # This will fail if you haven't called upd_flat_inp_sum in the current step,
+        # because dt_fun3 uses self.inp_sum to obtain the derivative
+        # Roll the buffer
         base = self.buffer.size - self.min_buff_size
-        self.buffer[0:base] = self.buffer[self.min_buff_size:]
-        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        # rolling is not being done in network.flat_update3
+        #self.buffer[0:base] = self.buffer[self.min_buff_size:] # one way to roll
+        #np.copyto(self.buffer, np.roll(self.buffer, -self.min_buff_size)) # a different roll
         # put new values in buffer
         for idx in range(self.min_buff_size):
             self.buffer[base+idx] = self.buffer[base+idx-1] + ( self.time_bit *
                                     self.dt_fun3(self.buffer[base+idx-1], idx) )
+
+
+    def flat_euler_maruyama_update(self,time):
+        """ The Euler-Maruyama integration used with network.flat_update3. """
+
  
 
 class source(unit):
@@ -969,6 +1123,10 @@ class sigmoidal(unit):
         """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
         return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
+
+    def dt_fun1(self, y, t):
+        """ The derivatives function used when the network is flat. """
+        return ( self.f(self.net.inp_sums[self.ID][t]) - y ) * self.rtau
 
     def dt_fun2(self, y, s):
         """ The derivatives function used when the network is flat. """
@@ -1149,12 +1307,15 @@ class noisy_linear(unit):
         self.rtau = 1./self.tau   # because you always use 1/tau instead of tau
         # if lambd > 0 we'll use the exponential Euler integration method
         if self.lambd > 0.:
+            self.update = self.exp_euler_update
             self.diff = lambda y, t: self.get_input_sum(t) * self.rtau
             dt = self.times[1] - self.times[0]
             A = -self.lambd*self.rtau
             self.eAt = np.exp(A*dt)
             self.c2 = (self.eAt-1.)/A
             self.c3 = np.sqrt( (self.eAt**2. - 1.) / (2.*A) )
+        else:
+            self.update = self.euler_maru_update
 
     def derivatives(self, y, t):
         """ This function returns the derivative of the activity at a given point in time. 
@@ -1165,39 +1326,4 @@ class noisy_linear(unit):
         """
         return (self.get_input_sum(t) - self.lambd * y[0]) * self.rtau
  
-    def update(self,time):
-        """
-        Advance the dynamics from time to time+min_delay.
-
-        This update function overrides the one in unit.update in order to use 
-        a stochastic solver. 
-        """
-        assert abs(self.times[-1]-time) < 1e-6, "Time out of phase in unit's update function"
-        new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size) 
-        self.times[self.offset:] = new_times[1:] 
-        # This is the Euler-Maruyama implementation. Basically the same as forward Euler.
-        # The atol and rtol values are meaningless in this case.
-        dt = new_times[1] - new_times[0]
-        # The integration functions are defined in cython_utils.pyx
-        if self.lambd == 0.:
-            # needs no buffer roll or buffer assignment
-            euler_maruyama(self.derivatives, self.buffer, time, 
-                                    self.buff_size-self.min_buff_size, dt, self.mu, self.sigma)
-        else:
-            new_buff = exp_euler(self.diff, self.buffer[-1], time, len(new_times),
-                                     dt, self.mu, self.sigma, self.eAt, self.c2, self.c3)
-            new_buff = np.maximum(new_buff, 0.)
-            self.buffer = np.roll(self.buffer, -self.min_buff_size)
-            self.buffer[self.offset:] = new_buff[1:] 
-
-        self.pre_syn_update(time) # Update any variables needed for the synapse to update.
-                                  # It is important this is done after the buffer has been updated.
-        # For each synapse on the unit, update its state
-        for pre in self.net.syns[self.ID]:
-            pre.update(time)
-        self.last_time = time # last_time is used to update some pre_syn_update values
-
-
-
 
