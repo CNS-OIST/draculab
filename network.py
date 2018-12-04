@@ -148,8 +148,8 @@ class network():
         assert (type(n) == int) and (n > 0), 'Number of units must be a positive integer'
         assert self.sim_time == 0., 'Units are being created when the simulation time is not zero'
 
-        # Any entry in 'params' other than 'coordinates', 'type', 'function', 'branch_params', or
-        # 'int_meth' should either be a scalar, a boolean, a list of length 'n', a string, or a
+        # Any entry in 'params' other than 'coordinates', 'type', 'function', 'branch_params',
+        # or 'integ_meth' should either be a scalar, a boolean, a list of length 'n', or a
         # numpy array of length 'n'.  
         # 'coordinates' should be either a list (with 'n' arrays) or a (1|2|3) array.
         listed = [] # the entries in 'params' specified with a list
@@ -182,6 +182,12 @@ class network():
                         listed.append(par)
                     else:
                         raise ValueError('branch_params list has incorrect size')
+            elif par == 'integ_meth':
+                if type(params[par]) is list:
+                    if len(params[par]) == n:
+                        listed.append(par)
+                elif not type(params[par]) is str:
+                    raise TypeError('Invalid type given for the integ_meth parameter')
             elif (type(params[par]) is list) or (type(params[par]) is np.ndarray):
                 if len(params[par]) == n:
                     listed.append(par)
@@ -543,6 +549,7 @@ class network():
                             for each individual unit. More precisely, the two options are:
                             1) port_map is a list of 2-tuples (a,b), indicating that output 'a' of
                                the plant (the a-th element in the state vector) connects to port 'b'.
+                               This port connectivity scheme will be applied to all units.
                             2) port_map[i] is a list of 2-tuples (a,b), indicating that output 'a' of the 
                                plant is connected to port 'b' for the i-th neuron in the neuronIDs list.
                             For example if unitIDs has two elements:
@@ -779,8 +786,6 @@ class network():
                                             t in self.ts[self.init_idx[uid]:] ])
 
         if flat_type == 3: # unit buffers become slices of network.acts
-            # step_inps is a list of 2D numpy arrays. step_inps[i][j,k] provides the activity
-            # of the j-th input to unit i in the k-th substep of the current timestep.
             for uid, u in enumerate(self.units):
                 if self.has_buffer[uid]:
                     u.buffer = np.ndarray(shape=(self.buff_len[uid]), 
@@ -803,13 +808,26 @@ class network():
                     """
                     u.acts = self.acts.view()
                     u.acts_idx = self.acts_idx[uid]
+                    # step_inps is a 2D numpy array. step_inps[j,k] provides the activity
+                    # of the j-th input to unit i in the k-th substep of the current timestep.
                     u.step_inps = self.acts[self.acts_idx[uid]]
+                    # experimental bit to test with numba
+                    #-----------------------------------------------------
+                    u.flat_acts_idx = np.array([False] * self.acts.size)
+                    idx = self.acts_idx[uid]
+                    for i,l in enumerate(idx[0]):
+                        for j,e in enumerate(l):
+                            u.flat_acts_idx[e*self.ts_buff_size + idx[1][i][j]] = True
+                    u.n_inps = len(idx[0])
+                    #-----------------------------------------------------
                     # specify the integration function
                     if u.type in [unit_types.noisy_linear, unit_types.noisy_sigmoidal]:
                         if u.lambd > 0.:
                             u.flat_update = u.flat_exp_euler_update
+                            u.integ_meth = "exp_euler"
                         else:
                             u.flat_update = u.flat_euler_maru_update
+                            u.integ_meth = "euler_maru"
                         continue
                     if u.integ_meth in ["odeint", "solve_ivp", "euler"]:
                         u.flat_update = u.flat_euler_update
@@ -820,7 +838,7 @@ class network():
                     else:
                         raise NotImplementedError('The specified integration method is not \
                                                    implemented for flat networks')
-
+                    
         self.flat = True
 
     
@@ -1010,7 +1028,7 @@ class network():
                 syn.update(time)
 
 
-    def flat_run(self, total_time, flat_type=1):
+    def flat_run(self, total_time, flat_type=3):
         """ Simulate a flattened network for the given time. 
         
             The 'flat_type' arguments indicates which of the two types of flat networks
@@ -1022,6 +1040,11 @@ class network():
             Flat networks of type 2 keep all unit buffers in a single numpy array. They can be
             relatively slow for small networks, but they are the fastest option for large
             networks.
+
+            Flat network of type 3 also keep a single numpy array in the netwok object with 
+            the contents of all buffers. However, all units have buffers which are views of
+            a slice of that array. This keeps a lot of the originial structure, and the speed
+            is comparamble to networks of type 2.
         """
         #ray.init(num_cpus=10, ignore_reinit_error=True)
         if not self.flat:
@@ -1044,7 +1067,6 @@ class network():
                 plant_store[pid][step,:] = plant.get_state(self.sim_time)
             
             # update units
-            #self.flat_update(self.sim_time)
             self.flat_update(self.sim_time)
 
             # update plants

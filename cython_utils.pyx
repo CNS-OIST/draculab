@@ -223,8 +223,8 @@ def exp_euler(derivatives, double x0, double t0, int n_steps,
     cdef double mudt = mu*dt
     cdef sc3 = c3*sigma
     #cdef float eAt = np.exp(-lambd*dt/tau)
-    #cdef float c2 = -(expAt - 1.)/lambd
-    #cdef float c3 = np.sqrt( (eAt*eAt - 1.)/(-2.*lambd) )
+    #cdef float c2 = -(expAt - 1.)/(lambd*tau)
+    #cdef float c3 = np.sqrt( (eAt*eAt - 1.)/(-2.*lambd*tau) )
     for step in range(1, n_steps, 1):
         x[step] = ( eAt*x[step-1] + c2*derivatives(x[step-1], t)
                 + sc3*np.random.normal(loc=0., scale=1.) + mudt )

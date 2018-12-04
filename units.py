@@ -13,7 +13,7 @@ from scipy.integrate import odeint # to integrate ODEs
 from array import array # optionally used for the unit's buffer
 #from scipy.integrate import solve_ivp # to integrate ODEs
 #from scipy.interpolate import interp1d # to interpolate values
-#from numba import jit
+from numba import jit
 #import ray
 
 
@@ -32,6 +32,7 @@ class unit():
                 'init_val' : initial value for the activation
                 OPTIONAL PARAMETERS
                 'delay': maximum delay among the projections sent by the unit.
+                         This should only be set by network.connect
                 'coordinates' : a numpy array specifying the spatial location of the unit.
                 'tau_fast' : time constant for the fast low-pass filter.
                 'tau_mid' : time constant for the medium-speed low-pass filter.
@@ -147,10 +148,13 @@ class unit():
         min_buff = self.min_buff_size
         self.offset = (self.steps-1)*min_buff # an index used in the update function of derived classes
         self.buff_size = int(round(self.steps*min_buff)) # number of activation values to store
-        # currently testing 3 ways of initializing the buffer:
-        self.buffer = np.ascontiguousarray( [self.init_val]*self.buff_size, dtype=self.bf_type) # numpy array with
-                                                                             # previous activation values
-        #self.buffer = np.array( [self.init_val]*self.buff_size, dtype=self.bf_type) # numpy array with
+        # The 'buffer' contains previous activation values
+        # currently testing 3 ways of initializing the buffer (if not flattened):
+                    # 1) a numpy contiguous array 
+        self.buffer = np.ascontiguousarray( [self.init_val]*self.buff_size, dtype=self.bf_type) 
+                    # 2) a numpy array. Usually the same as above 
+        #self.buffer = np.array( [self.init_val]*self.buff_size, dtype=self.bf_type) 
+                    # 3) a python array 
         #self.buffer = array('d', [self.init_val]*self.buff_size)
         self.time_bit = min_del / min_buff # time interval used by get_act
         self.times = np.linspace(-self.delay+self.time_bit, 0., self.buff_size, dtype=self.bf_type) # the 
@@ -173,7 +177,8 @@ class unit():
 
         This function ignores input ports.
         """
-        return [ fun(time - dely) for dely,fun in zip(self.net.delays[self.ID], self.net.act[self.ID]) ]
+        return [ fun(time - dely) for dely,fun in 
+                 zip(self.net.delays[self.ID], self.net.act[self.ID]) ]
 
 
     def get_input_sum(self,time):
@@ -201,8 +206,8 @@ class unit():
 
         The time argument should be within the range of values stored in the unit's buffer.
         """
-        return [ np.array([self.net.act[self.ID][idx](time - self.net.delays[self.ID][idx]) for idx in idx_list])
-                 for idx_list in self.port_idx ]
+        return [ np.array([self.net.act[self.ID][idx](time - self.net.delays[self.ID][idx]) 
+                 for idx in idx_list]) for idx_list in self.port_idx ]
 
 
     def get_sc_input_sum(self, time):
@@ -250,7 +255,8 @@ class unit():
         The i-th element of the returned list is a numpy array with the weights of the
         synapses where port = i.
         """
-        return [ np.array([self.net.syns[self.ID][idx].w for idx in idx_list]) for idx_list in self.port_idx ]
+        return [ np.array([self.net.syns[self.ID][idx].w for idx in idx_list])
+                           for idx_list in self.port_idx ]
 
 
     def odeint_update(self, time):
@@ -270,8 +276,10 @@ class unit():
         self.times = np.roll(self.times, -self.min_buff_size)
         self.times[self.offset:] = new_times[1:]
         # odeint also returns the initial condition, so to produce min_buff_size new values
-        # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
-        new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times, rtol=self.rtol, atol=self.atol)
+        # we need to provide min_buff_size+1 desired times, starting with 
+        # the one for the initial condition
+        new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times,
+                          rtol=self.rtol, atol=self.atol)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:,0]
         self.upd_reqs_n_syns(time)
@@ -300,8 +308,8 @@ class unit():
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.min_buff_size)
         self.times[self.offset:] = new_times[1:]
-        solution = solve_ivp(self.derivatives, (new_times[0], new_times[-1]), [self.buffer[-1]], method='LSODA',
-                                                t_eval=new_times, rtol=self.rtol, atol=self.atol)
+        solution = solve_ivp(self.derivatives, (new_times[0], new_times[-1]), [self.buffer[-1]],
+                             method='LSODA', t_eval=new_times, rtol=self.rtol, atol=self.atol)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = solution.y[0,1:]
         self.upd_reqs_n_syns(time)
@@ -349,6 +357,8 @@ class unit():
             This method can only be used when the unit model has noisy dynamics where the 
             activity follows an instaneous input function with a particular decay rate. 
             This includes the noisy_linear and noisy_sigmoidal models.
+
+            The current version is rectifying ouputs by default.
         """
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.min_buff_size) 
@@ -356,7 +366,7 @@ class unit():
 
         new_buff = exp_euler(self.diff, self.buffer[-1], time, len(new_times),
                              self.time_bit, self.mu, self.sigma, self.eAt, self.c2, self.c3)
-        new_buff = np.maximum(new_buff, 0.)
+        new_buff = np.maximum(new_buff, 0.) # THIS IS RECTIFYING BY DEFAULT!!!
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = new_buff[1:] 
         self.upd_reqs_n_syns(time)
@@ -400,8 +410,8 @@ class unit():
         # Also, make sure that the import command at the top is uncommented for solve_ivp.
         # One more thing: to use the stiff solvers the derivatives must return a list or array, so
         # the returned value must be enclosed in square brackets in <unit_type>.derivatives.
-        solution = solve_ivp(self.derivatives, (new_times[0], new_times[-1]), [self.buffer[-1]], method='LSODA',
-                                                t_eval=new_times, rtol=self.rtol, atol=self.atol)
+        solution = solve_ivp(self.derivatives, (new_times[0], new_times[-1]), [self.buffer[-1]],
+                             method='LSODA', t_eval=new_times, rtol=self.rtol, atol=self.atol)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = solution.y[0,1:]
         """
@@ -441,7 +451,7 @@ class unit():
             buffers have been updated.
         """
         self.pre_syn_update(time) # Update any variables needed for the synapse to update.
-                                  # It is important this is done after the buffer has been updated.
+                             # It is important this is done after the buffer has been updated.
         # For each synapse on the unit, update its state
         for pre in self.net.syns[self.ID]:
             pre.update(time)
@@ -459,7 +469,8 @@ class unit():
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Below is the more general (but slow) interpolation using interp1d
         # Make sure to import interp1d at the top of the file before using this.
-        # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
+        # Sometimes the ode solver asks about values slightly out of bounds, 
+        # so I set this to extrapolate
         """
         return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
                         fill_value="extrapolate", assume_sorted=True)(time)
@@ -472,8 +483,10 @@ class unit():
         time = min( max(time,self.times[0]), self.times[-1] ) # clipping 'time'
         frac = (time-self.times[0])/(self.times[-1]-self.times[0])
         base = int(np.floor(frac*(self.buff_size-1))) # biggest index s.t. times[index] <= time
-        frac2 = ( time-self.times[base] ) / ( self.times[min(base+1,self.buff_size-1)] - self.times[base] + 1e-8 )
-        return self.buffer[base] + frac2 * ( self.buffer[min(base+1,self.buff_size-1)] - self.buffer[base] )
+        frac2 = ( time-self.times[base] ) / 
+                ( self.times[min(base+1,self.buff_size-1)] - self.times[base] + 1e-8 )
+        return self.buffer[base] + frac2 * ( self.buffer[min(base+1,self.buff_size-1)] -
+                                             self.buffer[base] )
         """
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # This is the third implementation. 
@@ -489,13 +502,15 @@ class unit():
         """
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # This is the second implementation, written in Cython
-        #return cython_get_act2(time, self.times[0], self.times[-1], self.times, self.buff_size, self.buffer)
+        #return cython_get_act2(time, self.times[0], self.times[-1], self.times,
+        #                        self.buff_size, self.buffer)
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # This is the third implementation, written in Cython
         #return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # This is for flat networks
-        if self.net.flat:
+        #TODO: remove this if after third type of flattening is standard
+        if self.net.flat: # for the third type of flattening this is not necessary
             return self.net.get_act(self.ID, time)
         else:
             return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
@@ -980,13 +995,26 @@ class unit():
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     def upd_flat_inp_sum(self,time):
         """ Updates the vector with input sums for each substep of the current step. """
-        # experimental "throwback" update
+        # Obtain the input vector 'step_inps'
+        # step_inps is a 2D numpy array. step_inps[j,k] provides the activity
+        # of the j-th input in the k-th substep of the current timestep.
+        #"""
         self.step_inps = self.acts[self.acts_idx]
-        # update the input sum
+        if self.step_inps.size == 0:  # when the unit has no inputs
+            self.inp_sum = np.zeros(self.min_buff_size)
+            return
+        # The line below is an experimental version in which self.acts_idx was a 1-D 
+        # array of logical indexes. For some reason it was considerably slower.
         #self.step_inps = self.acts[self.acts_idx].reshape(self.n_inps, self.min_buff_size)
-        w_vec = np.array([syn.w for syn in self.net.syns[self.ID]])
+        # update the input sum
+        w_vec = np.array([syn.w for syn in self.net.syns[self.ID]]) # update weights
         self.inp_sum = np.matmul(w_vec, self.step_inps)
-
+        """ 
+        # testing a numba version
+        w_vec = np.array([syn.w for syn in self.net.syns[self.ID]]) # update weights
+        self.inp_sum = ufis_4_numba(self.acts, self.flat_acts_idx, w_vec,
+        self.n_inps, self.min_buff_size)
+        """
 
     def flat_euler_update(self, time):
         """ The forward Euler integration method used with network.flat_update3. """
@@ -1003,10 +1031,38 @@ class unit():
                                     self.dt_fun3(self.buffer[base+idx-1], idx) )
 
 
-    def flat_euler_maruyama_update(self,time):
+    def flat_euler_maru_update(self,time):
         """ The Euler-Maruyama integration used with network.flat_update3. """
+        base = self.buffer.size - self.min_buff_size
+        noise = self.sigma * np.random.normal(loc=0., scale=self.sqrdt,
+                                              size=self.min_buff_size)
+        for idx in range(self.min_buff_size):
+            self.buffer[base+idx] = self.buffer[base+idx-1] + ( self.time_bit *
+                                    self.dt_fun3(self.buffer[base+idx-1], idx) +
+                                    self.mudt + noise[idx] )
 
+
+    def flat_exp_euler_update(self, time):
+        """ The exponential Euler integration used with network.flat_update3. """
+        base = self.buffer.size - self.min_buff_size
+        noise = self.sc3 * np.random.normal(loc=0., scale=1.,
+                                            size=self.min_buff_size)
+        for idx in range(self.min_buff_size):
+            self.buffer[base+idx] = self.eAt * self.buffer[base+idx-1] + ( self.c2 *
+                                    self.dt_fun3_eu(self.buffer[base+idx-1], idx) +
+                                    self.mudt + noise[idx] )
  
+
+#@jit(nopython=True)
+def ufis_4_numba(acts, flat_acts_idx, w_vec, n_inps, mbf):
+    """ receives the acts vector, its index, and weights, returns the inp_sum vector. """
+    step_inps = acts.flatten()[flat_acts_idx].reshape(n_inps, mbf)
+    if step_inps.size == 0:  # when the unit has no inputs
+        return np.zeros(mbf)
+    for row in range(n_inps):
+        step_inps[row,:] = w_vec[row] * step_inps[row,:]
+    return np.sum(step_inps, axis=0)
+
 
 class source(unit):
     """ The class of units whose activity comes from some Python function.
@@ -1178,14 +1234,20 @@ class noisy_sigmoidal(unit):
         self.sigma = params['sigma'] # std. dev. of white noise
         self.mu = params['mu'] # mean of the white noise
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.mudt = self.mu * self.time_bit # used by flat updater
         # if lambd > 0 we'll use the exponential Euler integration method
         if self.lambd > 0.:
-            self.diff = lambda y, t: self.get_input_sum(t) * self.rtau
-            dt = self.times[1] - self.times[0]
+            self.update = self.exp_euler_update
+            self.diff = lambda y, t: self.f(self.get_input_sum(t)) * self.rtau
+            dt = self.times[1] - self.times[0] # same as self.time_bit
             A = -self.lambd*self.rtau
             self.eAt = np.exp(A*dt)
             self.c2 = (self.eAt-1.)/A
             self.c3 = np.sqrt( (self.eAt**2. - 1.) / (2.*A) )
+            self.sc3 = self.sigma * self.c3
+        else:
+            self.update = self.euler_maru_update
+            self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
 
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
@@ -1197,38 +1259,13 @@ class noisy_sigmoidal(unit):
         # there is only one state variable (the activity)
         return ( self.f(self.get_input_sum(t)) - self.lambd*y[0] ) * self.rtau
 
-    def update(self,time):
-        """
-        Advance the dynamics from time to time+min_delay.
+    def dt_fun3(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        return ( self.f(self.inp_sum[s]) - y ) * self.rtau
 
-        This update function overrides the one in unit.update in order to use 
-        a stochastic solver. 
-        """
-        assert abs(self.times[-1]-time) < 1e-6, "Time out of phase in unit's update function"
-        new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size) 
-        self.times[self.offset:] = new_times[1:] 
-        # This is the Euler-Maruyama implementation. Basically the same as forward Euler.
-        # The atol and rtol values are meaningless in this case.
-        dt = new_times[1] - new_times[0]
-        # The integration functions are defined in cython_utils.pyx
-        if self.lambd == 0.:
-            # needs no buffer roll or buffer assignment
-            euler_maruyama(self.derivatives, self.buffer, time, 
-                                    self.buff_size-self.min_buff_size, dt, self.mu, self.sigma)
-        else:
-            new_buff = exp_euler(self.diff, self.buffer[-1], time, len(new_times),
-                                     dt, self.mu, self.sigma, self.eAt, self.c2, self.c3)
-            new_buff = np.maximum(new_buff, 0.)
-            self.buffer = np.roll(self.buffer, -self.min_buff_size)
-            self.buffer[self.offset:] = new_buff[1:] 
-        self.pre_syn_update(time) # Update any variables needed for the synapse to update.
-                                  # It is important this is done after the buffer has been updated.
-        # For each synapse on the unit, update its state
-        for pre in self.net.syns[self.ID]:
-            pre.update(time)
-        self.last_time = time # last_time is used to update some pre_syn_update values
-
+    def dt_fun3_eu(self, y, s):
+        """ The derivatives function for flat_exp_euler_update. """
+        return  self.f(self.inp_sum[s]) * self.rtau
 
 class linear(unit): 
     """ An implementation of a linear unit.
@@ -1271,6 +1308,10 @@ class linear(unit):
         """ The derivatives function used when the network is flat. """
         return ( self.net.inp_sums[self.ID][s] - y ) * self.rtau
 
+    def dt_fun3(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        return ( self.inp_sum[s] - y ) * self.rtau
+
 
 class noisy_linear(unit):
     """ A linear unit with passive decay and a noisy update function.
@@ -1305,17 +1346,20 @@ class noisy_linear(unit):
         self.mu = params['mu']
         self.sigma = params['sigma']
         self.rtau = 1./self.tau   # because you always use 1/tau instead of tau
+        self.mudt = self.mu * self.time_bit # used by flat updaters
         # if lambd > 0 we'll use the exponential Euler integration method
         if self.lambd > 0.:
             self.update = self.exp_euler_update
             self.diff = lambda y, t: self.get_input_sum(t) * self.rtau
-            dt = self.times[1] - self.times[0]
+            dt = self.times[1] - self.times[0] # same as self.time_bit
             A = -self.lambd*self.rtau
             self.eAt = np.exp(A*dt)
             self.c2 = (self.eAt-1.)/A
             self.c3 = np.sqrt( (self.eAt**2. - 1.) / (2.*A) )
+            self.sc3 = self.sigma * self.c3 # used by flat_exp_euler_update
         else:
             self.update = self.euler_maru_update
+            self.sqrdt = np.sqrt(self.time_bit) # used by flat_euler_maru_update
 
     def derivatives(self, y, t):
         """ This function returns the derivative of the activity at a given point in time. 
@@ -1326,4 +1370,10 @@ class noisy_linear(unit):
         """
         return (self.get_input_sum(t) - self.lambd * y[0]) * self.rtau
  
+    def dt_fun3(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        return ( self.inp_sum[s] - self.lambd * y ) * self.rtau
 
+    def dt_fun3_eu(self, y, s):
+        """ The derivatives function for flat_exp_euler_update. """
+        return  self.inp_sum[s] * self.rtau
