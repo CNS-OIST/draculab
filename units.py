@@ -10,11 +10,9 @@ import numpy as np
 from cython_utils import * # interpolation and integration methods including cython_get_act*,
                            # cython_sig, euler_int, euler_maruyama, exp_euler
 from scipy.integrate import odeint # to integrate ODEs
-from array import array # optionally used for the unit's buffer
+#from array import array # optionally used for the unit's buffer
 #from scipy.integrate import solve_ivp # to integrate ODEs
 #from scipy.interpolate import interp1d # to interpolate values
-from numba import jit
-#import ray
 
 
 class unit():
@@ -88,6 +86,8 @@ class unit():
             elif params['integ_meth'] == "exp_euler":
                 if not 'lambda' in params:
                     raise AssertionError('The exponential Euler method requires a lambda parameter')
+                if not 'mu' in params or not 'sigma' in params:
+                    raise AssertionError('Exponential Euler integration requires mu and sigma parameters')
                 self.update = self.exp_euler_update
             elif params['integ_meth'] == "odeint":
                 self.update = self.odeint_update
@@ -107,8 +107,6 @@ class unit():
                 self.integ_meth = "odeint"
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
-        #self.reqs = {} # This dictionary will contain all requirement objects c
-        #               # corresponding to the entries in syn_needs. DEPRECATED.
         self.last_time = 0.  # time of last call to the update function
                             # Used by the upd_lpf_X functions
         self.init_buffers() # This will create the buffers that store states and times
@@ -351,6 +349,7 @@ class unit():
                         self.buff_size-self.min_buff_size, self.time_bit, self.mu, self.sigma)
         self.upd_reqs_n_syns(time)
 
+
     def exp_euler_update(self, time):
         """ Advance the dynamics from time to time+min_delay with the exponential Euler method.
 
@@ -363,7 +362,6 @@ class unit():
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.min_buff_size) 
         self.times[self.offset:] = new_times[1:] 
-
         new_buff = exp_euler(self.diff, self.buffer[-1], time, len(new_times),
                              self.time_bit, self.mu, self.sigma, self.eAt, self.c2, self.c3)
         new_buff = np.maximum(new_buff, 0.) # THIS IS RECTIFYING BY DEFAULT!!!
@@ -372,78 +370,6 @@ class unit():
         self.upd_reqs_n_syns(time)
 
 
-    #************ I WILL ERASE update AFTER TESTING *************
-    #def update(self,time):
-        """
-        Advance the dynamics from time to time+min_delay.
-
-        This update function will replace the values in the activation buffer
-        corresponding to the latest "min_delay" time units, introducing "min_buff_size" new values.
-        In addition, all the synapses of the unit are updated.
-        source and kwta units override this with shorter update functions.
-        """
-        # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
-
-        # Maybe there should be a single 'times' array in the network, to avoid those rolls,
-        # but they add very little to the simualation times
-        #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
-        #new_times = self.times[-1] + self.times_grid
-        #self.times = np.roll(self.times, -self.min_buff_size)
-        #self.times[self.offset:] = new_times[1:]
-        
-        # TO USE A PARTICULAR SOLVER, UNCOMMENT ITS CODE, COMMENT OTHER SOLVERS
-        #---------------------------------------------------------------------
-        # odeint
-        """
-        # odeint also returns the initial condition, so to produce min_buff_size new values
-        # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
-        new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times, rtol=self.rtol, atol=self.atol)
-        self.buffer = np.roll(self.buffer, -self.min_buff_size)
-        self.buffer[self.offset:] = new_buff[1:,0]
-        """
-        #---------------------------------------------------------------------
-        # solve_ivp --- REQUIRES ADDITIONAL STEPS (see below)
-        """
-        # This is a reimplementation with solve_ivp. To make it work you need to change the order of the
-        # arguments in all the derivatives functions, from derivatives(self, y, t) to derivatives(self, t, y).
-        # In vi it takes one command: :%s/derivatives(self, y, t)/derivatives(self, t, y)/
-        # Also, make sure that the import command at the top is uncommented for solve_ivp.
-        # One more thing: to use the stiff solvers the derivatives must return a list or array, so
-        # the returned value must be enclosed in square brackets in <unit_type>.derivatives.
-        solution = solve_ivp(self.derivatives, (new_times[0], new_times[-1]), [self.buffer[-1]],
-                             method='LSODA', t_eval=new_times, rtol=self.rtol, atol=self.atol)
-        self.buffer = np.roll(self.buffer, -self.min_buff_size)
-        self.buffer[self.offset:] = solution.y[0,1:]
-        """
-        #---------------------------------------------------------------------
-        # Euler
-        #"""
-        # This is an implementation with forward Euler integration. Although this may be
-        # imprecise and unstable in some cases, it is a first step to implement the
-        # Euler-Maruyama method. And it's also faster than odeint.
-        # Notice the atol and rtol values are not used in this case.
-        #dt = new_times[1] - new_times[0]
-        # euler_int is defined in cython_utils.pyx
-        #new_buff = euler_int(self.derivatives, self.buffer[-1], time, len(new_times), dt)
-        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
-        #self.buffer[self.offset:] = new_buff[1:]
-        #"""
-        #---------------------------------------------------------------------
-        # Euler-Maruyama
-        """
-        # This is the Euler-Maruyama implementation. Basically the same as forward Euler.
-        # The atol and rtol values are meaningless in this case.
-        # This solver does the buuffer's "rolling" by itself.
-        # The unit needs to have 'mu' and 'sigma' attributes.
-        ## self.mu = 0. # Mean of the white noise
-        ## self.sigma = 0.0 # standard deviation of Wiener process.
-        dt = new_times[1] - new_times[0]
-        # euler_maruyama_ is defined in cython_utils.pyx
-        euler_maruyama(self.derivatives, self.buffer, time,
-                        self.buff_size-self.min_buff_size, dt, self.mu, self.sigma)
-        """
-        #---------------------------------------------------------------------
-        
     def upd_reqs_n_syns(self, time):
         """ Update the unit's requirements and its synapses.
 
@@ -464,7 +390,7 @@ class unit():
         This version works for units that store their previous activity values in a buffer.
         Units without buffers (e.g. source units) have their own get_act function.
 
-        This is the most time-consuming method in draculab (thus the various optimizations).
+        This was the most time-consuming method in draculab (thus the various optimizations).
         """
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Below is the more general (but slow) interpolation using interp1d
@@ -506,21 +432,12 @@ class unit():
         #                        self.buff_size, self.buffer)
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # This is the third implementation, written in Cython
-        #return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
-        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # This is for flat networks
-        #TODO: remove this if after third type of flattening is standard
-        if self.net.flat: # for the third type of flattening this is not necessary
-            return self.net.get_act(self.ID, time)
-        else:
-            return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
+        return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
     def pre_syn_update(self, time):
         """ Call the update functions for the requirements added in init_pre_syn_update. """
-        #for r in self.reqs:
-        #    self.reqs[r].update(time)
         for f in self.functions:
             f(time)
 
@@ -553,19 +470,27 @@ class unit():
             NameError, NotImplementedError, ValueError.
         """
         """
-        DEVELOPER'S NOTES1:
+        DEVELOPER'S NOTES:
         The names of the possible requirements are in the syn_reqs Enum in draculab.py .
         Any new requirement needs to register its name in there.
         Implementation of a requirement has 2 main parts:
         1) Initialization: where the data structures used by the requirement get their
-           initial values. This is done here in init_pre_syn_update using an if-elif
-           statement that identifies the requirement. See NOTES2.
-           Ideally the variable with the value of the requirement has the name
-           of the requirement. For example, the LPF'd activity with a fast time
-           constant has the name 'lpf_fast'.
+           initial values. This is done here by calling the 'add_<req_name>' functions.
+           These functions, defined in requirements.py, add the necessary attributes
+           and initialize them.
         2) Update: a method with the name upd_<req name>  that is added to the
-           'functions' list of the unit. This method belongs to the 'unit' class and
-           is written somewhere after init_pre_syn_update.
+           'functions' list of the unit. This method usually belongs to the 'unit' 
+           class and is written somewhere after init_pre_syn_update, but in
+           some cases it is defined only for one of the descendants of 'unit'.
+           
+           The name of the requirement, as it appears in the syn_reqs Enum, must
+           also be used in the 'add_' and 'upd_' methods. Failing to use this
+           naming convention will result in failure to add the requirement.
+
+           For example, the LPF'd activity with a fast time
+           constant has the name 'lpf_fast', which is its name in the syn_reqs
+           Enum. The file requirements.py has the 'add_lpf_fast' method, and
+           the method that updates 'lpf_fast' is called upd_lpf_fast.
 
         Additionally, some requirements have buffers so they can provide their value
         as it was 'n' simulation steps before. The prototypical case is the 'lpf'
@@ -577,41 +502,6 @@ class unit():
         2) There are 'getter' methods to retrieve past values of the requirement.
            The getter methods are named get_<req_name> .
         """
-        """
-        DEVELOPER'S NOTES2: 
-        Previously this method had a for loop with a giant wall of elif statements,
-        each one initializing data structures for a particular requirement. This wall
-        of elif statements had poor readability, and the update methods of the
-        requirements were away from the initialization (they still are), which can 
-        make working with requirements a scrolling-intensive deal.
-
-        There were 2 strategies under consideration to deal with the elif wall:
-        1) Moving the requirements' variables, initialization, and update routines to
-           classes in the requirements.py files. What init_pre_syn update does in this
-           case is to create instances of the requirement classes, placing them in the 
-           'reqs' dictionary. This way, pre_syn_update operates by calling the 'update' 
-           method of all requirements in 'reqs'.
-           This organizes things very nicely, but unfortunately it also slows down
-           the code considerably, presumably because of the extra indirection.
-           The slowing down of the code happens even if the instances of the requirement
-           classes are placed outside of the 'reqs' dictionary.
-        2) Creating add_<requirement_name> functions that encapsulate the initialization
-           or the data structures used by the requirement. The point is to get rid of the
-           elif wall withough slowing down the code, so this option attempts to 
-           create the same data structures and update methods as with the elif wall,
-           but do it all in the add_ function using 'setattr'. As before, the update
-           functions are placed in the 'functions' list.
-           This method can get rid of the wall of elifs, but unfortunately, setting the
-           update methods with 'setattr' makes them slow, so they still need to be defined
-           somewhere inside of the 'unit' class. Thus, although the wall of elifs
-           can be brought down, there is still separation between the initialization of
-           the requierements' data structures and its update method.
-
-        I currently go with option 2. Moreover, to reduce the number of upd_ methods
-        in 'unit', for those requirements that are specific to particular unit types, I
-        put the upd_ methods in those units. 
-
-        """ 
         assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
                                          str(self.ID) + ' when simulation time is not zero']
 
@@ -624,7 +514,6 @@ class unit():
         # For each synapse you receive, add its requirements
         for syn in self.net.syns[self.ID]:
             self.syn_needs.update(syn.upd_requirements)
-
         pre_reqs = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.pre_lpf_slow])
         self.syn_needs.difference_update(pre_reqs) # the "pre_" requirements are handled below
 
@@ -652,15 +541,6 @@ class unit():
                     self.port_idx[syn.port].append(idx) 
 
         # Prepare all the requirements to be updated by the pre_syn_update function. 
-        """
-        # under option 1 the rest of the method would be reduced to:
-        for req in self.syn_needs:
-            if issubclass(type(req), syn_reqs):
-                self.reqs[req.name] = eval(req.name+'(self)')
-            else:  
-                raise NotImplementedError('Asking for a requirement that is not implemented')
-        """
-        # Option 2:
         for req in self.syn_needs:
             if issubclass(type(req), syn_reqs):
                 eval('add_'+req.name+'(self)')
@@ -1028,7 +908,7 @@ class unit():
         # put new values in buffer
         for idx in range(self.min_buff_size):
             self.buffer[base+idx] = self.buffer[base+idx-1] + ( self.time_bit *
-                                    self.dt_fun3(self.buffer[base+idx-1], idx) )
+                                    self.dt_fun(self.buffer[base+idx-1], idx) )
 
 
     def flat_euler_maru_update(self,time):
@@ -1038,7 +918,7 @@ class unit():
                                               size=self.min_buff_size)
         for idx in range(self.min_buff_size):
             self.buffer[base+idx] = self.buffer[base+idx-1] + ( self.time_bit *
-                                    self.dt_fun3(self.buffer[base+idx-1], idx) +
+                                    self.dt_fun(self.buffer[base+idx-1], idx) +
                                     self.mudt + noise[idx] )
 
 
@@ -1049,11 +929,11 @@ class unit():
                                             size=self.min_buff_size)
         for idx in range(self.min_buff_size):
             self.buffer[base+idx] = self.eAt * self.buffer[base+idx-1] + ( self.c2 *
-                                    self.dt_fun3_eu(self.buffer[base+idx-1], idx) +
+                                    self.dt_fun_eu(self.buffer[base+idx-1], idx) +
                                     self.mudt + noise[idx] )
  
 
-#@jit(nopython=True)
+#@jit(nopython=True)  # Uncomment if using Numba
 def ufis_4_numba(acts, flat_acts_idx, w_vec, n_inps, mbf):
     """ receives the acts vector, its index, and weights, returns the inp_sum vector. """
     step_inps = acts.flatten()[flat_acts_idx].reshape(n_inps, mbf)
@@ -1180,19 +1060,10 @@ class sigmoidal(unit):
         # there is only one state variable (the activity)
         return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
 
-    def dt_fun1(self, y, t):
-        """ The derivatives function used when the network is flat. """
-        return ( self.f(self.net.inp_sums[self.ID][t]) - y ) * self.rtau
-
-    def dt_fun2(self, y, s):
-        """ The derivatives function used when the network is flat. """
-        return ( self.f(self.net.inp_sums[self.ID][s]) - y ) * self.rtau
-
-    def dt_fun3(self, y, s):
+    def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
         return ( self.f(self.inp_sum[s]) - y ) * self.rtau
 
-   
 
 class noisy_sigmoidal(unit): 
     """
@@ -1259,13 +1130,14 @@ class noisy_sigmoidal(unit):
         # there is only one state variable (the activity)
         return ( self.f(self.get_input_sum(t)) - self.lambd*y[0] ) * self.rtau
 
-    def dt_fun3(self, y, s):
+    def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
         return ( self.f(self.inp_sum[s]) - y ) * self.rtau
 
-    def dt_fun3_eu(self, y, s):
+    def dt_fun_eu(self, y, s):
         """ The derivatives function for flat_exp_euler_update. """
         return  self.f(self.inp_sum[s]) * self.rtau
+
 
 class linear(unit): 
     """ An implementation of a linear unit.
@@ -1273,7 +1145,6 @@ class linear(unit):
         The output approaches the sum of the inputs multiplied by their synaptic weights,
         evolving with time constant 'tau'.
     """
-
     def __init__(self, ID, params, network):
         """ The unit constructor.
 
@@ -1302,13 +1173,8 @@ class linear(unit):
                 t: time when the derivative is evaluated.
         """
         return( self.get_input_sum(t) - y[0] ) * self.rtau
-   
 
     def dt_fun(self, y, s):
-        """ The derivatives function used when the network is flat. """
-        return ( self.net.inp_sums[self.ID][s] - y ) * self.rtau
-
-    def dt_fun3(self, y, s):
         """ The derivatives function used when the network is flat. """
         return ( self.inp_sum[s] - y ) * self.rtau
 
@@ -1370,10 +1236,10 @@ class noisy_linear(unit):
         """
         return (self.get_input_sum(t) - self.lambd * y[0]) * self.rtau
  
-    def dt_fun3(self, y, s):
+    def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
         return ( self.inp_sum[s] - self.lambd * y ) * self.rtau
 
-    def dt_fun3_eu(self, y, s):
+    def dt_fun_eu(self, y, s):
         """ The derivatives function for flat_exp_euler_update. """
         return  self.inp_sum[s] * self.rtau

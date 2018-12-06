@@ -500,6 +500,9 @@ def add_inp_l2(unit):
 
 
 #-------------------------------------------------------------------------------------
+# Use of the following classes has been deprecated because they slow down execution
+#-------------------------------------------------------------------------------------
+
 class requirement():
     """ The parent class of requirement classes.  """
     

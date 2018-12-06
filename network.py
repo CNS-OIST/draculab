@@ -12,7 +12,6 @@ from cython_utils import * # interpolation and integration methods including cyt
 from requirements import *
 from array import array # optionally used for the unit's buffer
 #from numba import jit
-#import ray
 
 
 class network():
@@ -696,37 +695,20 @@ class network():
             self.units[u].init_buffers() # this should go second, so it uses the new syn_needs
 
 
-    def flatten(self, flat_type):
-        """ Move unit and synapse data structures into the network. 
+    def flatten(self):
+        """ Move unit buffers into the network. 
         
-            flat_type == 1 means that unit buffers will be stored in a list of numpy arrays.
-            In this case our activity retrieval methods are get_act1 and get_act_by_step1.
-            
-            flat_type == 2 means that unit buffers will be stored in a single 2D numpy array.
-            In this case our activity retrieval methods are get_act2 and get_act_by_step2.
+            The unit buffers will be placed in a single 2D numpy array called 'acts'
+            in the network object, but each unit will retain a buffer that is a view
+            of part of a single row of 'acts'.
 
-            flat_type == 3 means that unit buffers are in a single 2D numpy array in the
-            network object, but each unit has a buffer which is a view of part of a
-            single row of that 2D array. This is what I will continue implementing in
-            the future.
+            The 'times' array of all units is also replaced by a sngle 'ts' array.
+
+            After this method is called, the network can only be run with the
+            'flat_run' method.
         """
         if self.sim_time > 0.:  # the network has been run before
             raise AssertionError("The network should not be flattened after simulating") 
-
-        if flat_type == 1:
-            self.get_act = self.get_act1
-            self.get_act_by_step = self.get_act_by_step1
-            self.flat_update = self.flat_update1
-        elif flat_type == 2:
-            self.get_act = self.get_act2
-            self.get_act_by_step = self.get_act_by_step2
-            self.flat_update = self.flat_update2
-        elif flat_type == 3: 
-            self.get_act = self.get_act2
-            self.get_act_by_step = self.get_act_by_step2
-            self.flat_update = self.flat_update3
-        else:
-            raise ValueError("flat_type argument to network.flatten is neither 1 nor 2.")
 
         # obtain the maximum delay
         self.max_del = max([0. if len(l)==0 else max(l) for l in self.delays])        
@@ -741,14 +723,12 @@ class network():
         self.ts_grid = np.linspace(0., self.min_delay, self.min_buff_size+1, dtype=self.bf_type) # used to
                                                                              # create values for 'times'
         # copy all the unit buffers into the network object
-        self.unit_buffs = [None] * self.n_units
         self.has_buffer = [False] * self.n_units
         self.steps = [self.max_steps] * self.n_units
         self.init_idx = [0] * self.n_units # first index of ts to consider for each unit 
         self.buff_len = [0] * self.n_units # length of buffer for each unit
         for uid, u in enumerate(self.units):
             if hasattr(u, 'buffer'):
-                self.unit_buffs[uid] = u.buffer
                 self.has_buffer[uid] = True
                 self.buff_len[uid]  = len(u.buffer)
                 self.init_idx[uid] = self.ts_buff_size - len(u.buffer)
@@ -764,121 +744,94 @@ class network():
         # For each unit obtain a vector with the IDs of input units
         self.inp_src = [ [syn.preID for syn in l] for l in self.syns ]
 
-        if flat_type == 2 or flat_type == 3:
-            # EXTRA ATTRIBUTES FOR SECOND VERSION!
-            del self.unit_buffs # no need for these buffers
-            # The full array of activities (not masked)
-            self.acts = np.zeros((self.n_units, len(self.ts)), dtype=self.bf_type)
-            #global acts = np.zeros((self.n_units, len(self.ts)), dtype=self.bf_type)
-            # The indices to extract the array of step inputs
-            self.acts_idx = [[] for _ in range(self.n_units)]
-            for uid, u in enumerate(self.units):
-                if hasattr(u, 'buffer'):
-                    self.acts[uid,self.init_idx[uid]:] = u.init_val  # initializing acts
-                    #acts[uid,self.init_idx[uid]:] = u.init_val  # initializing acts
-                    idx1 = [ [src]*self.min_buff_size for src in self.inp_src[uid] ]
-                    idx2 = [list(range(self.ts_buff_size - self.step_dels[uid][inp] - 1, 
-                            self.ts_buff_size - self.step_dels[uid][inp] - 1 + self.min_buff_size))
-                            for inp in range(len(self.inp_src[uid]))]
-                    self.acts_idx[uid] = (idx1, idx2)
-                else:  # for source units, also initialize acts
-                    self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
+        # The full array of activities (not masked)
+        self.acts = np.zeros((self.n_units, len(self.ts)), dtype=self.bf_type)
+        # The indices to extract the array of step inputs
+        self.acts_idx = [[] for _ in range(self.n_units)]
+        for uid, u in enumerate(self.units):
+            if hasattr(u, 'buffer'):
+                self.acts[uid,self.init_idx[uid]:] = u.init_val  # initializing acts
+                idx1 = [ [src]*self.min_buff_size for src in self.inp_src[uid] ]
+                idx2 = [list(range(self.ts_buff_size - self.step_dels[uid][inp] - 1, 
+                        self.ts_buff_size - self.step_dels[uid][inp] - 1 + self.min_buff_size))
+                        for inp in range(len(self.inp_src[uid]))]
+                self.acts_idx[uid] = (idx1, idx2)
+            else:  # for source units, also initialize acts
+                self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
                                             t in self.ts[self.init_idx[uid]:] ])
 
-        if flat_type == 3: # unit buffers become slices of network.acts
-            for uid, u in enumerate(self.units):
-                if self.has_buffer[uid]:
-                    u.buffer = np.ndarray(shape=(self.buff_len[uid]), 
-                                          buffer=self.acts[uid,self.init_idx[uid]:],
-                                          dtype=self.bf_type)
-                    u.times = np.ndarray(shape=(self.buff_len[uid]), 
-                                         buffer=self.ts[self.init_idx[uid]:], dtype=self.bf_type)
-                    """
-                    # Below is code used to create a version where the step_inps matrix is
-                    # obtained using logical indexing. Somehow it is slower...
-                    u.acts = np.frombuffer(self.acts.data)
-                    # Using frombuffer creates a 'flat' view, which the unit will address
-                    # using a 1-D 'acts_idx' array that we'll create next
-                    u.acts_idx = [False] * self.acts.size
-                    idx = self.acts_idx[uid]
-                    for i,l in enumerate(idx[0]):
-                        for j,e in enumerate(l):
-                            u.acts_idx[e*self.ts_buff_size + idx[1][i][j]] = True
-                    u.n_inps = len(idx[0])
-                    """
-                    u.acts = self.acts.view()
-                    u.acts_idx = self.acts_idx[uid]
-                    # step_inps is a 2D numpy array. step_inps[j,k] provides the activity
-                    # of the j-th input to unit i in the k-th substep of the current timestep.
-                    u.step_inps = self.acts[self.acts_idx[uid]]
-                    # experimental bit to test with numba
-                    #-----------------------------------------------------
-                    u.flat_acts_idx = np.array([False] * self.acts.size)
-                    idx = self.acts_idx[uid]
-                    for i,l in enumerate(idx[0]):
-                        for j,e in enumerate(l):
-                            u.flat_acts_idx[e*self.ts_buff_size + idx[1][i][j]] = True
-                    u.n_inps = len(idx[0])
-                    #-----------------------------------------------------
-                    # specify the integration function
-                    if u.type in [unit_types.noisy_linear, unit_types.noisy_sigmoidal]:
-                        if u.lambd > 0.:
-                            u.flat_update = u.flat_exp_euler_update
-                            u.integ_meth = "exp_euler"
-                        else:
-                            u.flat_update = u.flat_euler_maru_update
-                            u.integ_meth = "euler_maru"
-                        continue
-                    if u.integ_meth in ["odeint", "solve_ivp", "euler"]:
-                        u.flat_update = u.flat_euler_update
-                    elif u.integ_meth == "euler_maru":
-                        u.flat_update = u.flat_euler_maru_update
-                    elif u.integ_meth == "exp_euler":
+        for uid, u in enumerate(self.units):
+            if self.has_buffer[uid]:
+                u.buffer = np.ndarray(shape=(self.buff_len[uid]), 
+                                      buffer=self.acts[uid,self.init_idx[uid]:],
+                                      dtype=self.bf_type)
+                u.times = np.ndarray(shape=(self.buff_len[uid]), 
+                                     buffer=self.ts[self.init_idx[uid]:], dtype=self.bf_type)
+                """
+                # Below is code used to create a version where the step_inps matrix is
+                # obtained using logical indexing. Somehow it is slower...
+                u.acts = np.frombuffer(self.acts.data)
+                # Using frombuffer creates a 'flat' view, which the unit will address
+                # using a 1-D 'acts_idx' array that we'll create next
+                u.acts_idx = [False] * self.acts.size
+                idx = self.acts_idx[uid]
+                for i,l in enumerate(idx[0]):
+                    for j,e in enumerate(l):
+                        u.acts_idx[e*self.ts_buff_size + idx[1][i][j]] = True
+                u.n_inps = len(idx[0])
+                """
+                u.acts = self.acts.view()
+                u.acts_idx = self.acts_idx[uid]
+                # step_inps is a 2D numpy array. step_inps[j,k] provides the activity
+                # of the j-th input to unit i in the k-th substep of the current timestep.
+                u.step_inps = self.acts[self.acts_idx[uid]]
+                """
+                # experimental bit to test with numba
+                #-----------------------------------------------------
+                u.flat_acts_idx = np.array([False] * self.acts.size)
+                idx = self.acts_idx[uid]
+                for i,l in enumerate(idx[0]):
+                    for j,e in enumerate(l):
+                        u.flat_acts_idx[e*self.ts_buff_size + idx[1][i][j]] = True
+                u.n_inps = len(idx[0])
+                #-----------------------------------------------------
+                """
+                # specify the integration function
+                if u.type in [unit_types.noisy_linear, unit_types.noisy_sigmoidal]:
+                    if u.lambd > 0.:
                         u.flat_update = u.flat_exp_euler_update
+                        u.integ_meth = "exp_euler"
                     else:
-                        raise NotImplementedError('The specified integration method is not \
-                                                   implemented for flat networks')
-                    
+                        u.flat_update = u.flat_euler_maru_update
+                        u.integ_meth = "euler_maru"
+                    continue
+                if u.integ_meth in ["odeint", "solve_ivp", "euler"]:
+                    u.flat_update = u.flat_euler_update
+                    if u.integ_meth in ["odeint", "solve_ivp"]:
+                        from warnings import warn
+                        warn('Integration method ' + u.integ_meth + \
+                               ' subsituted by Forward Euler', UserWarning)
+                elif u.integ_meth == "euler_maru":
+                    u.flat_update = u.flat_euler_maru_update
+                elif u.integ_meth == "exp_euler":
+                    u.flat_update = u.flat_exp_euler_update
+                else:
+                    raise NotImplementedError('The specified integration method is not \
+                                               implemented for flat networks')
         self.flat = True
 
-    
-    def get_act1(self, uid, t):
+
+    def get_act(self, uid, t):
         """ Get the activity of unit with ID 'uid' at time 't'.
 
             t should be within the range of values in the unit's buffer.
-            This method is to be used with the first type of flat networks.
-        """
-        if not self.has_buffer[uid]:
-            return self.units[uid].get_act(t)
-        return cython_get_act3(t, self.ts[self.init_idx[uid]], self.ts_bit, self.buff_len[uid],
-                               self.unit_buffs[uid])
-
-
-    def get_act2(self, uid, t):
-        """ Get the activity of unit with ID 'uid' at time 't'.
-
-            t should be within the range of values in the unit's buffer.
-            This method is to be used with the second type of flat networks.
+            This method is only valid for flat networks.
         """
         return cython_get_act3(t, self.ts[self.init_idx[uid]], self.ts_bit, self.buff_len[uid],
                                self.acts[uid][self.init_idx[uid]:])
 
 
-    def get_act_by_step1(self, uid, s):
-        """ Get the activity of unit with ID 'uid' as it was 's' buffer time steps before.
-
-            's' should not be larger than the number of steps in the unit's buffer.
-            A buffer time steps corresponds to the time interval between consecutive
-            buffer entries, namely min_delay/min_buff_size.
-
-            This method is to be used with the first type of flat networks.
-        """
-        if not self.has_buffer[uid]:
-            return self.units[uid].get_act(self.sim_time-s*self.ts_bit)
-        return self.unit_buffs[uid][-1 - s]
-    
-
-    def get_act_by_step2(self, uid, s):
+    def get_act_by_step(self, uid, s):
         """ Get the activity of unit with ID 'uid' as it was 's' buffer time steps before.
 
             's' should not be larger than the number of steps in the unit's buffer.
@@ -890,28 +843,6 @@ class network():
         return self.acts[uid][-1 - s]
     
 
-    def upd_inp_sums(self):
-        """ Update a vector with the scaled sum of inputs for all units. """
-        for uid, u in enumerate(self.units):
-            if not self.has_buffer[uid]:
-                continue
-            sy_sd_src = tuple(zip([syn.w for syn in self.syns[uid]] , self.step_dels[uid], 
-                                   self.inp_src[uid]))
-            for entry in range(self.min_buff_size):
-                # using get_act:
-                """
-                self.inp_sums[uid][entry] = sum( [syn.w * 
-                            self.get_act(src, self.sim_time-dely+entry*self.ts_bit)
-                                for syn, dely, src in sy_sd_src ] )
-                """
-                # using get_act_by_step:
-                #"""
-                self.inp_sums[uid][entry] = sum( [w * 
-                                                  self.get_act_by_step(src, sd-entry)
-                                                  for w,sd,src in sy_sd_src ] )
-                #"""
-       
-
     def dt_custom_fi(self, u, y, t):
         """ Returns the derivative of custom_fi unit 'u' at time 't' when its activity is y. 
         
@@ -921,98 +852,23 @@ class network():
         return ( u.f(self.inp_sums[u.ID][t]) - y ) * u.rtau
 
 
-    def flat_update1(self, time):
-        """ Updates all state variables by advancing them one min_delay time step. """
-        self.upd_inp_sums()
-
-        self.ts = np.roll(self.ts, -self.min_buff_size)
-        self.ts[self.ts_buff_size-self.min_buff_size:] = self.ts_grid[1:]+time
-
-        for uid, u in enumerate(self.units):
-            # update buffer
-            if not u.type is unit_types.source:
-                # rotate buffer
-                self.unit_buffs[uid] = np.roll(self.unit_buffs[uid], -self.min_buff_size)
-                # calculate new values
-                t = time
-                strt_idx = self.buff_len[uid]-self.min_buff_size
-                for idx in range(strt_idx, self.buff_len[uid]):
-                    self.unit_buffs[uid][idx] = self.unit_buffs[uid][idx-1] + ( self.ts_bit * 
-                        u.dt_fun1(self.unit_buffs[uid][idx-1], idx-strt_idx) )
-                         #self.dt_custom_fi(u, self.unit_buffs[uid][idx-1], t) )
-                    t = t + self.ts_bit
-            # handle synaptic requirements
-            u.pre_syn_update(time)
-            u.last_time = time # important to have it after pre_syn_update
-        for synli in self.syns:
-            for syn in synli:
-                syn.update(time)
-
-
-    def flat_update2(self, time):
-        """ Updates all state variables by advancing them one min_delay time step. """
-        # updating the input sums
-        for uid, u in enumerate(self.units):
-            if not u.type is unit_types.source:
-                step_inps = self.acts[self.acts_idx[uid]]
-                w_vec = np.array([syn.w for syn in self.syns[uid]])
-                #self.inp_sums[uid] = np.matmul(step_inps.transpose(), w_vec)
-                self.inp_sums[uid] = np.matmul(w_vec, step_inps)
-
-        # update the times array
-        self.ts = np.roll(self.ts, -self.min_buff_size)
-        self.ts[self.ts_buff_size-self.min_buff_size:] = self.ts_grid[1:]+time
-
-        strt_idx = self.ts_buff_size - self.min_buff_size # index used below
-
-        # roll the full acts array
-        strt_idx = self.ts_buff_size - self.min_buff_size # index used below
-        self.acts[:,:strt_idx] = self.acts[:,self.min_buff_size:]
-
-        for uid, u in enumerate(self.units):
-            # update buffer
-            if not u.type is unit_types.source:
-                # rotate buffer (deprecated, now done above)
-                  #self.acts[uid][self.init_idx[uid]:] = np.roll(self.acts[uid][self.init_idx[uid]:],
-                  #                                              -self.min_buff_size)
-                # calculate new values
-                t = time
-                for idx in range(strt_idx, self.ts_buff_size):
-                    self.acts[uid][idx] = self.acts[uid][idx-1] + ( self.ts_bit * 
-                        u.dt_fun2(self.acts[uid][idx-1], idx-strt_idx) )
-                    t = t + self.ts_bit
-            else: # put values of source units in acts
-                self.acts[uid,strt_idx:] = np.array([u.get_act(t) for
-                                        t in self.ts[strt_idx:] ])
-
-            # handle synaptic requirements
-            u.pre_syn_update(time)
-            u.last_time = time # important to have it after pre_syn_update
-        for synli in self.syns:
-            for syn in synli:
-                syn.update(time)
-
-    def flat_update3(self, time):
+    def flat_update(self, time):
         """ Updates all state variables by advancing them one min_delay time step. """
         # update the times array
-        self.ts = np.roll(self.ts, -self.min_buff_size)
-        self.ts[self.ts_buff_size-self.min_buff_size:] = self.ts_grid[1:]+time
-
+        self.ts += self.min_delay
+        #self.ts = np.roll(self.ts, -self.min_buff_size)
+        #self.ts[self.ts_buff_size-self.min_buff_size:] = self.ts_grid[1:]+time
         # update input sums
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
                 u.upd_flat_inp_sum(time)
-
         # roll the full acts array
         base = self.ts.size - self.min_buff_size
         self.acts[:,:base] = self.acts[:,self.min_buff_size:]
-
         # update buffers
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
-                #u.flat_euler_update(time)
                 u.flat_update(time)
-        
         # update activities of source units and handle requirements
         for uid, u in enumerate(self.units):
             if not self.has_buffer[uid]:
@@ -1021,34 +877,22 @@ class network():
             # handle requirements
             u.pre_syn_update(time)
             u.last_time = time # important to have it after pre_syn_update
-            
         # update synapses
         for synli in self.syns:
             for syn in synli:
                 syn.update(time)
 
 
-    def flat_run(self, total_time, flat_type=3):
+    def flat_run(self, total_time):
         """ Simulate a flattened network for the given time. 
         
-            The 'flat_type' arguments indicates which of the two types of flat networks
-            should be used, and its value should be either 1 or 2.
-            
-            Flat networks of type 1 keep all the unit buffer values in a list of numpy arrays. 
-            They are faster than regular networks even when there are only a few units.
-            
-            Flat networks of type 2 keep all unit buffers in a single numpy array. They can be
-            relatively slow for small networks, but they are the fastest option for large
-            networks.
-
-            Flat network of type 3 also keep a single numpy array in the netwok object with 
+            Flat networks keep a single numpy array in the netwok object with 
             the contents of all buffers. However, all units have buffers which are views of
-            a slice of that array. This keeps a lot of the originial structure, and the speed
-            is comparamble to networks of type 2.
+            a slice of that array. 
         """
         #ray.init(num_cpus=10, ignore_reinit_error=True)
         if not self.flat:
-            self.flatten(flat_type)
+            self.flatten()
         Nsteps = int(total_time/self.min_delay)  # total number of simulation steps
         unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # arrays to store unit activities
         plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # arrays to store plant steps
@@ -1059,8 +903,8 @@ class network():
             
             # store current unit activities
             for uid, unit in enumerate(self.units):
-                #unit_store[uid][step] = self.get_act(uid, self.sim_time)
-                unit_store[uid][step] = self.get_act_by_step(uid, 0)
+                unit_store[uid][step] = self.get_act(uid, self.sim_time)
+                #unit_store[uid][step] = self.get_act_by_step(uid, 0)
            
             # store current plant state variables 
             for pid, plant in enumerate(self.plants):
