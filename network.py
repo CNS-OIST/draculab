@@ -767,9 +767,8 @@ class network():
         if self.n_plants > 0:
             for idx1, l in enumerate(self.syns):
                 for idx2, syn in enumerate(l):
-                    if hasattr('plant_out', syn): # synapse comes from a plant
+                    if hasattr(syn, 'plant_out'): # synapse comes from a plant
                         self.inp_src[idx1][idx2] = self.st_var_idx[syn.plant_id][syn.plant_out]
-        self.inp_src = [ [syn.preID for syn in l] for l in self.syns ]
         #======================================================================
         # Creating the acts array
         self.acts = np.zeros((self.n_units+n_plant_vars, len(self.ts)), dtype=self.bf_type)
@@ -824,7 +823,7 @@ class network():
                 u.n_inps = len(idx[0])
                 #-----------------------------------------------------
                 """
-                # specify the integration function
+                # specify the integration function for all units
                 if u.type in [unit_types.noisy_linear, unit_types.noisy_sigmoidal]:
                     if u.lambd > 0.:
                         u.flat_update = u.flat_exp_euler_update
@@ -847,17 +846,16 @@ class network():
                     raise NotImplementedError('The specified integration method is not \
                                                implemented for flat networks')
         # Reinitializing the buffers of plants as views of acts, times as views of ts
-        for pid, plant in enumerate(self.plants):
-            sh = plant.buffer.shape
-            first_idx = self.ts.size - plant.buff_size  # buff_size = sh[0]
-            svi = self.st_var_idx[pid][0]
-            plant.buffer = np.ndarray(shape=(sh[1], sh[0]),
-                           buffer=self.acts[svi:svi+plant.dim, first_idx:],
-                           dtype=self.bf_type) # non-flat buffer is the transpose of this
-            plant.times = np.ndarray(shape=(plant.buff_size), 
-                          buffer=self.ts[first_idx:], dtype=self.bf_type)
+        for plant in self.plants:
+            svi = self.st_var_idx[plant.ID][0]
+            plant.buffer = np.ndarray(shape=(plant.dim, self.ts.size),
+                           buffer=self.acts[svi:svi+plant.dim, :],
+                           dtype=self.bf_type) 
+            plant.times = self.ts.view()
+            plant.buff_width = self.ts.size
+            plant.offset = plant.buff_width - self.min_buff_size
             # initialize buffer
-            init_buff = np.transpose(np.array([plant.init_state]*plant.buff_size))
+            init_buff = np.transpose(np.array([plant.init_state]*plant.buff_width))
             np.copyto(plant.buffer, init_buff)
         self.flat = True
 

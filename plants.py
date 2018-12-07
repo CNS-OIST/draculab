@@ -77,18 +77,18 @@ class plant():
         """
     
         assert self.net.sim_time == 0., 'Plant buffers were reset when the simulation time is not zero'
-        
+        # variables with '*' become redefined for flat networks (see network.flatten)
         min_del = self.net.min_delay  # just to have shorter lines below
         min_buff = self.net.min_buff_size
         self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
-        self.offset = (self.steps-1)*min_buff # an index used in the update function of derived classes
-        self.buff_size = int(round(self.steps*min_buff)) # number of state values to store
+        self.offset = (self.steps-1)*min_buff # * an index used in the update function of derived classes
+        self.buff_width = int(round(self.steps*min_buff)) # * number of state values to store
         # keeping with scipy.integrate.odeint, each row in the buffer will correspond to a state
         if hasattr(self, 'init_state'): # if we have initial values to put in the buffer
-            self.buffer = np.array([self.init_state]*self.buff_size) # initializing buffer
+            self.buffer = np.array([self.init_state]*self.buff_width) # * initializing buffer
         else:
-            self.buffer = np.ndarray(shape=(self.buff_size, self.dim), dtype=float) 
-        self.times = np.linspace(-self.delay, 0., self.buff_size) # times for each buffer row
+            self.buffer = np.ndarray(shape=(self.buff_width, self.dim), dtype=float) # *
+        self.times = np.linspace(-self.delay, 0., self.buff_width) # * times for each buffer row
         self.times_grid = np.linspace(0, min_del, min_buff+1) # used to create values for 'times'
 
 
@@ -138,7 +138,8 @@ class plant():
         
     def update(self, time):
         ''' This function advances the state for net.min_delay time units. '''
-        assert (self.times[-1]-time) < 2e-6, 'plant ' + str(self.ID) + ': update time is desynchronized'
+        assert (self.times[-1]-time) < 2e-6, 'plant ' + str(self.ID) + \
+                ': update time is desynchronized'
 
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.net.min_buff_size)
@@ -154,22 +155,34 @@ class plant():
 
     def flat_update(self, time):
         """ advances the state for net.min_delay time units when the network is flat. """
-        # The flat version of a plants has a buffer that is the transpose of the regular
-        # version's buffer. This is because the buffer of the flat network is a slice
-        # of network.acts. The solve_ivp integrator works with this alignment without
-        # the need of transpositions, so it is the current choice.
-
+        # The flat version of a plants has a buffer that is a view of a slice of 
+        # network.acts. A slice of acts with several rows and not all of the columns
+        # cannot be contiguous, and therefore you can't create a view of such a slice.
+        # Therefore the buffer is a slice of acts with the full number of columns.
+        # Moreover, each row in the buffer corresponds to a different state variable,
+        # whereas it corresponds to a different time for a regular network.
+        # The solve_ivp integrator works with this alignment withoutthe need of 
+        # transpositions, so it is the current choice.
+        #
         # Unlike units, the current flat implementation of plants still uses its
         # regular get_input_sum function, relying on the get_act functions of its
         # input units. This is not fast, but at least it means that dt_fun and 
         # derivatives only differ in the order of their arguments.
-        assert (self.times[self.offset-1]-time) < 2e-6, 'plant ' + str(self.ID) + ': update time is desynchronized'
+        assert (self.times[self.offset-1]-time) < 2e-6, 'plant ' + str(self.ID) + \
+                ': update time is desynchronized'
         # self.times is a view of network.ts
-        nts = self.times[self.offset-1:]
+        nts = self.times[self.offset-1:] # times relevant for the update
         solution = solve_ivp(self.dt_fun, (nts[0], nts[-1]), self.buffer[:,-1], 
                              t_eval=nts, rtol=self.rtol, atol=self.atol)
         np.put(self.buffer[:,self.offset:], range(self.net.min_buff_size*self.dim), 
                solution.y[:,1:])
+
+    def dt_fun(self, t, y):
+        """ The derivatives function with the arguments switched. 
+
+            The method flat_update above calls this instead of derivatives.
+        """
+        return self.derivatives(y, t)
 
     def append_inputs(self, inp_funcs, ports, delays, synaps):
         """ Append the given input functions in the given input ports, with the given delays and synapses.
@@ -266,7 +279,7 @@ class pendulum(plant):
         super(pendulum, self).__init__(ID, params, network) # calling parent constructor
         # Using model-specific initial values, initialize the state vector.
         self.init_state = np.array([params['init_angle'], params['init_ang_vel']])
-        self.buffer = np.array([self.init_state]*self.buff_size) # initializing buffer
+        self.buffer = np.array([self.init_state]*self.buff_width) # initializing buffer
         #-------------------------------------------------------------------------------
         # Initialize the parameters specific to this model
         self.length = params['length']  # length of the rod [m]
@@ -297,7 +310,6 @@ class pendulum(plant):
         torque -= ( np.cos(y[0]) * self.glo2 ) + ( self.mu * y[1] ) 
         # angular acceleration = torque / (inertia moment)
         ang_accel = torque / self.I
-
         return np.array([y[1], ang_accel])
 
     def get_angle(self,time):
@@ -307,22 +319,8 @@ class pendulum(plant):
     def get_ang_vel(self,time):
         """ Returns the angular velocity in rads per second. """
         return self.get_state_var(time,1) 
-
-    def dt_fun(self, t, y):
-        """ This is a version of 'derivatives' adapted for flat networks.
-            All it does is to reverse the order of the arguments.
-        """
-        return self.derivatives(y, t)
         
-    def get_angle(self,time):
-        """ Returns the angle in radians, modulo 2*pi. """
-        return self.get_state_var(time,0) % (2*np.pi)
-              
-    def get_ang_vel(self,time):
-        """ Returns the angular velocity in rads per second. """
-        return self.get_state_var(time,1) 
 
-        
 class conn_tester(plant):
     """
     This plant is used to test the network.set_plant_inputs and plant.append_inputs functions.
@@ -341,7 +339,7 @@ class conn_tester(plant):
 
         # Using model-specific initial values, initialize the state vector.
         self.init_state = np.array(params['init_state'])
-        self.buffer = np.array([self.init_state]*self.buff_size) # initializing buffer
+        self.buffer = np.array([self.init_state]*self.buff_width) # initializing buffer
         #-------------------------------------------------------------------------------
 
     def derivatives(self, y, t):
@@ -356,3 +354,4 @@ class conn_tester(plant):
                          -y[2]*self.get_input_sum(t,2)])
 
 
+        
