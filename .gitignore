@@ -7,3 +7,4 @@ __pycache__
 tests/homeo+dynamic_thresh.ode
 tests/spatial_sharpening4.ode
 pickles/*
+release

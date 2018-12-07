@@ -676,6 +676,7 @@ class network():
             syn_params['init_w'] = weights[idx]
             syn_params['inp_port'] = port
             syn_params['plant_out'] = output
+            syn_params['plant_id'] = plantID
             self.syns[target].append(syn_class(syn_params, self))
 
             # specify the delay of the connection
@@ -710,21 +711,28 @@ class network():
         if self.sim_time > 0.:  # the network has been run before
             raise AssertionError("The network should not be flattened after simulating") 
 
-        # obtain the maximum delay
-        self.max_del = max([0. if len(l)==0 else max(l) for l in self.delays])        
-        self.max_del += self.min_delay # because unit delays get min_delay added (see 'connect')
+        # obtain the maximum delay from all unit projections
+        max0 = lambda x: 0 if len(x)==0 else max(x)  # auxiliary function
+        if len(self.delays) > 0:
+            max_u_del = max([max0(l) for l in self.delays])        
+        else:
+            max_u_del = self.min_delay
+        # obtain the maximum delay from all connections to plants
+        max_p_del = self.min_delay # maximum delay of connections to plants
+        for p in self.plants:
+            max_p_del = max(max_p_del, max0([max0(dl) for dl in p.inp_dels]))
+        self.max_del = max(max_u_del, max_p_del) + self.min_delay #  min_delay added (see 'connect')
         # initialize the ts array (called 'times' in units)
         self.bf_type = np.float64  # data type of the buffers when using numpy arrays
-        self.max_steps = int(round(self.max_del/self.min_delay)) # max number of min_del steps in all delays
-        self.ts_buff_size = int(round(self.max_steps*self.min_buff_size)) # number of activation values to store
+        max_steps = int(round(self.max_del/self.min_delay)) # max number of min_del steps in all delays
+        self.ts_buff_size = int(round(max_steps*self.min_buff_size)) # number of activation values to store
         self.ts_bit = self.min_delay / self.min_buff_size # time interval between buffer values
         self.ts = np.linspace(-self.max_del+self.ts_bit, 0., self.ts_buff_size, dtype=self.bf_type) # the 
                                                              # corresponding times for the buffer values
         self.ts_grid = np.linspace(0., self.min_delay, self.min_buff_size+1, dtype=self.bf_type) # used to
-                                                                             # create values for 'times'
-        # copy all the unit buffers into the network object
-        self.has_buffer = [False] * self.n_units
-        self.steps = [self.max_steps] * self.n_units
+                                                             # create values for 'times' (optionally)
+        # copy info about the unit buffers into the network object
+        self.has_buffer = [False] * self.n_units # does the unit have a buffer? (filled below)
         self.init_idx = [0] * self.n_units # first index of ts to consider for each unit 
         self.buff_len = [0] * self.n_units # length of buffer for each unit
         for uid, u in enumerate(self.units):
@@ -735,18 +743,38 @@ class network():
             else: # initialize init_idx for source units
                 self.init_idx[uid] = self.ts_buff_size - (int(round(u.delay/self.min_delay))
                                                           * self.min_buff_size)
-            self.steps[uid] = u.steps
         # get a delays list where the time unit is the number of buffer intervals
         self.step_dels = [ [ self.min_buff_size*int(round(d/self.min_delay)) for d in l] 
                                                                    for l in self.delays]
-        # initialize a vector with the sum of scaled inputs for all units
-        self.inp_sums = [ np.zeros(self.min_buff_size) for l in self.step_dels]
-        # For each unit obtain a vector with the IDs of input units
+        # If there are plants, you'll need to store past values for all their state variables.
+        # Since the indexes of units and plants are independent, you need to create an
+        # index for each state variable, in a way that won't collide with the unit indexes.
+        # st_var_idx[i][j] provides the index of the j-th state variable from the i-th plant
+        # in the acts array, and in the inp_src list (defined below).
+        # n_plant_vars counts the total number of state variables from all plants.
+        if self.n_plants > 0:   # if there are plants
+            index = self.n_units
+            n_plant_vars = 0
+            self.st_var_idx = [[] for _ in range(self.n_plants)] 
+            for pid, plant in enumerate(self.plants):
+                n_plant_vars += plant.dim
+                for var in range(plant.dim):
+                    self.st_var_idx[pid].append(index)
+                    index += 1
+        # For each unit obtain a vector with the index of input units or plants in acts
         self.inp_src = [ [syn.preID for syn in l] for l in self.syns ]
-
-        # The full array of activities (not masked)
-        self.acts = np.zeros((self.n_units, len(self.ts)), dtype=self.bf_type)
-        # The indices to extract the array of step inputs
+        # The initialization of inp_src above will fail if there are plants. Modifying it.
+        if self.n_plants > 0:
+            for idx1, l in enumerate(self.syns):
+                for idx2, syn in enumerate(l):
+                    if hasattr('plant_out', syn): # synapse comes from a plant
+                        self.inp_src[idx1][idx2] = self.st_var_idx[syn.plant_id][syn.plant_out]
+        self.inp_src = [ [syn.preID for syn in l] for l in self.syns ]
+        #======================================================================
+        # Creating the acts array
+        self.acts = np.zeros((self.n_units+n_plant_vars, len(self.ts)), dtype=self.bf_type)
+        #======================================================================
+        # The indices to extract the array of step inputs for units
         self.acts_idx = [[] for _ in range(self.n_units)]
         for uid, u in enumerate(self.units):
             if hasattr(u, 'buffer'):
@@ -759,7 +787,7 @@ class network():
             else:  # for source units, also initialize acts
                 self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
                                             t in self.ts[self.init_idx[uid]:] ])
-
+        # Reinitializing the unit buffers as views of act, and times as views of ts
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
                 u.buffer = np.ndarray(shape=(self.buff_len[uid]), 
@@ -818,6 +846,19 @@ class network():
                 else:
                     raise NotImplementedError('The specified integration method is not \
                                                implemented for flat networks')
+        # Reinitializing the buffers of plants as views of acts, times as views of ts
+        for pid, plant in enumerate(self.plants):
+            sh = plant.buffer.shape
+            first_idx = self.ts.size - plant.buff_size  # buff_size = sh[0]
+            svi = self.st_var_idx[pid][0]
+            plant.buffer = np.ndarray(shape=(sh[1], sh[0]),
+                           buffer=self.acts[svi:svi+plant.dim, first_idx:],
+                           dtype=self.bf_type) # non-flat buffer is the transpose of this
+            plant.times = np.ndarray(shape=(plant.buff_size), 
+                          buffer=self.ts[first_idx:], dtype=self.bf_type)
+            # initialize buffer
+            init_buff = np.transpose(np.array([plant.init_state]*plant.buff_size))
+            np.copyto(plant.buffer, init_buff)
         self.flat = True
 
 
@@ -843,19 +884,10 @@ class network():
         return self.acts[uid][-1 - s]
     
 
-    def dt_custom_fi(self, u, y, t):
-        """ Returns the derivative of custom_fi unit 'u' at time 't' when its activity is y. 
-        
-            This is an experimental method, not currently in the loop.
-        """
-        assert u.type is unit_types.custom_fi, 'dt_custom_fi called for the wrong unit type'
-        return ( u.f(self.inp_sums[u.ID][t]) - y ) * u.rtau
-
-
     def flat_update(self, time):
         """ Updates all state variables by advancing them one min_delay time step. """
         # update the times array
-        self.ts += self.min_delay
+        self.ts += self.min_delay 
         #self.ts = np.roll(self.ts, -self.min_buff_size)
         #self.ts[self.ts_buff_size-self.min_buff_size:] = self.ts_grid[1:]+time
         # update input sums
@@ -869,6 +901,8 @@ class network():
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
                 u.flat_update(time)
+        for p in self.plants:
+            p.flat_update(time)
         # update activities of source units and handle requirements
         for uid, u in enumerate(self.units):
             if not self.has_buffer[uid]:
@@ -910,12 +944,8 @@ class network():
             for pid, plant in enumerate(self.plants):
                 plant_store[pid][step,:] = plant.get_state(self.sim_time)
             
-            # update units
+            # update units and plants
             self.flat_update(self.sim_time)
-
-            # update plants
-            for plant in self.plants:
-                plant.update(self.sim_time)
 
             self.sim_time += self.min_delay
 

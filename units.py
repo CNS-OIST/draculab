@@ -123,6 +123,7 @@ class unit():
             AssertionError.
         """
         assert self.net.sim_time == 0., 'Buffers are being reset when the simulation time is not zero'
+        assert not self.net.flat, 'init_buffers should not be run with flat networks'
 
         min_del = self.net.min_delay  # just to have shorter lines below
         self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay

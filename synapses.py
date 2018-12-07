@@ -44,7 +44,10 @@ class synapse():
         if 'inp_port' in params: self.port = params['inp_port']
         else: self.port = 0
         # The input may come from a plant, in which case we want to know from which output
-        if 'plant_out' in params: self.plant_out = params['plant_out']
+        if 'plant_out' in params: 
+            self.plant_out = params['plant_out']
+            # There should also be 'plant_id', indicating the plant of origin
+            self.plant_id = params['plant_id']
         # Some unit models call the method get_sc_input_sum, which requires the gain parameter
         if 'gain' in params: self.gain = params['gain'] 
         self.delay_steps = None # Delay, in simulation steps units. Initialized in unit.init_pre_syn_update.

@@ -6,6 +6,7 @@ A plant is very similar to a unit, but it has a vector output.
 
 import numpy as np
 from scipy.integrate import odeint
+from scipy.integrate import solve_ivp
 from scipy.interpolate import interp1d 
 from draculab import plant_models, synapse_types
 
@@ -91,26 +92,37 @@ class plant():
         self.times_grid = np.linspace(0, min_del, min_buff+1) # used to create values for 'times'
 
 
-
     def get_state(self, time):
         """ Returns an array with the state vector. """
-        return interp1d(self.times, self.buffer, kind='linear', axis=0, bounds_error=False, 
+        if self.net.flat:
+            ax = 1
+        else:
+            ax = 0
+        return interp1d(self.times, self.buffer, kind='linear', axis=ax, bounds_error=False, 
                         copy=False, fill_value="extrapolate", assume_sorted=True)(time)
 
 
     def get_state_var(self, t, idx):
         """ Returns the value of the state variable with index 'idx' at time 't'. """
         # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
-        return interp1d(self.times, self.buffer[:,idx], kind='linear', bounds_error=False, copy=False,
-                        fill_value="extrapolate", assume_sorted=True)(t)
+        if self.net.flat:
+            return interp1d(self.times, self.buffer[idx,:], kind='linear', bounds_error=False, 
+                            copy=False, fill_value="extrapolate", assume_sorted=True)(t)
+        else:
+            return interp1d(self.times, self.buffer[:,idx], kind='linear', bounds_error=False,
+                            copy=False, fill_value="extrapolate", assume_sorted=True)(t)
 
     def get_state_var_fun(self, idx):
         """ Returns a function that returns the state variable with index 'idx' at a given time. 
         
         This is used so units can ignore any input port settings while receiving inputs from a plant.
         """
-        return lambda t : interp1d(self.times, self.buffer[:,idx], kind='linear', bounds_error=False, copy=False,
-                        fill_value="extrapolate", assume_sorted=True)(t)
+        if self.net.flat:
+            return lambda t : interp1d(self.times, self.buffer[idx,:], kind='linear', bounds_error=False,
+                                       copy=False, fill_value="extrapolate", assume_sorted=True)(t)
+        else:
+            return lambda t : interp1d(self.times, self.buffer[:,idx], kind='linear', bounds_error=False,
+                                       copy=False, fill_value="extrapolate", assume_sorted=True)(t)
 
 
     def get_input_sum(self, time, port):
@@ -124,20 +136,40 @@ class plant():
         return sum( [ fun(time - dely)*syn.w for fun,dely,syn in 
                       zip(self.inputs[port], self.inp_dels[port], self.inp_syns[port]) ] )
         
-    def update(self,time):
+    def update(self, time):
         ''' This function advances the state for net.min_delay time units. '''
-        assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
+        assert (self.times[-1]-time) < 2e-6, 'plant ' + str(self.ID) + ': update time is desynchronized'
 
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.net.min_buff_size)
         self.times[self.offset:] = new_times[1:] 
         
-        # odeint also returns the initial condition, so to produce min_buff_size new states
-        # we need to provide min_buff_size+1 desired times, starting with the one for the initial condition
-        new_buff = odeint(self.derivatives, self.buffer[-1,:], new_times, rtol=self.rtol, atol=self.atol)
+        # odeint also returns the initial condition, so to produce min_buff_size new
+        # stateswe need to provide min_buff_size+1 desired times, starting with the
+        # one for the initial condition
+        new_buff = odeint(self.derivatives, self.buffer[-1,:], new_times, 
+                          rtol=self.rtol, atol=self.atol)
         self.buffer = np.roll(self.buffer, -self.net.min_buff_size, axis=0)
         self.buffer[self.offset:,:] = new_buff[1:,:] 
 
+    def flat_update(self, time):
+        """ advances the state for net.min_delay time units when the network is flat. """
+        # The flat version of a plants has a buffer that is the transpose of the regular
+        # version's buffer. This is because the buffer of the flat network is a slice
+        # of network.acts. The solve_ivp integrator works with this alignment without
+        # the need of transpositions, so it is the current choice.
+
+        # Unlike units, the current flat implementation of plants still uses its
+        # regular get_input_sum function, relying on the get_act functions of its
+        # input units. This is not fast, but at least it means that dt_fun and 
+        # derivatives only differ in the order of their arguments.
+        assert (self.times[self.offset-1]-time) < 2e-6, 'plant ' + str(self.ID) + ': update time is desynchronized'
+        # self.times is a view of network.ts
+        nts = self.times[self.offset-1:]
+        solution = solve_ivp(self.dt_fun, (nts[0], nts[-1]), self.buffer[:,-1], 
+                             t_eval=nts, rtol=self.rtol, atol=self.atol)
+        np.put(self.buffer[:,self.offset:], range(self.net.min_buff_size*self.dim), 
+               solution.y[:,1:])
 
     def append_inputs(self, inp_funcs, ports, delays, synaps):
         """ Append the given input functions in the given input ports, with the given delays and synapses.
@@ -162,7 +194,7 @@ class plant():
         test2 = (np.amax(ports) < self.inp_dim) and (np.amin(ports) >= 0)
         if not(test1 and test2):
             raise ValueError('Invalid input port specification when adding inputs to plant')
-            
+
         # Then append the inputs
         for funz, portz in zip(inp_funcs, ports):  # input functions
             self.inputs[portz].append(funz)
@@ -194,9 +226,9 @@ class pendulum(plant):
     Inputs to the model at port 0 are torques applied at the joint. Other ports are ignored.
 
     The get_state(time) function returns the two state variables of the model in a numpy 
-    array. Angle has index 0, and angular velocity has index 1. The \'time\' argument
+    array. Angle has index 0, and angular velocity has index 1. The 'time' argument
     should be in the interval [sim_time - del, sim_time], where sim_time is the current
-    simulation time (time of last simulation step), and del is the \'delay\' value
+    simulation time (time of last simulation step), and del is the 'delay' value
     of the plant.
 
     Alternatively, the state variables can be retrieved with the get_angle(t) and
@@ -232,13 +264,11 @@ class pendulum(plant):
         params['dimension'] = 2 # notifying dimensionality of model to parent constructor
         params['inp_dim'] = 1 # notifying there is only one type of inputs
         super(pendulum, self).__init__(ID, params, network) # calling parent constructor
-
         # Using model-specific initial values, initialize the state vector.
         self.init_state = np.array([params['init_angle'], params['init_ang_vel']])
         self.buffer = np.array([self.init_state]*self.buff_size) # initializing buffer
         #-------------------------------------------------------------------------------
         # Initialize the parameters specific to this model
-        
         self.length = params['length']  # length of the rod [m]
         self.mass = params['mass']   # mass of the rod [kg]
         # To get the moment of inertia assume a homogeneous rod, so I = m(l/2)^2
@@ -255,7 +285,6 @@ class pendulum(plant):
         if 'mu' in params: self.mu = params['mu']
         else: self.mu = 0.
 
-
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. 
 
@@ -271,18 +300,29 @@ class pendulum(plant):
 
         return np.array([y[1], ang_accel])
 
-    
     def get_angle(self,time):
         """ Returns the angle in radians, modulo 2*pi. """
         return self.get_state_var(time,0) % (2*np.pi)
               
+    def get_ang_vel(self,time):
+        """ Returns the angular velocity in rads per second. """
+        return self.get_state_var(time,1) 
 
+    def dt_fun(self, t, y):
+        """ This is a version of 'derivatives' adapted for flat networks.
+            All it does is to reverse the order of the arguments.
+        """
+        return self.derivatives(y, t)
+        
+    def get_angle(self,time):
+        """ Returns the angle in radians, modulo 2*pi. """
+        return self.get_state_var(time,0) % (2*np.pi)
+              
     def get_ang_vel(self,time):
         """ Returns the angular velocity in rads per second. """
         return self.get_state_var(time,1) 
 
         
-    
 class conn_tester(plant):
     """
     This plant is used to test the network.set_plant_inputs and plant.append_inputs functions.
