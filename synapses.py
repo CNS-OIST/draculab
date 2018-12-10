@@ -89,7 +89,7 @@ class static_synapse(synapse):
 
         Raises: AssertionError.
         """
-        super(static_synapse, self).__init__(params, network)
+        synapse.__init__(self, params, network)
         assert self.type is synapse_types.static, ['Synapse from ' + str(self.preID) + ' to ' +
                                                     str(self.postID) + ' instantiated with the wrong type']
 
@@ -124,7 +124,7 @@ class oja_synapse(synapse):
             AssertionError.
 
         """
-        super(oja_synapse, self).__init__(params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The Oja rule requires the current pre- and post-synaptic activity
@@ -166,7 +166,7 @@ class anti_hebbian_synapse(synapse):
             AssertionError.
 
         """
-        super(anti_hebbian_synapse, self).__init__(params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The anti-Hebbian rule requires the current pre- and post-synaptic activity
@@ -208,7 +208,7 @@ class covariance_synapse(synapse):
             AssertionError.
 
         """
-        super(covariance_synapse, self).__init__(params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The covaraince rule requires the current pre- and post-synaptic activity
@@ -254,7 +254,7 @@ class anti_covariance_synapse(synapse):
             AssertionError.
 
         """
-        super(anti_covariance_synapse, self).__init__(params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The anti-covaraince rule requires the current pre- and post-synaptic activity
@@ -299,7 +299,7 @@ class anti_cov_pre_synapse(synapse):
             AssertionError.
 
         """
-        super(anti_cov_pre_synapse, self).__init__(params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The anti-covaraince rule requires the current pre- and post-synaptic activity
@@ -349,7 +349,7 @@ class hebb_subsnorm_synapse(synapse):
             AssertionError.
 
         """
-        super(hebb_subsnorm_synapse, self).__init__(params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The Hebbian rule requires the current pre- and post-synaptic activity.
@@ -409,7 +409,7 @@ class sq_hebb_subsnorm_synapse(synapse):
             AssertionError.
 
         """
-        super(sq_hebb_subsnorm_synapse, self).__init__(params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.omega = params['omega'] # the sum of squared weights will approach this
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
@@ -474,7 +474,7 @@ class input_correlation_synapse(synapse):
             ValueError, AssertionError.
         """
 
-        super(input_correlation_synapse, self).__init__(params, network)
+        synpase.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         self.input_type = params['input_type'] # either 'pred' or 'error'
@@ -527,7 +527,7 @@ class bcm_synapse(synapse):
             AssertionError.
         """
 
-        super(bcm_synapse, self).__init__(params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_fast, syn_reqs.sq_lpf_slow])
@@ -576,7 +576,7 @@ class homeo_inhib_synapse(synapse):
         Raises:
             AssertionError.
         """
-        super(homeo_inhib_synapse, self).__init__(params, network)
+        synpase.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.des_act = params['des_act'] # desired average level of activity
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
@@ -637,7 +637,7 @@ class diff_hebb_subsnorm_synapse(synapse):
         Raises:
             AssertionError.
         """
-        super(diff_hebb_subsnorm_synapse, self).__init__(params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.lpf_fast,
@@ -710,7 +710,7 @@ class corr_homeo_inhib_synapse(synapse):
         Raises:
             AssertionError.
         """
-        super(corr_homeo_inhib_synapse, self).__init__(params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.des_act = params['des_act'] # desired average level of activity
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
@@ -758,7 +758,7 @@ class exp_rate_dist_synapse(synapse):
         Raises:
             AssertionError.
         """
-        super(exp_rate_dist_synapse, self).__init__(params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.c = params['c'] # level of heterogeneity for firing rates
         self.wshift = params['wshift'] # how much to shift weight if unit should change bin

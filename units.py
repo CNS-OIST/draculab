@@ -974,7 +974,7 @@ class source(unit):
         Raises:
             AssertionError.
         """
-        super(source, self).__init__(ID, params, network)
+        unit.__init__(self, ID, params, network)
         self.get_act = params['function'] # the function which returns activation given the time
         assert self.type is unit_types.source, ['Unit ' + str(self.ID) + 
                                                 ' instantiated with the wrong type']
@@ -1031,7 +1031,7 @@ class sigmoidal(unit):
         """ The unit constructor.
 
         Args:
-            ID, params, network: same as in the parent's constructor.
+            ID, params, network: same as in the 'unit' parent class.
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS
                 'slope' : Slope of the sigmoidal function.
@@ -1042,8 +1042,7 @@ class sigmoidal(unit):
             AssertionError.
 
         """
-
-        super(sigmoidal, self).__init__(ID, params, network)
+        unit.__init__(self, ID, params, network)
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
@@ -1088,7 +1087,7 @@ class noisy_sigmoidal(unit):
         """ The unit constructor.
 
         Args:
-            ID, params, network: same as in the parent's constructor.
+            ID, params, network: same as in the 'unit' parent class.
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS
                 'slope' : Slope of the sigmoidal function.
@@ -1150,7 +1149,7 @@ class linear(unit):
         """ The unit constructor.
 
         Args:
-            ID, params, network: same as in the parent's constructor.
+            ID, params, network: same as in the 'unit' parent class.
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS
                 'tau' : Time constant of the update dynamics.
@@ -1159,7 +1158,6 @@ class linear(unit):
             AssertionError.
 
         """
-        #super(linear, self).__init__(ID, params, network)
         unit.__init__(self, ID, params, network)
         self.tau = params['tau']  # the time constant of the dynamics
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
@@ -1198,7 +1196,7 @@ class noisy_linear(unit):
         """ The constructor for the noisy_linear class.
 
         Args:
-            ID, params, network: same as in the parent's constructor.
+            ID, params, network: same as in the 'unit' parent class.
             In addition, params should have the following entries.
                 REQUIRED PARAMETERS
                 'tau' : Time constant of the update dynamics.

@@ -699,9 +699,9 @@ class network():
     def flatten(self):
         """ Move unit buffers into the network. 
         
-            The unit buffers will be placed in a single 2D numpy array called 'acts'
-            in the network object, but each unit will retain a buffer that is a view
-            of part of a single row of 'acts'.
+            The unit and plant buffers will be placed in a single 2D numpy array called
+            'acts' in the network object, but each unit will retain a buffer that is a
+            view of part of a single row of 'acts'.
 
             The 'times' array of all units is also replaced by a sngle 'ts' array.
 
@@ -752,9 +752,9 @@ class network():
         # st_var_idx[i][j] provides the index of the j-th state variable from the i-th plant
         # in the acts array, and in the inp_src list (defined below).
         # n_plant_vars counts the total number of state variables from all plants.
+        n_plant_vars = 0
         if self.n_plants > 0:   # if there are plants
             index = self.n_units
-            n_plant_vars = 0
             self.st_var_idx = [[] for _ in range(self.n_plants)] 
             for pid, plant in enumerate(self.plants):
                 n_plant_vars += plant.dim
@@ -837,7 +837,7 @@ class network():
                     if u.integ_meth in ["odeint", "solve_ivp"]:
                         from warnings import warn
                         warn('Integration method ' + u.integ_meth + \
-                               ' subsituted by Forward Euler', UserWarning)
+                             ' subsituted by Forward Euler in some units', UserWarning)
                 elif u.integ_meth == "euler_maru":
                     u.flat_update = u.flat_euler_maru_update
                 elif u.integ_meth == "exp_euler":
@@ -857,7 +857,18 @@ class network():
             # initialize buffer
             init_buff = np.transpose(np.array([plant.init_state]*plant.buff_width))
             np.copyto(plant.buffer, init_buff)
-        self.flat = True
+        #*****************
+        self.flat = True 
+        #*****************
+        # this last step is not strictly necessary, but right now the functions
+        # in self.act for plants are for the non-flat buffers. Thus we replace
+        # them with new ones, but this time self.flat = True
+        if self.n_plants > 0:
+            for idx_l, l in enumerate(self.syns):
+                for idx_s, syn in enumerate(l):
+                    if hasattr(syn, 'plant_out'): # synapse comes from a plant
+                        self.act[idx_l][idx_s] = \
+                            self.plants[syn.plant_id].get_state_var_fun(syn.plant_out)
 
 
     def get_act(self, uid, t):

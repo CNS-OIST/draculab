@@ -43,7 +43,7 @@ class custom_fi(unit):
             AssertionError.
 
         """
-        super(custom_fi, self).__init__(ID, params, network)
+        unit.__init__(self, ID, params, network)
         self.tau = params['tau']  # the time constant of the dynamics
         self.f = params['function'] # the f-I curve
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
@@ -91,7 +91,7 @@ class custom_scaled_fi(unit):
             AssertionError.
 
         """
-        super(custom_scaled_fi, self).__init__(ID, params, network)
+        unit.__init__(self, ID, params, network)
         self.tau = params['tau']  # the time constant of the dynamics
         self.f = params['function'] # the f-I curve
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
@@ -129,7 +129,7 @@ class mp_linear(unit):
             AssertionError.
 
         """
-        super(mp_linear, self).__init__(ID, params, network)
+        unit.__init__(self, ID, params, network)
         self.tau = params['tau']  # the time constant of the dynamics
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         self.multiport = True
@@ -194,7 +194,7 @@ class kWTA(unit):
         Raises:
             AssertionError.
         """
-        super(kWTA, self).__init__(ID, params, network)
+        unit.__init__(self, ID, params, network)
         self.k = params['k']
         if 'neg_act' in params:
             self.neg_act = params['neg_act']
@@ -259,7 +259,7 @@ class kWTA(unit):
         Raises:
             TypeError, ValueError.
         """
-        super(kWTA, self).init_buffers() # the init_buffers of the unit parent class
+        unit.init_buffers() # the init_buffers of the unit parent class
 
         # If this is the first time init_buffers is called, end here
         try:
@@ -348,7 +348,7 @@ class exp_dist_sigmoidal(unit):
         When c <= 0 the current implementation is not very stable.
         """
 
-        super(exp_dist_sigmoidal, self).__init__(ID, params, network)
+        unit.__init__(self, ID, params, network)
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
@@ -739,7 +739,7 @@ class exp_dist_sig_thr(unit):
         When c <= 0 the current implementation is not very stable.
         """
 
-        super(exp_dist_sig_thr, self).__init__(ID, params, network)
+        unit.__init__(ID, params, network)
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
@@ -1203,7 +1203,6 @@ class double_sigma_normal(double_sigma_base):
         """
         # branch_w, slopes, and threshs are inside the branch_params dictionary because if they
         # were lists then network.create_units would interpret them as values to assign to separate units.
-
         super().__init__(ID, params, network)
         self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.lpf_slow_mp_inp_sum]) 
      
@@ -1226,7 +1225,6 @@ class double_sigma_normal(double_sigma_base):
         #            (np.dot(w[i],inp[i])-lpf_inp_sum[i])/lpf_inp_sum[i]) -  self.phi)
         #return ret
     
-
 
 class sigma_double_sigma(double_sigma_base):
     """ 
@@ -2544,4 +2542,44 @@ class delta_linear(unit):
         self.inp_l2 = np.linalg.norm(self.mp_inputs[0])
 
 
-
+class binary_unit(unit):
+    """ The unit type created in tutorial 5. """
+    def __init__(self, ID, params, network):
+        """ The unit constructor. 
+        
+        Args:
+            ID, params, network: same as in the 'unit' parent class.
+            In adittion, params should have the following entries.
+            REQUIRED PARAMETERS
+            tau: time constant for the update dynamics.
+            theta: unit's threshold.
+        """
+        unit.__init__(self, ID, params, network)
+        self.tau = params['tau']
+        self.theta = params['theta']
+        
+    def derivatives(self, y, t):
+        """ Derivative function of the binary unit.
+        
+        Args:
+            y: a 1-element array with the current firing rate.
+            t: time when the derivative is evaluated.
+        """
+        I = self.get_input_sum(t)
+        if I < self.theta:
+            return (-1. - y[0])/self.tau
+        else:
+            return (1. - y[0])/self.tau
+        
+    def dt_fun(self, y, s):
+        """ The derivative function used by flat networks.
+        
+        Args:
+            y: a scalar value with the current firing rate.
+            s: index used to retrieve the input sum to use.
+        """
+        I = self.inp_sum[s]
+        if I < self.theta:
+            return (-1. - y)/self.tau
+        else:
+            return (1. - y)/self.tau

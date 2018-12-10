@@ -45,6 +45,8 @@ class unit_types(Enum):
     noisy_linear = 30
     noisy_sigmoidal = 31
 
+    binary = 101
+
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
 
@@ -118,6 +120,9 @@ class unit_types(Enum):
             unit_class = noisy_linear 
         elif self == unit_types.noisy_sigmoidal:
             unit_class = noisy_sigmoidal
+
+        elif self == unit_types.binary:
+            unit_class = binary_unit
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?

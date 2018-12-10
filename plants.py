@@ -117,12 +117,19 @@ class plant():
         
         This is used so units can ignore any input port settings while receiving inputs from a plant.
         """
+        # The creation of this function is done when the connections from the plant
+        # are made with network.set_plant_outputs, and if the network is flattened,
+        # network.act will still have the non-flat version of this function. 
+        # Thus, if network.act is to remain a valid way to obtain plant inputs even
+        # when the network is flat, these functions need to be specified again.
         if self.net.flat:
-            return lambda t : interp1d(self.times, self.buffer[idx,:], kind='linear', bounds_error=False,
-                                       copy=False, fill_value="extrapolate", assume_sorted=True)(t)
+            return lambda t: interp1d(self.times, self.buffer[idx,:], kind='linear',
+                                      bounds_error=False, copy=False, 
+                                      fill_value="extrapolate", assume_sorted=True)(t)
         else:
-            return lambda t : interp1d(self.times, self.buffer[:,idx], kind='linear', bounds_error=False,
-                                       copy=False, fill_value="extrapolate", assume_sorted=True)(t)
+            return lambda t: interp1d(self.times, self.buffer[:,idx], kind='linear',
+                                      bounds_error=False, copy=False, 
+                                      fill_value="extrapolate", assume_sorted=True)(t)
 
 
     def get_input_sum(self, time, port):
