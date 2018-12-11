@@ -283,7 +283,7 @@ class pendulum(plant):
                                                     ' instantiated with the wrong type']
         params['dimension'] = 2 # notifying dimensionality of model to parent constructor
         params['inp_dim'] = 1 # notifying there is only one type of inputs
-        super(pendulum, self).__init__(ID, params, network) # calling parent constructor
+        plant.__init__(self, ID, params, network) # calling parent constructor
         # Using model-specific initial values, initialize the state vector.
         self.init_state = np.array([params['init_angle'], params['init_ang_vel']])
         self.buffer = np.array([self.init_state]*self.buff_width) # initializing buffer
@@ -306,11 +306,14 @@ class pendulum(plant):
         else: self.mu = 0.
 
     def derivatives(self, y, t):
-        """ This function returns the derivatives of the state variables at a given point in time. 
+        """ Returns the derivatives of the state variables at a given point in time. 
 
-            y[0] = angle
-            y[1] = angular velocity
-            The 'inputs' list should contain functions providing input torques
+	Args:
+            y[0] = angle [radians]
+            y[1] = angular velocity [radians / s]
+            t = time at which the derivative is evaluated [s]
+        Returns:
+            2-element 1D Numpy array with angular velocity and acceleration.
         """
         torque = self.inp_gain * self.get_input_sum(t,0)
         # torque may also come from gravity and friction
@@ -321,7 +324,7 @@ class pendulum(plant):
 
     def get_angle(self,time):
         """ Returns the angle in radians, modulo 2*pi. """
-        return self.get_state_var(time,0) % (2*np.pi)
+        return self.get_state_var(time,0) % (2.*np.pi)
               
     def get_ang_vel(self,time):
         """ Returns the angular velocity in rads per second. """
@@ -361,4 +364,70 @@ class conn_tester(plant):
                          -y[2]*self.get_input_sum(t,2)])
 
 
+class point_mass_2D:
+    """ A point mass moving in two dimensions, with force exerted by the inputs. 
+    
+        Inputs may arrive at ports 0 or 1.
+        Inputs at port 0 push the mass in the direction of 'vec0' with a force
+        equal to the input activity times the synaptic weight times a 'g0' gain
+        parameter. 
+        Inputs at port 1 push the mass in the direction of 'vec1' with a force
+        equal to the input activity times the synaptic weight times a 'g1' gain
+        parameter.
         
+        Mass is in units of kilograms, distance in meters, force in Newtons,
+        time in seconds. Position is specified in Cartesian coordinates.
+    """
+    def __init__(self):
+        """ The class constructor. 
+        
+        Args:
+            ID: an integer serving as a unique identifier in the network
+            params: a dictionary with parameters to initialize the model
+            REQUIRED PARAMETERS
+                type: this should have the plant_models.point_mass_2D value.
+                mass: mass in kilograms.
+                init_pos: a 2-element array-like with the initial (x,y) position.
+                init_vel: a 2-element array-like with the initial (x,y) velocity.
+                vec0: 2-element array-like with direction of force for port 0 inputs.
+                vec1: 2-element array-like with direction of force for port 1 inputs.
+                g0: force in Newtons exerted by an input sum of magnitude 1 at port 0.
+                g1: force in Newtons exerted by an input sum of magnitude 1 at port 1.
+            Raises:
+                AssertionError
+        """
+        # This is the stuff that goes into all model constructors. Adjust accordingly. 
+        #-------------------------------------------------------------------------------
+        params['dimension'] = 4  # Dimension passed to the parent constructor
+        params['inp_dim'] = 2  # Input dimension passed to the parent constructor
+        plant.__init__(self, ID, params, network) # parent constructor
+        # Using model-specific initial values, initialize the state vector.
+        self.init_state = np.array([params.init_pos[0], params.init_pos[1],
+                                    params.init_vel[0], params.init_vel[1]])
+        self.buffer = np.array([self.init_state]*self.buff_width)
+        #-------------------------------------------------------------------------------
+        # Initialize the parameters specific to this model
+        self.mass = params['mass']
+        assert self.mass > 0., 'Mass should be a positive scalar value'
+        self.vec0 = np.array([params['vec0'][0], params['vec0'][1]])
+        self.vec1 = np.array([params['vec1'][0], params['vec1'][1]])
+        self.g0 = params['g0']
+        self.g1 = params['g1']
+    
+    def derivatives(self, y, t):
+        """ Returns the derivtives of the state variables at time 't'. 
+        
+        Args:
+            y[0]: x-coordinate [meters]
+            y[1]: y-coordinate [meters]
+            y[2]: x-velocity [meters / second]
+            y[3]: y-velocity [meters / second]
+            t: time when the derivative is evaluated [seconds]
+        Returns:
+            4-element Numpy array with [x_vel, y_vel, x_accel, y_accel]
+        """
+        v0_sum = self.get_input_sum(t, 0)
+        v1_sum = self.get_input_sum(t, 1)
+        accel = (g0*v0_sum*self.vec0 + g1*v1_sum*self.vec1) / self.mass
+        return np.array([y[2], y[3], accel[0], accel[1]])
+

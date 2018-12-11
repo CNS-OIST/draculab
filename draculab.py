@@ -45,7 +45,7 @@ class unit_types(Enum):
     noisy_linear = 30
     noisy_sigmoidal = 31
 
-    binary = 101
+    binary = 101 # from tutorial 5
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -120,7 +120,7 @@ class unit_types(Enum):
             unit_class = noisy_linear 
         elif self == unit_types.noisy_sigmoidal:
             unit_class = noisy_sigmoidal
-
+        # Temporary code from tutorial 5
         elif self == unit_types.binary:
             unit_class = binary_unit
         else:
@@ -150,6 +150,8 @@ class synapse_types(Enum):
     exp_rate_dist = 13 # To create an exponential firing rate distribution
     anticov_pre = 14  # anticovariance rule using the presynaptic mean activity
     delta = 15 # continuous version of the delta rule
+
+    switcher = 101 # from tutorial 5
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -192,6 +194,10 @@ class synapse_types(Enum):
             syn_class = anti_cov_pre_synapse 
         elif self == synapse_types.delta:
             syn_class = delta_synapse 
+        # Temporary code from tutorial 5
+        elif self == synapse_types.switcher:
+            syn_class = switcher
+
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -205,7 +211,8 @@ class synapse_types(Enum):
 class plant_models(Enum):
     """ An enum class with all the implemented plant models. """
     pendulum = 1
-    conn_tester = 2
+    point_mass_2D = 2
+    conn_tester = 3
 
     def get_class(self):
         """ Return the class object corresponding to a given plant enum. 
@@ -220,6 +227,8 @@ class plant_models(Enum):
         """
         if self == plant_models.pendulum:
             plant_class = pendulum 
+        elif self == plant_models.point_mass_2D:
+            plant_class = point_mass2D
         elif self == plant_models.conn_tester:
             plant_class = conn_tester
         else:

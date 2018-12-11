@@ -474,7 +474,7 @@ class input_correlation_synapse(synapse):
             ValueError, AssertionError.
         """
 
-        synpase.__init__(self, params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         self.input_type = params['input_type'] # either 'pred' or 'error'
@@ -576,7 +576,7 @@ class homeo_inhib_synapse(synapse):
         Raises:
             AssertionError.
         """
-        synpase.__init__(self, params, network)
+        synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.des_act = params['des_act'] # desired average level of activity
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
@@ -884,6 +884,28 @@ class delta_synapse(synapse):
         #self.w = self.w + self.alpha * err * (pre - pre_lpf_slow)
         
 
+class switcher(synapse):
+    """ The synapse created in part 2 of tutorial 5. """
+    def __init__(self, params, network):
+        """ The class constructor. 
+        
+        Args:
+            params: same as the 'synapse' parent class, with these additions
+            'lrate': learning rate; a scalar that multiplies the weight's derivative
+        """
+        synapse.__init__(self, params, network) # calling the parent's constructor
+        self.lrate = params['lrate'] # learning rate
+        self.upd_requirements = set([syn_reqs.lpf_mid, syn_reqs.pre_lpf_mid])
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule 
+        
+    def update(self, time):
+        """ Updates the synaptic weight at each simulation step. """
+        pre_avg = self.net.units[self.preID].get_lpf_mid(self.delay_steps)
+        post_avg = self.net.units[self.postID].get_lpf_mid(0)
+        if pre_avg > post_avg:
+            self.w += self.alpha * (1. - self.w)
+        else:
+            self.w += self.alpha * (-1. - self.w)
 
 
 
