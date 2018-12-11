@@ -983,7 +983,7 @@ class network():
                       and advance in 'min_delay' increments until 'total_time' is completed.
             unit_store: a list of numpy arrays. unit_store[i][j] contains the activity
                         of the i-th unit at time j-th timepoint (e.g. at times[j]).
-            plant_store: a list of 2-dimensional numpy arrays. plant_store[i][j][k] is the value
+            plant_store: a list of 2-dimensional numpy arrays. plant_store[i][j,k] is the value
                          of the k-th state variable, at the j-th timepoint, for the i-th plant.
 
         Raises:
@@ -1050,7 +1050,7 @@ class network():
                       advance in 'min_delay' increments until 'total_time' is completed.
             unit_store: a 2-dimensional numpy array. unit_store[i][j] contains the activity
                            of the i-th unit at time j-th timepoint (e.g. at times[j]).
-            plant_store: a 3-dimensional numpy array. plant_store[i][j][k] is the value
+            plant_store: a 3-dimensional numpy array. plant_store[i][j,k] is the value
                             of the k-th state variable, at the j-th timepoint, for the i-th plant.
 
         """
