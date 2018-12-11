@@ -364,7 +364,7 @@ class conn_tester(plant):
                          -y[2]*self.get_input_sum(t,2)])
 
 
-class point_mass_2D:
+class point_mass_2D(plant):
     """ A point mass moving in two dimensions, with force exerted by the inputs. 
     
         Inputs may arrive at ports 0 or 1.
@@ -378,11 +378,12 @@ class point_mass_2D:
         Mass is in units of kilograms, distance in meters, force in Newtons,
         time in seconds. Position is specified in Cartesian coordinates.
     """
-    def __init__(self):
+    def __init__(self, ID, params, network):
         """ The class constructor. 
         
         Args:
             ID: an integer serving as a unique identifier in the network
+            network: the network containing the plant
             params: a dictionary with parameters to initialize the model
             REQUIRED PARAMETERS
                 type: this should have the plant_models.point_mass_2D value.
@@ -402,8 +403,8 @@ class point_mass_2D:
         params['inp_dim'] = 2  # Input dimension passed to the parent constructor
         plant.__init__(self, ID, params, network) # parent constructor
         # Using model-specific initial values, initialize the state vector.
-        self.init_state = np.array([params.init_pos[0], params.init_pos[1],
-                                    params.init_vel[0], params.init_vel[1]])
+        self.init_state = np.array([params['init_pos'][0], params['init_pos'][1],
+                                    params['init_vel'][0], params['init_vel'][1]])
         self.buffer = np.array([self.init_state]*self.buff_width)
         #-------------------------------------------------------------------------------
         # Initialize the parameters specific to this model
@@ -428,6 +429,6 @@ class point_mass_2D:
         """
         v0_sum = self.get_input_sum(t, 0)
         v1_sum = self.get_input_sum(t, 1)
-        accel = (g0*v0_sum*self.vec0 + g1*v1_sum*self.vec1) / self.mass
+        accel = (self.g0*v0_sum*self.vec0 + self.g1*v1_sum*self.vec1) / self.mass
         return np.array([y[2], y[3], accel[0], accel[1]])
 

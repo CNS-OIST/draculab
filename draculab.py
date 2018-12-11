@@ -228,7 +228,7 @@ class plant_models(Enum):
         if self == plant_models.pendulum:
             plant_class = pendulum 
         elif self == plant_models.point_mass_2D:
-            plant_class = point_mass2D
+            plant_class = point_mass_2D
         elif self == plant_models.conn_tester:
             plant_class = conn_tester
         else:
