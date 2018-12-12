@@ -219,8 +219,15 @@ class plant():
         for funz, portz in zip(inp_funcs, ports):  # input functions
             self.inputs[portz].append(funz)
 
+        md = self.net.min_delay
         for delz, portz in zip(delays, ports):  # input delays
-            self.inp_dels[portz].append(delz)
+            if delz >= md: # ensuring delay not smaller than minimum delay
+                if delz % md < 1e-6: # delay a multiple of minimum delay
+                    self.inp_dels[portz].append(delz)
+                else:
+                    raise ValueError('Delay of connection to plant is not multiple of min_delay')
+            else:
+                raise ValueError('Delay of connection to plant smaller than min_delay')
 
         for synz, portz in zip(synaps, ports):   # input synapses
             if synz.type is synapse_types.static:

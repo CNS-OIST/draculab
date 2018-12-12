@@ -52,11 +52,12 @@ class network():
         self.act = []    # act[i][j] is the function from which unit i obtains its j-th input
         self.syns = []   # syns[i][j] is the synapse object for the j-th connection to unit i
         self.min_delay = params['min_delay'] # minimum transmission delay
-        self.min_buff_size = params['min_buff_size']  # number of values stored during a minimum delay period
+        self.min_buff_size = params['min_buff_size']  # number of values stored during
+                                                      # a minimum delay period
         if 'rtol' in params: self.rtol = params['rtol']
-        else: self.rtol = 1e-6 
+        else: self.rtol = 1e-6 # relative tolerance of the integrator
         if 'atol' in params: self.atol = params['atol']
-        else: self.atol = 1e-6 
+        else: self.atol = 1e-6 # absolute tolerance of the integrator
         self.flat = False # This network ha not been "flattened"
         
 
@@ -617,7 +618,8 @@ class network():
             else:
                 raise ValueError('Wrong number of entries in port map list')
         else:
-            raise TypeError('port map specification should be a list of tuples, or a list of lists of tuples')
+            raise TypeError('port map specification should be a list of tuples, ' + \
+                             'or a list of lists of tuples')
             
         n_conns = len(connections)
 
@@ -629,7 +631,8 @@ class network():
             if len(syn_spec['init_w']) == n_conns:
                 weights = syn_spec['init_w']
             else:
-                raise ValueError('Number of initial weights does not match number of connections being created')
+                raise ValueError('Number of initial weights does not match ' + \
+                                 'number of connections being created')
         else:
             raise TypeError('The value given to the initial weights is of the wrong type')
 
