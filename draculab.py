@@ -4,8 +4,20 @@ draculab.py
 draculab.py  (Delayed-Rate Adaptively-Connected Units Laboratory)
 A simulator of rate units with delayed connections.
 
-author:     Sergio Verduzco Flores
-date:       2017-2018
+    Copyright (C) 2018 Okinawa Institute of Science and Technology
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
 
 # Enumeration classes provide human-readable and globally consistent constants
@@ -45,7 +57,6 @@ class unit_types(Enum):
     noisy_linear = 30
     noisy_sigmoidal = 31
 
-    binary = 101 # from tutorial 5
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -120,9 +131,6 @@ class unit_types(Enum):
             unit_class = noisy_linear 
         elif self == unit_types.noisy_sigmoidal:
             unit_class = noisy_sigmoidal
-        # Temporary code from tutorial 5
-        elif self == unit_types.binary:
-            unit_class = binary_unit
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?
@@ -150,8 +158,6 @@ class synapse_types(Enum):
     exp_rate_dist = 13 # To create an exponential firing rate distribution
     anticov_pre = 14  # anticovariance rule using the presynaptic mean activity
     delta = 15 # continuous version of the delta rule
-
-    switcher = 101 # from tutorial 5
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -194,10 +200,6 @@ class synapse_types(Enum):
             syn_class = anti_cov_pre_synapse 
         elif self == synapse_types.delta:
             syn_class = delta_synapse 
-        # Temporary code from tutorial 5
-        elif self == synapse_types.switcher:
-            syn_class = switcher
-
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         

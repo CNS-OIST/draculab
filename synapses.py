@@ -729,101 +729,6 @@ class corr_homeo_inhib_synapse(synapse):
         if self.w > 0.: self.w = 0.  
 
 
-class exp_rate_dist_synapse(synapse):
-    """ A synapse that adapts in order to produce an exponential distribution of firing rates.
-
-        In other words, a fully connected network where all the connections are of this type
-        will in theory converge towards a fixed point for both the firing rates and the
-        synaptic weights. At this fixed point the firing rates --which are assumed to lie 
-        in the interval (0,1) -- will have a probability density function of the form:
-        rho(f) = (c/(1-exp(-c))) * exp(-c*f),  where c is a constant parameter, f is the
-        firing rate, and rho(f) is the PDF.
-
-        This rule is only meant to be used with sigmodial units.
-    """
-    def __init__(self, params, network):
-        """ The class constructor.
-
-        Args:
-            params: same as the parent class, with two additions.
-            REQUIRED PARAMETERS
-            'lrate' : A scalar value that will multiply the derivative of the weight.
-            'c' : Changes the homogeneity of the firing rate distribution.
-                  Values very close to 0 make all firing rates equally probable, whereas
-                  larger values make small firing rates more probable. 
-                  Shouldn't be set to zero (causes zero division in the cdf function).
-            'wshift' : If the rule wants to shift the firing rate of the neuron, it will
-                       change the weight proportionally to this amount. 
-
-        Raises:
-            AssertionError.
-        """
-        synapse.__init__(self, params, network)
-        self.lrate = params['lrate'] # learning rate for the synaptic weight
-        self.c = params['c'] # level of heterogeneity for firing rates
-        self.wshift = params['wshift'] # how much to shift weight if unit should change bin
-        #self.k = ( 1. - np.exp(-self.c) ) / self.c   # reciprocal of normalizing factor for the exp distribution
-        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
-        #self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.lpf_fast, syn_reqs.lpf_mid_inp_sum, syn_reqs.n_erd])
-        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.inp_vector, syn_reqs.lpf_mid_inp_sum, syn_reqs.balance])
-        assert self.type is synapse_types.exp_rate_dist, ['Synapse from ' + str(self.preID) + ' to ' +
-                                                       str(self.postID) + ' instantiated with the wrong type']
-
-    def update(self, time):
-        """ Update the weight using the firing rate exponential distribution rule. """
-        # The version below is a binless version of w_ss_send_balance in histogram_map.ipynb
-        r = self.net.units[self.postID].get_lpf_fast(0)
-        r = max( min( .9999, r), 0.0001 ) # avoids bad arguments in the log below
-        u = (np.log(r/(1.-r))/self.net.units[self.postID].slope) + self.net.units[self.postID].thresh
-        mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
-        left_extra = self.net.units[self.postID].below - self.cdf(r)
-        right_extra = self.net.units[self.postID].above - (1. - self.cdf(r))
-        delta = self.wshift * (left_extra - right_extra)
-        self. w = self.w + self.alpha * ( (u + delta) / mu - self.w )
-
-
-    def legacy_update(self, time):
-        """ A bunch of things I was testing before I had the rule I ended up using.  """
-        #f = self.net.units[self.postID].get_lpf_fast(0)
-        #f = self.net.units[self.postID].buffer[-1] # using instantaneous value...
-        #f = max( min( .999, f), 0.001 ) # avoids bad arguments in the log below
-        #u = (np.log(f/(1.-f))/self.net.units[self.postID].slope) + self.net.units[self.postID].thresh
-        #mu = self.net.units[self.postID].get_lpf_mid_inp_sum() 
-        #h = self.net.units[self.postID].n_erd
-        #pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
-        # A forward Euler step 
-        #self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*h*pre*(pre-1.))) - self.w )
-        #self.w = self.w + self.alpha * ( (self.k * u * np.exp(self.c * pre) / (mu*h)) - self.w )
-        #self.w = self.w + self.alpha * ( ( self.k * f * np.exp(self.c * pre) / (h*pre*(1.-pre))) - self.w )
-
-        """
-        # The version below is an adaptation of the successful weight kernel in histogram_map.ipynb
-        w2 = self.net.units[self.postID].bin_width / 2.
-        extra = self.net.units[self.postID].around - ( self.cdf(f + w2) - self.cdf(f - w2) )
-        #if extra > w2: # too many units around; let's move them
-        if extra > 0.: # too many units around; let's move them
-            left_extra = self.net.units[self.postID].below - self.cdf(f - w2)
-            right_extra = - extra - left_extra
-            #right_extra = self.net.units[self.postID].above - (1. - self.cdf(f + w2))
-            #assert abs(extra+left_extra+right_extra) < 1e-6, ['extras add to ' 
-            #                                               + str(extra+left_extra+right_extra) ]
-            delta = self.wshift * self.sgnm(left_extra - right_extra)
-        else:
-            delta = 0.
-        self. w = self.w + self.alpha * ( (u + delta) / mu - self.w )
-        """
-        #self.w = min( max( -3., self.w ), 3.)
-        pass
-
-    def cdf(self, x):
-        """ The cumulative density function of the distribution we're approaching. """
-        return ( 1. - np.exp(-self.c*x) ) / ( 1. - np.exp(-self.c) )
-
-    def sgnm(self,x):
-        """ The sign function, but  returns -1 for x==0 """
-        return -1. if x == 0 else np.sign(x)
-
-
 class delta_synapse(synapse):
     """ A synapse that implements a continuous version of the delta rule.
 
@@ -883,31 +788,6 @@ class delta_synapse(synapse):
         self.w = self.w + self.alpha * err * pre
         #self.w = self.w + self.alpha * err * (pre - pre_lpf_slow)
         
-
-class switcher(synapse):
-    """ The synapse created in part 2 of tutorial 5. """
-    def __init__(self, params, network):
-        """ The class constructor. 
-        
-        Args:
-            params: same as the 'synapse' parent class, with these additions
-            'lrate': learning rate; a scalar that multiplies the weight's derivative
-        """
-        synapse.__init__(self, params, network) # calling the parent's constructor
-        self.lrate = params['lrate'] # learning rate
-        self.upd_requirements = set([syn_reqs.lpf_mid, syn_reqs.pre_lpf_mid])
-        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule 
-        
-    def update(self, time):
-        """ Updates the synaptic weight at each simulation step. """
-        pre_avg = self.net.units[self.preID].get_lpf_mid(self.delay_steps)
-        post_avg = self.net.units[self.postID].get_lpf_mid(0)
-        if pre_avg > post_avg:
-            self.w += self.alpha * (1. - self.w)
-        else:
-            self.w += self.alpha * (-1. - self.w)
-
-
 
 
         

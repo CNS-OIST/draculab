@@ -715,157 +715,6 @@ class unit():
                                    np.exp( (self.last_time-time)/self.tau_slow ) for i in range(self.n_ports)]
 
 
-    def upd_balance(self, time):
-        """ Updates two numbers called  below, and above.
-
-            below = fraction of inputs with rate lower than this unit.
-            above = fraction of inputs with rate higher than this unit.
-
-            Those numbers are useful to produce a given firing rate distribtuion.
-
-            NOTICE: this version does not restrict inputs to exp_rate_dist synapses.
-        """
-        inputs = self.inp_vector
-        N = len(inputs)
-        r = self.buffer[-1] # current rate
-        self.above = ( 0.5 * (np.sign(inputs - r) + 1.).sum() ) / N
-        self.below = ( 0.5 * (np.sign(r - inputs) + 1.).sum() ) / N
-        #assert abs(self.above+self.below - 1.) < 1e-5, ['sum was not 1: ' + 
-        #                            str(self.above + self.below)]
-
-
-    def upd_balance_mp(self, time):
-        """ Updates two numbers called  below, and above. Used in units with multiple input ports.
-
-            below = fraction of inputs with rate lower than this unit.
-            above = fraction of inputs with rate higher than this unit.
-
-            Those numbers are useful to produce a given firing rate distribtuion among
-            the population of units that connect to the 'rdc_port'.
-
-            This is the same as upd_balance, but ports other than the rdc_port are ignored.
-        """
-        inputs = self.mp_inputs[self.rdc_port]
-        N = len(inputs)
-        r = self.buffer[-1] # current rate
-        self.above = ( 0.5 * (np.sign(inputs - r) + 1.).sum() ) / N
-        self.below = ( 0.5 * (np.sign(r - inputs) + 1.).sum() ) / N
-
-
-    def upd_exp_scale(self, time):
-        """ Updates the synaptic scaling factor used in exp_dist_sigmoidal units.
-
-            The algorithm is a multiplicative version of the  one used in exp_rate_dist synapses.
-            It scales all excitatory inputs.
-        """
-        #r = self.get_lpf_fast(0)
-        r = self.buffer[-1] # current rate
-        r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
-        exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
-        error = self.below - self.above - 2.*exp_cdf + 1. 
-
-        # First APCTP version (12/13/17)
-        ######################################################################
-        #u = (np.log(r/(1.-r))/self.slope) + self.thresh  # this u lags, so I changed it
-        weights = np.array([syn.w for syn in self.net.syns[self.ID]])
-        #u = np.dot(self.inp_vector[self.exc_idx], weights[self.exc_idx])
-        #u = self.get_input_sum(time)
-        u = self.get_exp_sc_input_sum(time)
-        I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
-        #I = u - np.sum( self.inp_vector.get()[self.exc_idx] * weights[self.exc_idx] ) 
-        mu_exc = np.maximum( np.sum( self.inp_vector[self.exc_idx] ), 0.001 )
-        #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
-        #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
-        ss_scale = (u - I + self.Kp * error) / mu_exc
-        #self.scale_facs[self.exc_idx] += self.tau_scale * (ss_scale/np.maximum(weights[self.exc_idx],.05) - 
-        #                                                    self.scale_facs[self.exc_idx])
-        # ------------ soft weight-bounded version ------------
-        # Soft weight bounding implies that the scale factors follow the logistic differential 
-        # equation. This equation has the form x' = r (a - x) x, and has a solution
-        # x(t) = a x(0) / [ x(0) + (a - x(0))*exp(-a r t) ] .
-        # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
-        # We can use this analytical solution to update the scale factors on each update.
-        a = ss_scale / np.maximum(weights[self.exc_idx],.001)
-        a = np.minimum( a, 10.) # hard bound above
-        x0 = self.scale_facs[self.exc_idx]
-        t = self.net.min_delay
-        self.scale_facs[self.exc_idx] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
-        #self.scale_facs[self.exc_idx] += self.tau_scale * self.scale_facs[self.exc_idx] * (
-        #                                 ss_scale/np.maximum(weights[self.exc_idx],.05) - 
-        #                                 self.scale_facs[self.exc_idx] )
-
-
-    def upd_exp_scale_mp(self, time):
-        """ Updates the synaptic scaling factors used in multiport ssrdc units.
-
-            The algorithm is the same as upd_exp_scale, but only the inputs at the rdc_port
-            are considered.
-        """
-        #r = self.get_lpf_fast(0)  # lpf'd rate
-        r = self.buffer[-1] # current rate
-        r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
-        exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
-        error = self.below - self.above - 2.*exp_cdf + 1. 
-
-        # First APCTP version (12/13/17)
-        ######################################################################
-        #u = (np.log(r/(1.-r))/self.slope) + self.thresh
-        rdc_inp = self.mp_inputs[self.rdc_port]
-        rdc_w = self.get_mp_weights(time)[self.rdc_port]
-        u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*rdc_inp[self.exc_idx_rdc]*rdc_w[self.exc_idx_rdc])
-        I = u - self.get_mp_input_sum(time)     
-        mu_exc = np.maximum( np.sum( rdc_inp[self.exc_idx_rdc] ), 0.001 )
-        #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
-        #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc # adjusting for sigmoidal's slope
-        ss_scale = (u - I + self.Kp * error) / mu_exc
-        #self.scale_facs[self.exc_idxrdc] += self.tau_scale * (ss_scale/np.maximum(weights[self.exc_idx_rdc],.05) - 
-        #                                                    self.scale_facs[self.exc_idx_rdc])
-        # ------------ weight-bounded version ------------
-        # Soft weight bounding implies that the scale factors follow the logistic differential 
-        # equation. This equation has the form x' = r (a - x) x, and has a solution
-        # x(t) = a x(0) / [ x(0) + (a - x(0))*exp(-a r t) ] .
-        # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
-        # We can use this analytical solution to update the scale factors on each update.
-        a = ss_scale / np.maximum(rdc_w[self.exc_idx_rdc],.001)
-        a = np.minimum( a, 10.) # hard bound above
-        x0 = self.scale_facs_rdc[self.exc_idx_rdc]
-        t = self.net.min_delay
-        self.scale_facs_rdc[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
-
-
-    def upd_slide_thresh(self, time):
-        """ Updates the threshold of exp_dist_sig_thr units and some other 'trdc' units.
-
-            The algorithm is an adapted version of the  one used in exp_rate_dist synapses.
-        """
-        r = self.get_lpf_fast(0)
-        r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
-        exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
-        error = self.below - self.above - 2.*exp_cdf + 1. 
-        self.thresh -= self.tau_thr * error
-        self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
-        
-
-    def upd_slide_thresh_shrp(self, time):
-        """ Updates the threshold of trdc units when input at 'sharpen' port is larger than 0.5 .
-
-            The algorithm is based on upd_slide_thresh.
-        """
-        idxs = self.port_idx[self.sharpen_port]
-        inps = self.mp_inputs[self.sharpen_port]
-        ws = [self.net.syns[self.ID][idx].w for idx in idxs]
-        sharpen = sum( [w*i for w,i in zip(ws, inps)] )
-            
-        if sharpen > 0.5:
-            r = self.get_lpf_fast(0)
-            r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
-            exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
-            error = self.below - self.above - 2.*exp_cdf + 1. 
-            self.thresh -= self.tau_thr * error
-        else:
-            self.thresh += self.tau_fix * (self.thr_fix - self.thresh)
-        self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
-
 
     ##########################################
     # END OF UPDATE METHODS FOR REQUIREMENTS #
@@ -890,12 +739,6 @@ class unit():
         # update the input sum
         w_vec = np.array([syn.w for syn in self.net.syns[self.ID]]) # update weights
         self.inp_sum = np.matmul(w_vec, self.step_inps)
-        """ 
-        # testing a numba version
-        w_vec = np.array([syn.w for syn in self.net.syns[self.ID]]) # update weights
-        self.inp_sum = ufis_4_numba(self.acts, self.flat_acts_idx, w_vec,
-        self.n_inps, self.min_buff_size)
-        """
 
     def flat_euler_update(self, time):
         """ The forward Euler integration method used with network.flat_update3. """
@@ -934,16 +777,13 @@ class unit():
                                     self.mudt + noise[idx] )
  
 
-#@jit(nopython=True)  # Uncomment if using Numba
-def ufis_4_numba(acts, flat_acts_idx, w_vec, n_inps, mbf):
-    """ receives the acts vector, its index, and weights, returns the inp_sum vector. """
-    step_inps = acts.flatten()[flat_acts_idx].reshape(n_inps, mbf)
-    if step_inps.size == 0:  # when the unit has no inputs
-        return np.zeros(mbf)
-    for row in range(n_inps):
-        step_inps[row,:] = w_vec[row] * step_inps[row,:]
-    return np.sum(step_inps, axis=0)
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # END OF METHODS FOR FLAT NETWORKS ~~~~~~~~~~~~~
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+    #***********************************************
+    #*********** STANDARD UNIT MODELS **************
+    #***********************************************
 
 class source(unit):
     """ The class of units whose activity comes from some Python function.
