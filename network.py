@@ -830,6 +830,8 @@ class network():
                 if u.type in [unit_types.noisy_linear, unit_types.noisy_sigmoidal]:
                     if u.lambd > 0.:
                         u.flat_update = u.flat_exp_euler_update
+                        #u.flat_update = u.flat_euler_maru_update
+                        #u.sqrdt = np.sqrt(u.time_bit)
                         u.integ_meth = "exp_euler"
                     else:
                         u.flat_update = u.flat_euler_maru_update

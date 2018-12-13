@@ -11,7 +11,7 @@ from cython_utils import * # interpolation and integration methods including cyt
                            # cython_sig, euler_int, euler_maruyama, exp_euler
 from scipy.integrate import odeint # to integrate ODEs
 #from array import array # optionally used for the unit's buffer
-#from scipy.integrate import solve_ivp # to integrate ODEs
+from scipy.integrate import solve_ivp # to integrate ODEs
 #from scipy.interpolate import interp1d # to interpolate values
 
 
@@ -92,10 +92,7 @@ class unit():
             elif params['integ_meth'] == "odeint":
                 self.update = self.odeint_update
             elif params['integ_meth'] == "solve_ivp":
-                self.update = self.solve_ivp
-                from warnings import warn
-                warn(['Additional code modifications are required for solve_ivp. \
-                      See unit.solve_ivp_update documentation'], UserWarning)
+                self.update = self.solve_ivp_update
             elif params['integ_meth'] == 'custom':
                 pass
             else:
@@ -267,9 +264,6 @@ class unit():
         source and kwta units override this with shorter update functions.
         """
         # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
-
-        # Maybe there should be a single 'times' array in the network, to avoid those rolls,
-        # but they add very little to the simualation times
         #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.min_buff_size)
@@ -292,26 +286,30 @@ class unit():
         corresponding to the latest "min_delay" time units, introducing "min_buff_size" new 
         values. In addition, all the synapses of the unit are updated.
         source and kwta units override this with shorter update functions.
-
-        NOTICE: solve_ivp requires that the derivatives function has its parameters in the
-                opposite of the order used by odeint. Thus, to make it work you need to change
-                the order of the arguments in all the derivatives functions, from 
-                derivatives(self, y, t) to derivatives(self, t, y).
-                In vi it takes one command: :%s/derivatives(self, y, t)/derivatives(self, t, y)/
-                Also, make sure that the import command at the top is uncommented for solve_ivp.
-                One more thing: to use the stiff solvers the derivatives must return a list or 
-                array, sothe returned value must be enclosed in square brackets in 
-                <unit_type>.derivatives.
         """
         #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.min_buff_size)
         self.times[self.offset:] = new_times[1:]
-        solution = solve_ivp(self.derivatives, (new_times[0], new_times[-1]), [self.buffer[-1]],
+        solution = solve_ivp(self.solve_ivp_diff, (new_times[0], new_times[-1]), [self.buffer[-1]],
                              method='LSODA', t_eval=new_times, rtol=self.rtol, atol=self.atol)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = solution.y[0,1:]
         self.upd_reqs_n_syns(time)
+
+
+    def solve_ivp_diff(self, t, y):
+        """ The derivatives function used by solve_ivp_update. 
+
+        solve_ivp requires that the derivatives function has its parameters in the
+        opposite of the order used by odeint. Thus, to make it work you need to change
+        the order of the arguments in all the derivatives functions, from 
+        derivatives(self, y, t) to derivatives(self, t, y).
+        Also, make sure that the import command at the top is uncommented for solve_ivp.
+        One more thing: to use the stiff solvers the derivatives must return a list or 
+        array, so the returned value must be enclosed in square brackets.
+        """
+        return [self.derivatives(y, t)]
 
 
     def euler_update(self, time):
@@ -345,6 +343,9 @@ class unit():
             self.mu = 0. # Mean of the white noise
             self.sigma = 0.0 # standard deviation of Wiener process.
         """
+        new_times = self.times[-1] + self.times_grid
+        self.times = np.roll(self.times, -self.min_buff_size)
+        self.times[self.offset:] = new_times[1:]
         # euler_maruyama_ is defined in cython_utils.pyx
         euler_maruyama(self.derivatives, self.buffer, time,
                         self.buff_size-self.min_buff_size, self.time_bit, self.mu, self.sigma)
@@ -372,7 +373,7 @@ class unit():
 
 
     def upd_reqs_n_syns(self, time):
-        """ Update the unit's requirements and its synapses.
+        """ Update the unit's requirements and those of its synapses.
 
             This should be called at every min_delay integration step, after the unit's
             buffers have been updated.

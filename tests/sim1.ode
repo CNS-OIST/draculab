@@ -1,0 +1,25 @@
+# This program is meant to test the implementation
+# of inteconnected ODEs with delay lines in 
+# simulator1_.ipynb
+# Sergio Verduzco     6/5/17
+
+par del1=1, del2=2, del3=6, del4=5
+par tau=0.02
+
+f(u) = 1/(1+exp(-u))
+
+inp1(t)=0.5*(t-del1)
+inp2(t)=-4*sin(t-del2)
+
+x' = (f(inp1(t)+inp2(t)+delay(y,del3))-x)/tau
+y' = (f(delay(x,del4))-y)/tau
+
+x(0)=0.5
+y(0)=0.5
+init x=0.5, y=0.5
+
+@ delay=10
+@ total=20
+@ ylo=0,yhi=1.1
+
+done
