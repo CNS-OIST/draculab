@@ -839,10 +839,12 @@ class network():
                     continue
                 if u.integ_meth in ["odeint", "solve_ivp", "euler"]:
                     u.flat_update = u.flat_euler_update
+                    """
                     if u.integ_meth in ["odeint", "solve_ivp"]:
                         from warnings import warn
                         warn('Integration method ' + u.integ_meth + \
                              ' subsituted by Forward Euler in some units', UserWarning)
+                    """
                 elif u.integ_meth == "euler_maru":
                     u.flat_update = u.flat_euler_maru_update
                 elif u.integ_meth == "exp_euler":

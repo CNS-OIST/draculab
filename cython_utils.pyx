@@ -167,28 +167,27 @@ def euler_maruyama(derivatives, double[::1] buff, double t0, Py_ssize_t offset,
             mu: mean of the white noise
             sigma: the standard deviation associated to the Wiener process
     """
-    """
+    #"""
     cdef Py_ssize_t mbs = len(buff) - offset # minimal buffer size
     cdef Py_ssize_t i, step
     for i in range(offset):
         buff[i] = buff[i+mbs]
     cdef double t = t0
     cdef double factor = sigma*np.sqrt(dt)
-    cdef double mudt = mu*dt
     #cdef float[:] noise = np.random.normal(loc=0., scale=1., size=buff.shape[0]-offset)
     sqrdt = np.sqrt(dt)
     for step in range(offset, len(buff)):
         #buff[step] = buff[step-1] + ( dt * derivatives([buff[step-1]], t) + mudt
-        buff[step] = buff[step-1] + ( dt * <double>derivatives([buff[step-1]], t) + mudt
+        buff[step] = buff[step-1] + ( dt * (<double>derivatives([buff[step-1]], t) + mu)
                                   + sigma * np.random.normal(loc=0., scale=sqrdt) )
-        buff[step] = max(buff[step], 0.)
+        buff[step] = max(buff[step], 0.) # RECTIFIES BY DEFAULT!!!!
         t = t + dt
     """
     cdef double factor = sigma*np.sqrt(dt)
     cdef double mudt = mu*dt
     cdef double[:] noise = np.random.normal(loc=0., scale=1., size=buff.shape[0]-offset)
     euler_maruyama_impl(derivatives, buff, t0, offset, dt, mudt, sigma, noise, factor)
-    #"""
+    """
 
 #cpdef float[:] exp_euler(derivatives, float x0, float t0, int n_steps, 
 #                       float dt, float mu, float sigma, float eAt, float c2, float c3):

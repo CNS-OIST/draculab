@@ -43,7 +43,7 @@ def add_lpf_mid(unit):
 def add_lpf_slow(unit):
     """ See 'add_lpf_fast' above. """
     if not hasattr(unit,'tau_slow'): 
-        raise NameError( 'The tau_slow requirement needs the parameter tau_mid, not yet set' )
+        raise NameError( 'The tau_slow requirement needs the parameter tau_slow, not yet set' )
     setattr(unit, 'lpf_slow', unit.init_val)
     setattr(unit, 'lpf_slow_buff', np.array( [unit.init_val]*unit.steps, dtype=unit.bf_type) )
 

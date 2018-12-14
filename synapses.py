@@ -215,7 +215,7 @@ class covariance_synapse(synapse):
         # For the postsynaptic activity, both fast and slow averages are used
         self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.lpf_slow])
         assert self.type is synapse_types.cov, ['Synapse from ' + str(self.preID) + ' to ' +
-                                                          str(self.postID) + ' instantiated with the wrong type']
+                                                str(self.postID)+' instantiated with the wrong type']
     
     def update(self, time):
         """ Update the weight according to the covariance learning rule."""
@@ -224,7 +224,6 @@ class covariance_synapse(synapse):
         avg_post = self.net.units[self.postID].get_lpf_slow(0)
         post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
-        
         # A forward Euler step with the covariance learning rule 
         self.w = self.w + self.alpha * (post - avg_post) * pre 
 

@@ -441,7 +441,8 @@ class ei_network():
                 if lay.n['x'] > 0:  # If the layer has external input units
                     #inp_pat[name] = np.zeros(lay.n['x'])  # initial "null" pattern
                     # initial conditions come from the input functions
-                    if set_inp_pat != None and (name in set_inp_pat): # if we received a function to set the layer's input pattern
+                    if set_inp_pat != None and (name in set_inp_pat): # if we received a function to set 
+                                                                      # the layer's input pattern
                         if self.net_number != None: # if multiprocess simulation
                             (inp_pat[name], inp_id) = set_inp_pat[name](self.present, lay.x_geom['rows'], 
                                                                         lay.x_geom['columns'], self.net_number)
@@ -1241,7 +1242,7 @@ class ei_layer():
     def build(self, the_net):
         """ Add this layer to the draculab network. 
         
-            The draculab network is recevied as an argument.
+            The draculab network is received as an argument.
         """
         # store record of network being built
         self.history.append('build()')
