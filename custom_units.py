@@ -739,7 +739,7 @@ class exp_dist_sig_thr(unit):
         When c <= 0 the current implementation is not very stable.
         """
 
-        unit.__init__(ID, params, network)
+        unit.__init__(self, ID, params, network)
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
@@ -814,6 +814,7 @@ class sig_trdc(unit):
         self.c = params['c']  # The coefficient in the exponential distribution
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         self.rdc_port = params['rdc_port'] # port for rate distribution control
+        self.needs_mp_inp_sum = False # use upd_flat_inp_sum when network is flat
         self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thresh, syn_reqs.lpf_fast]) 
         
     def f(self, arg):
@@ -825,6 +826,10 @@ class sig_trdc(unit):
         """ This function returns the derivatives of the state variables at a given point in time. """
         # there is only one state variable (the activity)
         return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivative function used by flat networks. """
+        return ( self.f(self.inp_sum[s]) - y ) * self.rtau
  
     def get_mp_input_sum(self, time):
         """ The input function of sig_trdc units. """
@@ -2447,6 +2452,13 @@ class delta_linear(unit):
     Port 1 is for the desired value signal, which is used to produce the error.
     Port 2 is for the signal that indicates when to update the synaptic weights.
 
+    The weight of the bias input is updated by the unit, whereas the weights of all inputs
+    at port 0 are updated by their respective synapses, which must be of the 'delta' type.
+    These synapses update their weight using: w' = alpha * error * pre, where alpha controls
+    the learning rate, error is the scaled input sum at port 0 (the desired output) minus the 
+    (fast low-pass filtered) postsynaptic activity (the output), and pre is the
+    presynaptic activity.
+
     The delta_linear units have a variable named 'learning', which decays to zero exponentially
     with a time constant given as a paramter. If 'e' stands for learning, e' = -tau_e * e .
 
@@ -2454,13 +2466,13 @@ class delta_linear(unit):
         * The signal at port 2 is ignored. 
         * The error transmitted to the synapses is the the desired output (e.g. the signal at
           port 1) minus the current activity. 
-        * Eligibility decays to 0 exponentially.
+        * e decays to 0 exponentially.
     When learning <= 0.5:
         * The error is 0 (which cancels plasticity at the synapses).
         * If the scaled sum of inputs at port 2 is smaller than 0.5, learning decays exponentially, 
           but if the input is larger than 0.5 then learning is set to the value 1.
 
-    See unit.upd_error for details.
+    The error is a synaptic requirement updated by the method upd_error below.
     After being set to 1, learning will take T = log(2)/tau_e time units to decay back to 0.5.
     During this time any non-zero error signal will cause plasticity at the synapses.
     """
@@ -2489,12 +2501,12 @@ class delta_linear(unit):
         self.tau_e = params['tau_e'] # time constant for the decay of the learning
         self.bias_lrate = params['bias_lrate'] # learning rate of the bias
         self.bias = 0. # initial value of the bias input (updated in upd_error)
+        self.needs_mp_inp_sum = True # if flat, use upd_flat_mp_inp_sum
 
         self.syn_needs.update([syn_reqs.lpf_fast, syn_reqs.error, syn_reqs.mp_inputs, syn_reqs.inp_l2])
         
     def get_mp_input_sum(self,time):
         """ The input function of the delta_linear unit. """
-        
         return  sum( [syn.w * act(time - dely) for syn, act, dely in zip(
                      [self.net.syns[self.ID][i] for i in self.port_idx[0]],
                      [self.net.act[self.ID][i] for i in self.port_idx[0]],
@@ -2504,6 +2516,10 @@ class delta_linear(unit):
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
         return ( self.gain * self.get_mp_input_sum(t) + self.bias  - y[0] ) / self.tau
+
+    def dt_fun(self, y, s):
+        """ Returns the derivative when state is y, at time substep s. """
+        return ( self.gain * self.mp_inp_sum[0][s] + self.bias - y ) / self.tau
 
     def upd_error(self, time):
         """ update the error used by delta units."""

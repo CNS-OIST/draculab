@@ -834,7 +834,10 @@ class delta_synapse(synapse):
 
         The version implemented here assumes that the error (des-post) is provided by the 
         postsynaptic unit, and has weight dynamics given by:
-        w' = alpha * error * pre,
+        w' = alpha * error * pre.
+
+        An alternative version (commented-out code) is:
+        w' = alpha * error * (pre -pre_lpf_slow) 
 
         Weight clipping is used to ensure that the weights of excitatory synapses don't
         become negative, and the weights of inhibitory synapses don't become positive. To

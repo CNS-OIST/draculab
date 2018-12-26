@@ -57,7 +57,7 @@ class unit():
             self.delay = params['delay']
             # delay must be a multiple of net.min_delay. Next line checks that.
             assert (self.delay+1e-6)%self.net.min_delay < 2e-6, ['unit' + str(self.ID) +
-                                                                 ': delay is not a multiple of min_delay']
+                                                       ': delay is not a multiple of min_delay']
         else:  # giving a temporary value
             self.delay = 2 * self.net.min_delay
         # These are the optional parameters.
@@ -70,24 +70,30 @@ class unit():
         if 'n_ports' in params: self.n_ports = params['n_ports']
         else: self.n_ports = 1
         if self.n_ports < 2:
-            self.multiport = False # If True, the port_idx list is created in init_pre_syn_update in
-                                    # order to support customized get_mp_input* functions
+            self.multiport = False # If True, the port_idx list is created in init_pre_syn_update
+                                   # in order to support customized get_mp_input* functions
         else:
             self.multiport = True
+            self.needs_mp_inp_sum = False # by default, upd_flat_inp_sum is used 
+                                          # instead of upd_flat_mp_inp_sum
         if 'integ_meth' in params: # a particular integration method is specified for the unit
             if self.type is unit_types.source:
-                raise AssertionError('Specifying an integration method for source units can result in errors')
+                raise AssertionError('Specifying an integration method for ' + 
+                                     'source units can result in errors')
             if params['integ_meth'] == "euler":
                 self.update = self.euler_update
             elif params['integ_meth'] == "euler_maru":
                 if not 'mu' in params or not 'sigma' in params:
-                    raise AssertionError('Euler-Maruyama integration requires mu and sigma parameters')
+                    raise AssertionError('Euler-Maruyama integration ' +
+                                         'requires mu and sigma parameters')
                 self.update = self.euler_maru_update
             elif params['integ_meth'] == "exp_euler":
                 if not 'lambda' in params:
-                    raise AssertionError('The exponential Euler method requires a lambda parameter')
+                    raise AssertionError('The exponential Euler method ' +
+                                         'requires a lambda parameter')
                 if not 'mu' in params or not 'sigma' in params:
-                    raise AssertionError('Exponential Euler integration requires mu and sigma parameters')
+                    raise AssertionError('Exponential Euler integration requires ' +
+                                         'mu and sigma parameters')
                 self.update = self.exp_euler_update
             elif params['integ_meth'] == "odeint":
                 self.update = self.odeint_update
@@ -875,7 +881,7 @@ class unit():
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # METHODS FOR FLAT NETWORKS ~~~~~~~~~~~~~
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def upd_flat_inp_sum(self,time):
+    def upd_flat_inp_sum(self, time):
         """ Updates the vector with input sums for each substep of the current step. """
         # Obtain the input vector 'step_inps'
         # step_inps is a 2D numpy array. step_inps[j,k] provides the activity
@@ -898,10 +904,34 @@ class unit():
         self.n_inps, self.min_buff_size)
         """
 
+    def upd_flat_mp_inp_sum(self, time):
+        """ The multiport version of upd_flat_inp_sum. """
+        # step_inps is obtained as before, for all inputs
+        self.step_inps = self.acts[self.acts_idx]
+        # mp_step_inps will be a list where the i-th entry is a slice of step_inps
+        # with only the rows for the inputs at the i-th port.
+        self.mp_step_inps = []
+        for idx in self.port_idx:
+            if len(idx) > 0:
+                self.mp_step_inps.append(self.step_inps[idx])
+            else: # no inputs at this port
+                self.mp_step_inps.append(np.array([]))
+        # mp_inp_sum will be a list where the i-th entry is a 1D np array of
+        # length min_buff_size; it contains the input sums at the i-th port for the
+        # i-th substep of the current simulation step.
+        self.mp_inp_sum = []
+        weights = self.get_mp_weights(time)
+        for inp,w in zip(self.mp_step_inps, weights):
+            if inp.size > 0:
+                self.mp_inp_sum.append(np.matmul(w, inp))
+            else:
+                self.mp_inp_sum.append(np.zeros(self.min_buff_size))
+
+
     def flat_euler_update(self, time):
         """ The forward Euler integration method used with network.flat_update3. """
         # This will fail if you haven't called upd_flat_inp_sum in the current step,
-        # because dt_fun3 uses self.inp_sum to obtain the derivative
+        # because dt_fun uses self.inp_sum to obtain the derivative
         # Roll the buffer
         base = self.buffer.size - self.min_buff_size
         # rolling is not being done in network.flat_update3
@@ -913,7 +943,7 @@ class unit():
                                     self.dt_fun(self.buffer[base+idx-1], idx) )
 
 
-    def flat_euler_maru_update(self,time):
+    def flat_euler_maru_update(self, time):
         """ The Euler-Maruyama integration used with network.flat_update3. """
         base = self.buffer.size - self.min_buff_size
         noise = self.sigma * np.random.normal(loc=0., scale=self.sqrdt,

@@ -372,7 +372,7 @@ class ei_network():
             unit.set_function( self.make_inp_fun(pre, cur, init_time, t_tran) )
 
  
-    def run(self, n_pres,  pres_time, set_inp_pat=None, set_inp_fun=None):
+    def run(self, n_pres,  pres_time, set_inp_pat=None, set_inp_fun=None, flat=False):
         """ Run a simulation, presenting n_pres patterns, each lasting pres_time. 
 
             Args:
@@ -381,7 +381,9 @@ class ei_network():
                 set_inp_pat : a dictionary with the methods that set the patterns to appear at the source
                               units of each layer. At the beginning of each presentation, the method 
                               set_inp_pat['name'] (if present) is called for the layer with the given name. 
-                              This, together with set_inp_fun, creates a new pattern to be presented. 
+                              This, together with set_inp_fun, creates a new pattern to be presented. The
+                              set_inp_fun methods are tasked with translating the discrete input patterns
+                              into continuous time functions.
                               When we have a multiprocess simulation (e.g. the network has a number ID), the
                               function that gets the input pattern will have an extra argument (net_number), and
                               will return an extra integer.
@@ -401,15 +403,18 @@ class ei_network():
                             # second is an integer that serves as an ID for this input.
                             # The arguments are the same as above, with the addition of net_number, which specifies 
                             # that the input pattern to be returned should correspond to the network with 'net_number' ID.
-                set_inp_fun : a dictionary with the methods that instantiate Python functions providing the input
-                              patterns selected with set_inp_pat. The functions should follow these specifications:
-                        set_inp_fun(prev_inp_pat, cur_inp_pat, init_time, pres_time, inp_units))
+                set_inp_fun : a dictionary. The name field of each entry is the name of a layer, and its value is a method.
+                            # This method returns a function that provides the continuous time input to the layer,
+                            # based on the previous and current input patterns.
+                            # The functions returned should follow these specifications:
+                        inp_fun(pre_inp_pat, cur_inp_pat, init_time, pres_time, inp_units))
                             # Assigns a Python function to each of the input units.
                             # pre_inp_pat : input pattern from the previous presentation (in the format of set_inp_pat).
                             # cur_inp_pat : current input pattern.
                             # init_time : time when the presentation will start.
                             # pres_time : duration of the presentation.
                             # inp_units : a list with the input units (e.g. "x").
+                flat : A  binary value indicating whether to use flat_run instead of run
 
                 If the set_inp_pat or set_inp_fun arguments are not provided for a layer that has an input 
                 population (x), the class defaults are used.
@@ -453,6 +458,12 @@ class ei_network():
                         inp_pat[name] = self.default_inp_pat(self.present, lay.x_geom['rows'], lay.x_geom['columns'])
         else: # if not the first run
             inp_pat = self.last_pat
+            # when running parallel simulations with flat networks, the copy of the network from
+            # self.nets = pool.map(self.run_net, args)
+            # may result in the acts, times, and buffer attributes of the unit no longer being
+            # views of the corresponding arrays in the network. Thus this is needed:
+            if flat:
+                self.net.link_unit_buffers()
 
         if self.net_number != None:
             num_str = ' at network ' + str(self.net_number)
@@ -468,7 +479,7 @@ class ei_network():
                 lay = self.layers[name]
                 prev_pat[name] = inp_pat[name]
                 inp_units = [self.net.units[i] for i in lay.x]
-                if set_inp_pat != None and (name in set_inp_pat): # if we received a function to set the layer's input pattern
+                if set_inp_pat != None and (name in set_inp_pat): # if received a function to set layer's input pattern
                     if self.net_number != None: # if it's a multiprocess simulation
                         (inp_pat[name], inp_id) = set_inp_pat[name](pres, lay.x_geom['rows'], 
                                                                    lay.x_geom['columns'], self.net_number)
@@ -483,7 +494,10 @@ class ei_network():
                 else:
                     self.default_inp_fun(prev_pat[name], inp_pat[name], t, pres_time, inp_units)
             # Simulating
-            times, activs, plants = self.net.run(pres_time)
+            if flat:
+                times, activs, plants = self.net.flat_run(pres_time)
+            else:
+                times, activs, plants = self.net.run(pres_time)
             #self.all_times.append(times) # deprecated...
             #self.all_activs.append(activs)
             self.all_times = np.append(self.all_times, times)
@@ -554,7 +568,7 @@ class ei_network():
             # Plot the evolution of the thresholds
             if layer.e_pars['type'] in trdc_u or layer.i_pars['type'] in trdc_u:
                 thr_fig = plt.figure(figsize=(pl_wid,pl_hgt))
-                thresholds = np.transpose([self.all_activs[layer.thr_track[i]] for i in range(layer.n['w_track'])])
+                thresholds = np.transpose([self.all_activs[u] for u in layer.thr_track])
                 plt.plot(self.all_times, thresholds, linewidth=1)
                 plt.title('Some unit thresholds')
         # Plot the error and  learning variables of delta units
@@ -1340,7 +1354,7 @@ class ei_layer():
                         self.net.units[self.sc_track[uid*n_syns+sid]].set_function(scale_tracker(u,s))
             # If there are trdc units, create some units to track the thresholds
             if self.e_pars['type'] in trdc_u or self.i_pars['type'] in trdc_u:
-                self.thr_track = self.net.create(self.n['w_track'], self.track_pars)
+                self.thr_track = self.net.create(len(which_u), self.track_pars)
                 def thresh_tracker(u):
                     return lambda x: self.net.units[u].thresh
                 for uid,u in enumerate(which_u):
