@@ -43,6 +43,9 @@ class ei_network():
         run : runs simulations.
         basic_plot, act_anim, hist_anim, double_anim : result visualization.
         conn_anim : connections visualization.
+        act_anim : animation showing the activity of all units through time
+        hist_anim : animation showing the histogram of unit activities through time.
+        double_anim : combines the visualizations of act_anim and hist_anim.
         annotate : append a line with text in the ei_network.notes string.
         log : save the parameters, changes, and execution history of the network in a text file.
         save : pickle the object and save it in a file.
@@ -1362,7 +1365,6 @@ class ei_layer():
         else:
             self.tracked = self.e[0:min(2,self.n['e'])]
             self.tracked += self.i[0:min(2,self.n['i'])]
-
         # If there is a delta unit, create tracking units for its learning and error variables
         delta_u = [unit_types.delta_linear]
         if self.e_pars['type'] in delta_u: 

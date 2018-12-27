@@ -2535,7 +2535,7 @@ class delta_linear(unit):
             #             [self.net.act[self.ID][i] for i in self.port_idx[1]],
             #             [self.net.delays[self.ID][i] for i in self.port_idx[1]])] ) 
             self.error = port1 - self.get_lpf_fast(0)
-            self.bias += self.bias_lrate * self.error
+            self.bias += self.net.min_delay * self.bias_lrate * self.error
             # to update 'learning' we can use the known solution to e' = -tau*e, namely
             # e(t) = e(t0) * exp((t-t0)/tau), instead of the forward Euler rule
             self.learning *= np.exp((self.last_time-time)/self.tau_e)

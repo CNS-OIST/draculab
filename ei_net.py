@@ -35,6 +35,9 @@ class ei_net():
         mr_run : runs simulations for units with multiple input ports.
         basic_plot, act_anim, hist_anim, double_anim : result visualization.
         conn_anim : connections visualization.
+        act_anim : animation showing the activity of all units through time
+        hist_anim : animation showing the histogram of unit activities through time.
+        double_anim : combines the visualizations of act_anim and hist_anim.
         annotate : append a line with text in the ei_net.notes string.
         log : save the parameter changes and execution history of the network in a text file.
         save : pickle the object and save it in a file.
@@ -382,6 +385,19 @@ class ei_net():
                 return lambda x: self.net.units[u].thresh
             for uid,u in enumerate(which_u):
                 self.net.units[self.thr_track[uid]].set_function(thresh_tracker(u))
+        # If there is a delta unit, create tracking units for its learning and error variables
+        delta_u = [unit_types.delta_linear]
+        if self.e_pars['type'] in delta_u: 
+            self.learn_track = self.net.create(1, self.wt_pars)
+            self.error_track = self.net.create(1, self.wt_pars)
+            def create_lt(unit_id):
+                return lambda t : self.net.units[unit_id].learning
+            def create_et(unit_id):
+                return lambda t : self.net.units[unit_id].error
+            for unit in self.learn_track:
+                self.net.units[unit].set_function(create_lt(self.e[0]))
+            for unit in self.error_track:
+                self.net.units[unit].set_function(create_et(self.e[0]))
 
 
     def set_param(self, dictionary, entry, value):
@@ -479,10 +495,10 @@ class ei_net():
 
             If the set_inp_pat or set_inp_fun arguments are not provided, the class defaults are used.
 
-            This method can be used with multiport units, as long as all the inputs arrive at the same port.
-            If the x population sends signals to distinct ports in the e or i populations mr_run should
-            be used instead.
-            
+            This method can be used with multiport units when either all 'x' inputs target the same
+            port, or when configuration of the input ports can be done with the 'inp_ports' attribute
+            of the xe_syn, and xi_syn parameter dictionaries.
+
             Updates:
                 self.all_times: 1-D numpy array with the times for each data point in all_activs.
                 self.all_activs: 2-D numpy array with the activity of all units at each point in all_times. 
@@ -549,12 +565,12 @@ class ei_net():
         vec[np.random.choice(n, k, replace=False)] = 1./k
         return vec
 
-
     def mr_run(self, n_pres,  pres_time, set_mr_inp_pat=None, set_inp_fun=None):
         """ Run a simulation, presenting n_pres patterns, each lasting pres_time. 
         
             This method is used instead of 'run' when units have multiple input ports (multiple 
-            receivers or multiple dendritic branches), and the inputs target more than one of them.
+            receivers or multiple dendritic branches), and the inputs target them in the particular
+            arrangement described below.
             All target units should have the same number of ports.
 
             It is assumed that the grid of input units is connected so that units in column 'p' are 
@@ -648,13 +664,15 @@ class ei_net():
     def basic_plot(self):
         #%matplotlib inline
         # Plot the inputs
-        inp_fig = plt.figure(figsize=(10,5))
+        pl_wid = 10 # width of the plots
+        pl_hgt = 5  # height of the plots
+        inp_fig = plt.figure(figsize=(pl_wid,pl_hgt))
         inputs = np.transpose([self.all_activs[i] for i in self.x])
         plt.plot(self.all_times, inputs, linewidth=1, figure=inp_fig)
         plt.title('Inputs')
 
         # Plot some unit activities
-        unit_fig = plt.figure(figsize=(10,5))
+        unit_fig = plt.figure(figsize=(pl_wid,pl_hgt))
         e_tracked = [e for e in self.tracked if e in self.e]
         i_tracked = [i for i in self.tracked if i in self.i]
         if len(e_tracked) > 0:
@@ -666,7 +684,7 @@ class ei_net():
         plt.title('Some unit activities. Thick=Exc, Thin=Inh')
         
         # Plot the evolution of the synaptic weights
-        w_fig = plt.figure(figsize=(10,5))
+        w_fig = plt.figure(figsize=(pl_wid,pl_hgt))
         weights = np.transpose([self.all_activs[self.w_track[i]] for i in range(self.n['w_track'])])
         plt.plot(self.all_times, weights, linewidth=1)
         plt.title('Some synaptic weights')
@@ -674,7 +692,7 @@ class ei_net():
         # Plot the evolution of the synaptic scale factors
         ssrdc_u = [unit_types.exp_dist_sig, unit_types.sig_ssrdc_sharp]
         if self.e_pars['type'] in ssrdc_u or self.i_pars['type'] in ssrdc_u:
-            sc_fig = plt.figure(figsize=(10,5))
+            sc_fig = plt.figure(figsize=(pl_wid,pl_hgt))
             factors = np.transpose([self.all_activs[self.sc_track[i]] for i in range(self.n['w_track'])])
             plt.plot(self.all_times, factors, linewidth=1)
             plt.title('Some synaptic scale factors')
@@ -684,10 +702,24 @@ class ei_net():
                   unit_types.ds_n_trdc, unit_types.ds_sharp, unit_types.sds_sharp, 
                   unit_types.ds_n_sharp, unit_types.sds_n_sharp]
         if self.e_pars['type'] in trdc_u or self.i_pars['type'] in trdc_u:
-            thr_fig = plt.figure(figsize=(10,5))
+            thr_fig = plt.figure(figsize=(pl_wid,pl_hgt))
             thresholds = np.transpose([self.all_activs[self.thr_track[i]] for i in range(self.n['w_track'])])
             plt.plot(self.all_times, thresholds, linewidth=1)
             plt.title('Some unit thresholds')
+
+        # Plot the error and  learning variables of delta units
+        delta_u = [unit_types.delta_linear]
+        if self.e_pars['type'] in delta_u: 
+            lrn_fig = plt.figure(figsize=(pl_wid,pl_hgt))
+            #lrn_var= np.transpose([self.all_activs[self.learn_track[i]] for i in range(self.n['w_track'])])
+            lrn_var= self.all_activs[self.learn_track[0]] 
+            plt.plot(self.all_times, lrn_var, self.all_times, np.tile(.5,len(self.all_times)), 'k--')
+            plt.title('learning')
+            err_fig = plt.figure(figsize=(pl_wid,pl_hgt))
+            #err_var= np.transpose([self.all_activs[self.error_track[i]] for i in range(self.n['w_track'])])
+            err_var= self.all_activs[self.error_track[0]] 
+            plt.plot(self.all_times, err_var) 
+            plt.title('error')
 
         plt.show()
 

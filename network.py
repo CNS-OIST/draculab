@@ -418,8 +418,10 @@ class network():
                 if len(syn_spec['inp_ports']) == n_conns:
                     portz = syn_spec['inp_ports']
                 else:
-                    raise ValueError('Number of input ports specified does not \
-                                      match number of connections created')
+                    print(syn_spec['inp_ports'])
+                    print(n_conns)
+                    raise ValueError('Number of input ports specified does not ' +
+                                     'match number of connections created')
             else:
                 raise TypeError('Input ports were specified with the wrong data type')
         else:
