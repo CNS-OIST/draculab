@@ -538,13 +538,15 @@ class unit():
 
         # If we require support for multiple input ports, create the port_idx list.
         # port_idx is a list whose elements are lists of integers.
-        # port_idx[i] contains the indexes in net.syns[self.ID] (or net.delays[self.ID], or net.act[self.ID])
+        # port_idx[i] contains the indexes in net.syns[self.ID] 
+        # (or net.delays[self.ID], or net.act[self.ID])
         # of the synapses whose input port is 'i'.
         if self.multiport is True:
             self.port_idx = [ [] for _ in range(self.n_ports) ]
             for idx, syn in enumerate(self.net.syns[self.ID]):
                 if syn.port >= self.n_ports:
-                    raise ValueError('Found a synapse input port larger than or equal to the number of ports')
+                    raise ValueError('Found a synapse input port larger than ' +
+                                     'or equal to the number of ports')
                 else:
                     self.port_idx[syn.port].append(idx) 
 

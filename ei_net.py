@@ -27,6 +27,8 @@ class ei_net():
         the the values of some scale factors (when using exp_dist_sig units) or thresholds
         (when using exp_dist_sig_thr units).
 
+        See tutorial6.ipynb for a usage example.
+
         METHODS OVERVIEW 
         __init__ : creates parameter dictionaries with the default values.
         set_param : changes a value in a parameter dictionary.

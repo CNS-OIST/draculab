@@ -867,7 +867,7 @@ class delta_synapse(synapse):
                                      syn_reqs.error]) #, syn_reqs.pre_lpf_slow]) 
                                      # pre_lpf_slow only required if you're using the 2nd option
         # maximum and minimum values
-        if self.w >= 0:   # NOT YET USED
+        if self.w >= 0:   # if initially excitatory
             self.max_value = 10.
             self.min_value = 0.
         else:
@@ -884,6 +884,9 @@ class delta_synapse(synapse):
         err = self.post_unit.error
         self.w = self.w + self.alpha * err * pre
         #self.w = self.w + self.alpha * err * (pre - pre_lpf_slow)
+        # clipping values that are too large or too small
+        self.w = max(min(self.w, self.max_value), self.min_value)
+        
         
 
 class switcher(synapse):

@@ -2506,12 +2506,11 @@ class delta_linear(unit):
         self.syn_needs.update([syn_reqs.lpf_fast, syn_reqs.error, syn_reqs.mp_inputs, syn_reqs.inp_l2])
         
     def get_mp_input_sum(self,time):
-        """ The input function of the delta_linear unit. """
+        """ The input sum function of the delta_linear unit. """
         return  sum( [syn.w * act(time - dely) for syn, act, dely in zip(
                      [self.net.syns[self.ID][i] for i in self.port_idx[0]],
                      [self.net.act[self.ID][i] for i in self.port_idx[0]],
                      [self.net.delays[self.ID][i] for i in self.port_idx[0]])] ) / self.inp_l2
-        #return np.dot(self.get_mp_inputs(time)[0], self.get_mp_weights(time)[0]) / self.inp_l2
         
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
@@ -2519,7 +2518,7 @@ class delta_linear(unit):
 
     def dt_fun(self, y, s):
         """ Returns the derivative when state is y, at time substep s. """
-        return ( self.gain * self.mp_inp_sum[0][s] + self.bias - y ) / self.tau
+        return ( self.gain * self.mp_inp_sum[0][s] / self.inp_l2 + self.bias - y ) / self.tau
 
     def upd_error(self, time):
         """ update the error used by delta units."""
