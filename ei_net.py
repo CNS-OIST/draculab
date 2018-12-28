@@ -467,7 +467,7 @@ class ei_net():
             unit.set_function( self.make_inp_fun(pre, cur, init_time, t_tran) )
 
 
-    def run(self, n_pres,  pres_time, set_inp_pat=None, set_inp_fun=None):
+    def run(self, n_pres,  pres_time, set_inp_pat=None, set_inp_fun=None, flat=False):
         """ Run a simulation, presenting n_pres patterns, each lasting pres_time. 
 
             n_pres : number of pattern presentations to simulate.
@@ -494,6 +494,7 @@ class ei_net():
                 # init_time : time when the presentation will start.
                 # pres_time : duration of the presentation.
                 # inp_units : a list with the input units (e.g. "x").
+            flat : A  binary value indicating whether to use flat_run instead of run
 
             If the set_inp_pat or set_inp_fun arguments are not provided, the class defaults are used.
 
@@ -537,7 +538,10 @@ class ei_net():
             #for i in self.x:
             #    self.net.units[i].set_function(self.make_sin_pulse(t, t+pres_time, inp_time, inp_vec[i-self.x[0]]))
         
-            times, activs, plants = self.net.run(pres_time)
+            if flat:
+                times, activs, plants = self.net.flat_run(pres_time)
+            else:
+                times, activs, plants = self.net.run(pres_time)
             self.all_times.append(times)
             self.all_activs.append(activs)
             if self.net_number: #!= None:
@@ -567,7 +571,7 @@ class ei_net():
         vec[np.random.choice(n, k, replace=False)] = 1./k
         return vec
 
-    def mr_run(self, n_pres,  pres_time, set_mr_inp_pat=None, set_inp_fun=None):
+    def mr_run(self, n_pres,  pres_time, set_mr_inp_pat=None, set_inp_fun=None, flat=False):
         """ Run a simulation, presenting n_pres patterns, each lasting pres_time. 
         
             This method is used instead of 'run' when units have multiple input ports (multiple 
@@ -604,8 +608,11 @@ class ei_net():
                 # init_time : time when the presentation will start.
                 # pres_time : duration of the presentation.
                 # inp_units : a list with the input units (e.g. "x").
+            flat : A  binary value indicating whether to use flat_run instead of run
 
             If the set_inp_pat or set_inp_fun arguments are not provided, the class defaults are used.
+            
+            The main use of this method has been in testing double sigma units in test10.ipynb.
             
             Updates:
                 self.all_times: 1-D numpy array with the times for each data point in all_activs.
@@ -645,7 +652,10 @@ class ei_net():
                 # In other words, each column is an input pattern
                 set_inp_fun(prev_pat[p], self.inp_pat[p], t, pres_time, inp_units[xrows*p:xrows*(p+1)])
 
-            times, activs, plants = self.net.run(pres_time)
+            if flat:
+                times, activs, plants = self.net.flat_run(pres_time)
+            else:
+                times, activs, plants = self.net.run(pres_time)
             self.all_times.append(times)
             self.all_activs.append(activs)
             if self.net_number: #!= None:

@@ -685,6 +685,7 @@ class test_sigma_units(unittest.TestCase):
 
     def test_constraint(self):
         """ Test 2 from test10.ipynb. """
+        # TODO: create separate tests with flat=True and flat=False
         # Creating input pattern function
         ## all the input pattern are in this nested list
         all_inps = [ [ .25]*16,
@@ -740,7 +741,7 @@ class test_sigma_units(unittest.TestCase):
         pres_time = 1.
         # These two run calls should give the same results
         #xnet.run(n_pres, pres_time, inp_pat)   
-        xnet.mr_run(n_pres, pres_time, inp_pat_mr)
+        xnet.mr_run(n_pres, pres_time, inp_pat_mr, flat=False)
         # Compare the output of the cell at each presentation with explicitly calculated values
         ## calculate the value at each presentation
         f = lambda x, sl, th : 1./(1. + np.exp(-sl*(x - th)))

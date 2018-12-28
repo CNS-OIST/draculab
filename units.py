@@ -919,8 +919,8 @@ class unit():
             else: # no inputs at this port
                 self.mp_step_inps.append(np.array([]))
         # mp_inp_sum will be a list where the i-th entry is a 1D np array of
-        # length min_buff_size; it contains the input sums at the i-th port for the
-        # i-th substep of the current simulation step.
+        # length min_buff_size; it contains the input sums at the i-th port for all
+        # substeps of the current simulation step.
         self.mp_inp_sum = []
         weights = self.get_mp_weights(time)
         for inp,w in zip(self.mp_step_inps, weights):

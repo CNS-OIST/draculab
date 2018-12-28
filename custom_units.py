@@ -1028,6 +1028,7 @@ class double_sigma_base(unit):
         else:
             n_branches = self.n_ports
             txt = ' '
+        self.needs_mp_inp_sum = True # use upd_flat_mp_inp_sum when flat
      
         # testing and initializing the branch parameters
         if n_branches != len(self.br_w):
@@ -1077,7 +1078,6 @@ class double_sigma_base(unit):
         """ This function returns the derivative of the activity given its current values. """
         #return ( self.f(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
         return ( cython_sig(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
-
 
  
 class double_sigma(double_sigma_base):
@@ -1150,6 +1150,13 @@ class double_sigma(double_sigma_base):
         #for i in range(self.n_ports):
         #    ret += self.br_w[i] * (self.f(self.threshs[i], self.slopes[i], np.dot(w[i],inp[i]))-self.phi)
         #return ret
+
+    def dt_fun(self, y, s):
+        """ Returns the derivative when state is y, at time substep s. """
+        inp_sum = sum( [ o * (self.f(th,sl,self.mp_inp_sum[p][s]) - self.phi)
+                     for o, th, sl, p in zip(self.br_w, self.threshs, self.slopes,
+                     range(self.n_ports)) ] )
+        return ( cython_sig(self.thresh, self.slope, inp_sum) - y ) * self.rtau
 
 
 class double_sigma_normal(double_sigma_base):
