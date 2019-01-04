@@ -1307,14 +1307,24 @@ class sigma_double_sigma(double_sigma_base):
         #
         # version 1. The big zip
         return np.dot(w[0], inp[0]) + sum(
-                    [ o*self.f(th,sl,np.dot(w,i)) for o,th,sl,w,i in 
+                    [ o*(self.f(th,sl,np.dot(w,i)) - self.phi) for o,th,sl,w,i in 
                       zip(self.br_w, self.threshs, self.slopes, w[1:], inp[1:]) ] )
         # version 2. The accumulator
         #ret = np.dot(w[0], inp[0])
         #for i in range(1,self.n_ports):
-        #    ret += self.br_w[i-1] * self.f(self.threshs[i-1], self.slopes[i-1], np.dot(w[i],inp[i]))
+        #    ret += self.br_w[i-1] * (self.f(self.threshs[i-1], self.slopes[i-1], 
+        #                             np.dot(w[i],inp[i])) - self.phi)
         #return ret
     
+    def dt_fun(self, y, s):
+        """ Returns the derivative when state is y, at time substep s. """
+        inp_sum = self.mp_inp_sum[0][s] # input sum at port 0
+        inp_sum += sum( [ o * (self.f(th,sl,self.mp_inp_sum[p][s]) - self.phi)
+                     for o, th, sl, p in zip(self.br_w, self.threshs, self.slopes,
+                     range(1,self.n_ports)) ] )
+        return ( cython_sig(self.thresh, self.slope, inp_sum) - y ) * self.rtau
+
+
 
 class sigma_double_sigma_normal(double_sigma_base):
     """ sigma_double_sigma unit with  normalized branch inputs.
@@ -1699,7 +1709,7 @@ class sigma_double_sigma_trdc(double_sigma_base, multiport_trdc_base):
         #
         # version 1. The big zip
         return np.dot(w[0], inp[0]) + sum(
-                    [ o*self.f(th,sl,np.dot(w,i)) for o,th,sl,w,i in 
+                    [ o*(self.f(th,sl,np.dot(w,i))-self.phi) for o,th,sl,w,i in 
                       zip(self.br_w, self.threshs, self.slopes, w[1:], inp[1:]) ] )
         # version 2. The accumulator
         #ret = np.dot(w[0], inp[0])
@@ -1960,7 +1970,7 @@ class sigma_double_sigma_sharp(double_sigma_base, trdc_sharp_base):
         del w[self.sharpen_port]
         del inp[self.sharpen_port]
         return np.dot(w[0], inp[0]) + sum(
-                    [ o*self.f(th,sl,np.dot(w,i)) for o,th,sl,w,i in 
+                    [ o*(self.f(th,sl,np.dot(w,i))-self.phi) for o,th,sl,w,i in 
                       zip(self.br_w, self.threshs, self.slopes, w[1:], inp[1:]) ] )
  
 

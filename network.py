@@ -703,7 +703,7 @@ class network():
 
 
     def flatten(self):
-        """ Move the unit buffers into the network object. 
+        """ Move the buffers into the network object. 
         
             The unit and plant buffers will be placed in a single 2D numpy array called
             'acts' in the network object, but each unit will retain a buffer that is a
@@ -712,7 +712,8 @@ class network():
             The 'times' array of all units is also replaced by a sngle 'ts' array.
 
             After this method is called, the network can only be run with the
-            'flat_run' method.
+            'flat_run' method. Flattening a network should only be done after the
+            network is fully built.
         """
         if self.sim_time > 0.:  # the network has been run before
             raise AssertionError("The network should not be flattened after simulating") 
@@ -834,6 +835,11 @@ class network():
             # initialize buffer
             init_buff = np.transpose(np.array([plant.init_state]*plant.buff_width))
             np.copyto(plant.buffer, init_buff)
+        # Initializing all rows in 'acts' corresponding to source units
+        for uid, u in enumerate(self.units):
+            if not self.has_buffer[uid]:
+                self.acts[uid,:] = np.array([u.get_act(t) for
+                                        t in self.ts[:] ])
         #*****************
         self.flat = True 
         #*****************
