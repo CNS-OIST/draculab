@@ -31,8 +31,8 @@ class topology():
         The units of measurement (e.g. millimeters) are unspecified; the implementer is
         responsible for their consistency.
         
-        The current implementation can only do one thing: create flat 2D layers with a given
-        number of rows and columns.
+        The current implementation can only do two things: create flat 2D layers with a given
+        number of rows and columns, or place units randomly in a 2D sheet.
 
         Args:
             net : The network where the units will be created.
@@ -53,8 +53,9 @@ class topology():
                                     all units will come from putting 'columns' points inside an interval of 
                                     length equal to the first 'extent' value; the distance between 
                                     contiguous points is twice the distance of the first and last points
-                                    to the edge of the interval. The second coordinates of all units will be
-                                    created similarly using 'rows'.
+                                    to the edge of the interval. This implies that the distance between contiguous
+                                    points along the x coordinate is width/(number of columns). 
+                                    The second coordinates of all units will be created similarly using 'rows'.
                                 'random' : The coordinates of each unit are selected from a uniform random
                                     distribution. The geometry dictionary must also include a 'n_units'
                                     value specifying how many units to create.

@@ -545,7 +545,8 @@ class ei_net():
             self.all_times.append(times)
             self.all_activs.append(activs)
             if self.net_number: #!= None:
-                print('Presentation %s took %s seconds at network %d.' % (pres, time.time() - pres_start, self.net_number), end='\n')
+                print('Presentation %s took %s seconds at network %d.' % 
+                      (pres, time.time() - pres_start, self.net_number), end='\n')
             else:
                 print('Presentation %s took %s seconds.' % (pres, time.time() - pres_start), end='\n')
 
@@ -659,7 +660,8 @@ class ei_net():
             self.all_times.append(times)
             self.all_activs.append(activs)
             if self.net_number: #!= None:
-                print('Presentation %s took %s seconds at network %d.' % (pres, time.time() - pres_start, self.net_number), end='\n')
+                print('Presentation %s took %s seconds at network %d.' 
+                      % (pres, time.time() - pres_start, self.net_number), end='\n')
             else:
                 print('Presentation %s took %s seconds.' % (pres, time.time() - pres_start), end='\n')
 

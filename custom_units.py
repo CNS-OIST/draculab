@@ -980,7 +980,7 @@ class double_sigma_base(unit):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -1035,9 +1035,10 @@ class double_sigma_base(unit):
             raise ValueError('Number of ports'+txt+'should equal the length of the branch_w parameter')
         elif min(self.br_w) <= 0:
             raise ValueError('Elements of branch_w should be positive')
-        elif sum(self.br_w) - 1. > 1e-4:
-            raise ValueError('Elements of branch_w should add to 1')
-        #
+        # Getting rid of this test...
+        #elif sum(self.br_w) - 1. > 1e-4:
+        #    raise ValueError('Elements of branch_w should add to 1')
+        
         if type(br_pars['slopes']) is list: 
             if len(br_pars['slopes']) == n_branches:
                 self.slopes = br_pars['slopes']    # slope of the local sigmoidal functions
@@ -1113,7 +1114,7 @@ class double_sigma(double_sigma_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -1193,7 +1194,7 @@ class double_sigma_normal(double_sigma_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -1275,7 +1276,7 @@ class sigma_double_sigma(double_sigma_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -1362,7 +1363,7 @@ class sigma_double_sigma_normal(double_sigma_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     branch_w: The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list plus one. For example, if branch_w=[.2, .8], then
                             input port 0 is at the soma, input port 1 has weight .2, and port 2 weight .8 .
@@ -1445,7 +1446,7 @@ class ds_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
                 sharpen_port: port ID where the inputs controlling rdc arrive.
                 branch_params: A dictionary with the following 3 entries:
                     branch_w: The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     slopes: Slopes of the branch sigmoidal functions. It can either be a float value
@@ -1576,7 +1577,7 @@ class double_sigma_trdc(double_sigma_base, multiport_trdc_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -1667,7 +1668,7 @@ class sigma_double_sigma_trdc(double_sigma_base, multiport_trdc_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -1753,7 +1754,7 @@ class double_sigma_normal_trdc(double_sigma_base, multiport_trdc_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -1841,7 +1842,7 @@ class double_sigma_sharp(double_sigma_base, trdc_sharp_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -1928,7 +1929,7 @@ class sigma_double_sigma_sharp(double_sigma_base, trdc_sharp_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -2011,7 +2012,7 @@ class double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -2109,7 +2110,7 @@ class sigma_double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     branch_w: The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list plus one. For example, if branch_w=[.2, .8], then
                             input port 0 is at the soma, input port 1 has weight .2, port 2 weight .8, and
@@ -2166,6 +2167,7 @@ class sigma_double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
 class sds_n_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base): 
     """
     Sigma double-sigma unit normalized branch inputs and switchable synaptic-scaling rate distribution control.
+
     Double sigma units are inspired by:
     Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
     There are two types of inputs. Somatic inputs arrive at port 0 (the default port), and are
@@ -2213,7 +2215,7 @@ class sds_n_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
                 sharpen_port: port ID where the inputs controlling rdc arrive.
                 branch_params: A dictionary with the following 3 entries:
                     branch_w: The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list plus one. For example, if branch_w=[.2, .8], then
                             input port 0 is at the soma, input port 1 has weight .2, port 2 weight .8, and
