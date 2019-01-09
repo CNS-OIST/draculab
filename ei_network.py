@@ -66,14 +66,12 @@ class ei_network():
 
             Args:
                 layer_names : non-empty list of strings containing the names of all layers to be created.
-                        The constructor will create variables with the names on the string, so the name
-                        of the class' methods and variables should be avoided, as well as the name of
-                        Pyhton's __X__ functions.
                 net_number:  an integer to identify the object in multiprocess simulations (optional).
         """
 
         self.layers = {}  # the ei_layer objects will be in this dictionary 
         self.layer_connections = [] # one entry per connection. See ei_network.add_connection
+        self.cloned_connections = [] # one entry per connection. See ei_network.add_connection_clone
         self.history = ["# ei_network.__init__ at " + time.ctime()] # list with object's history 
         self.notes = '' # comments about network configuration or simulation results.
         # fixing random seed
@@ -194,8 +192,6 @@ class ei_network():
         """
             Add a connection between the populations of two different layers.
             
-            The connection will be added to the draculab network once ei_network.build is run.
-
             Args:
                 source: a list or a tuple with two entries. 
                         source[0] : name of the source layer (a string).
@@ -204,10 +200,14 @@ class ei_network():
                         target[0] : name of the target layer (a string).
                         target[1] : population receiving the projections. Either 'e', or 'i'.
 
-            This method will create connection and synapse parameter dictionaries for the connection.
+            This method will create connection and synapse parameter dictionaries for the connection,
+            which is to be created with topo_connect.
             The name of those dictionaries will come from these strings:
-              source[0] +  source[1] + '_' + target[0] + target[1] + '_conn'   --> connection dictionary
-              source[0] +  source[1] + '_' + target[0] + target[1] + '_syn'    --> synapse dictionary
+              source[0] + source[1] + '_' + target[0] + target[1] + '_conn'   --> connection dictionary
+              source[0] + source[1] + '_' + target[0] + target[1] + '_syn'    --> synapse dictionary
+
+            The connection will be added to the draculab network when ei_network.build is run;
+            the parameter dictionaries should be customized before this point.
 
             Notice that if the 'boundary' and 'transform' entries of the connection dictionary are not
             specified before running build(), then a default boundary and transform will be used.
@@ -236,6 +236,94 @@ class ei_network():
         setattr(self, conn_dict_name, {})
         setattr(self, syn_dict_name, {})
 
+    def add_connection_clone(self, orig_source, orig_target, new_source, new_target):
+        """
+            Add a connection with the same structure as a previously added connection.
+
+            Given a previously added connection (using add_connection) from orig_source
+            to orig_target, this method will add a connection from new_source to new_target
+            with exactly the same structure. For this to make sense, there needs to be a
+            one-to-one correspondence between the orig_(source,target) and new_(source,target)
+            populations. Thus, this method can only be used when the 'orig' populations have
+            the same number of units as their 'new' counterparts, and the order in which
+            they appear in the 'e', 'i', or 'x' list is "the same".
+
+            This is useful to add connections to two different ports of the target unit.
+            It is also useful to set 'balanced' inputs, that for each connection to an
+            excitatory unit, also connect to a corresponding inhibitory unit.
+            
+            Args:
+                orig_source: a list or a tuple with two entries. 
+                        orig_source[0] : name of the original source layer (a string).
+                        orig_source[1] : population sending the projections ('e', 'i', or 'x').
+                orig_target: a list or a tuple with two entries. 
+                        orig_target[0] : name of the original target layer (a string).
+                        orig_target[1] : population receiving the projections ('e', or 'i').
+                new_source: a list or a tuple with two entries. 
+                        new_source[0] : name of the new source layer (a string).
+                        new_source[1] : population sending the projections ('e', 'i', or 'x').
+                new_target: a list or a tuple with two entries. 
+                        orig_target[0] : name of the new target layer (a string).
+                        orig_target[1] : population receiving the projections ('e', or 'i').
+
+            This method will create connection and synapse parameter dictionaries for the
+            connection, which will be created with topo_connect.
+            The name of those dictionaries will come from strings:
+              name_str + type_str + num_str
+            where: 
+              name_str = new_source[0] + new_source[1] + '_' + new_target[0] + new_target[1] 
+              type_str = '_conn_clone' -- for the connection dictionary
+              type_str = '_syn_clone' -- for the synapse dictionary
+              num_str = a string with a number corresponding to the number of the clone; the
+                        same connection can be cloned multiple times, and each time new
+                        dictionaries will be created, with a different number string.
+
+            As with ei_network.add_connection, the connection will be added to the draculab
+            network once ei_network.build is run. The parameter dictionaries can be modified
+            before this point, but notice that all entries of the dictionaries that specify
+            how topo_connect selects connections will not be used. The parameter dictionaries
+            will be initially populated with copies of the dictionaries for the original
+            connection, although the default 'boundary' and 'transform' entries will be
+            updated to use the new populations.
+
+        """
+        # The way this method signals ei_network.build to create the connections is by adding an entry
+        # in the cloned_connections list. Each list entry is a 2-tuple whose entries are dictionaries
+        # of the form:
+        # { 'src_lyr':source[0], 'src_pop':source[1], 'trg_lyr':target[0], 'trg_pop':target[1] }
+        # The first dictionary corresponds to the original connection, and the second to the
+        # new connection.
+
+        # Make some tests
+        if 'build()' in self.history:
+            raise AssertionError('Adding cloned connections after network has been built')     
+        if (not orig_source[0] in self.layers or not orig_target[0] in self.layers or
+            not new_source[0] in self.layers or not new_target[0] in self.layers):
+            raise ValueError('Unknown layer name found in the arguments to add_connection_clone')
+        if (not orig_source[1] in ['e','i','x'] or not orig_target[1] in ['e','i'] or
+            not new_source[1] in ['e','i','x'] or not new_target[1] in ['e','i']):
+            raise ValueError('Population must be either e, i, (or x for senders) in ' +
+                             'arguments to add_connection_clone')
+
+        # Add an entry in cloned_connections
+        self.cloned_connections.append( ({ 'src_lyr':orig_source[0], 'src_pop':orig_source[1], 
+                                         'trg_lyr':orig_target[0], 'trg_pop':orig_target[1] }, 
+                                         { 'src_lyr':new_source[0], 'src_pop':new_source[1], 
+                                         'trg_lyr':new_target[0], 'trg_pop':new_target[1] } ))
+        # Create emtpy connection and synapse specification dictionaries
+        name_str = new_source[0] + new_source[1] + '_' + new_target[0] + new_target[1] 
+        num = 0
+        num_str = str(num)
+        conn_dict_name = name_str + '_conn_clone' + num_str
+        while hasattr(self, conn_dict_name):
+            num += 1
+            num_str = str(num)
+            conn_dict_name = name_str + '_conn_clone' + num_str
+        syn_dict_name = name_str + '_syn_clone' + num_str
+        setattr(self, conn_dict_name, {})
+        setattr(self, syn_dict_name, {})
+
+
 
     def set_param(self, dictionary, entry, value):
         """ Change a value in a parameter dictionary. 
@@ -260,7 +348,6 @@ class ei_network():
         """ Build the layers and create the interlayer connections. 
             
             This is done after all parameter dictionaries have been specified.
-
         """
         # Store record of network being built
         self.history.append('#()()()()()()()()()()()()()()()()()()')
@@ -292,8 +379,10 @@ class ei_network():
                             syn_dict[entry] = (sndr[2])[entry] # set default value
 
             # The default 'boundary' and 'transform' entries of conn_dict must be created here
-            src_geom = self.layers[c['src_lyr']].__getattribute__(c['src_pop']+'_geom')  # geometry dict of the source population
-            trg_geom = self.layers[c['trg_lyr']].__getattribute__(c['trg_pop']+'_geom')  # geometry dict of the target population
+                # geometry dict of the source population
+            src_geom = self.layers[c['src_lyr']].__getattribute__(c['src_pop']+'_geom') 
+                # geometry dict of the target population
+            trg_geom = self.layers[c['trg_lyr']].__getattribute__(c['trg_pop']+'_geom')
             if not 'boundary' in conn_dict:
                 conn_dict['boundary'] = {'center': np.array(trg_geom['center']), 'extent' : trg_geom['extent']}
             if not 'transform' in conn_dict:
@@ -325,6 +414,8 @@ class ei_network():
             self.history.append(name+'_conn = ' + pp.pformat(conn_dict) + '\n') 
             self.history.append(name+'_syn = ' + pp.pformat(syn_dict) + '\n') 
             topo.topo_connect(self.net, src_pop, trg_pop, conn_dict, syn_dict) # creating layer!
+
+        # Create the cloned connections
         
         self.history.append("#()()()()()() Post build() history ()()()()()()")
 
@@ -1278,8 +1369,11 @@ class ei_layer():
         if (self.ee_conn['edge_wrap'] == True or self.ei_conn['edge_wrap'] == True or
             self.ie_conn['edge_wrap'] == True or self.ii_conn['edge_wrap'] == True or
             self.xe_conn['edge_wrap'] == True or self.xi_conn['edge_wrap'] == True):
-            assert self.e_geom['extent']==self.i_geom['extent'] and self.e_geom['center']==self.i_geom['center'], [
-               'Excitatory and inhibitory grids can not have different shape when using periodic boundaries']
+            if self.n['e'] > 0 and self.n['i'] > 0:
+                assert self.e_geom['extent']==self.i_geom['extent'] and \
+                       self.e_geom['center']==self.i_geom['center'], [
+                       'Excitatory and inhibitory grids can not have different ' + 
+                       'shape when using periodic boundaries']
         self.ee_conn['boundary'] = {'center': np.array(self.e_geom['center']), 'extent' : self.e_geom['extent']}
         self.ei_conn['boundary'] = {'center': np.array(self.i_geom['center']), 'extent' : self.i_geom['extent']}
         self.ie_conn['boundary'] = {'center': np.array(self.e_geom['center']), 'extent' : self.e_geom['extent']}
@@ -1327,12 +1421,17 @@ class ei_layer():
             topo.topo_connect(self.net, self.x, self.e, self.xe_conn, self.xe_syn)
         # Set the function of the w_track units to follow randomly chosen weights.
         if self.n['w_track'] > 0:
-            n_u = min(len(self.e), int(np.floor(np.sqrt(self.n['w_track'])))) # For how many units we'll track weights
+            n_e_i = len(self.e) + len(self.i) # number of e+i units
+            if n_e_i == 0:
+                raise ValueError('Non zero w_track value in a layer with no e or i units') 
+            n_u = min(n_e_i, int(np.floor(np.sqrt(self.n['w_track'])))) # For how many units we'll track weights
             n_syns, remainder = divmod(self.n['w_track'], n_u) # how many synapses per unit
             which_u = np.random.choice(self.e+self.i, n_u) # ID's of the units we'll track
             self.tracked = which_u # so basic_plot knows which units we tracked
             which_syns = [[] for i in range(n_u)]
             for uid,u in enumerate(which_u[0:-1]):
+                if len(self.net.syns[u]) == 0:
+                    raise ValueError('Attempting to track weights of a unit with no connections.')
                 which_syns[uid] = np.random.choice(range(len(self.net.syns[u])), n_syns)
             which_syns[n_u-1] = np.random.choice(range(len(self.net.syns[which_u[-1]])), n_syns+remainder)
             for uid,u in enumerate(which_u):

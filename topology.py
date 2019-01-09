@@ -380,7 +380,8 @@ class topology():
             if 'number_of_connections' in conn_spec:
                 kerneled = self.filter_ids(net, masked, uc, conn_spec['kernel'], fids_dic)
                 if len(kerneled) < conn_spec['number_of_connections']:
-                    raise ValueError('number_of_connections is larger than number of targets with significant connection probability')
+                    raise ValueError('number_of_connections is larger than number ' +
+                                     'of targets with significant connection probability')
             # second, specify the kernel function
             if type(conn_spec['kernel']) is float or type(conn_spec['kernel']) is int:
                 # distance-independent constant probability of connection
