@@ -560,6 +560,11 @@ class test_plant(unittest.TestCase):
         diff1 = max(np.abs(sig_out[0]-sim_dat[1][2]))
         diff2 = max(np.abs(sig_out[1]-sim_dat[1][3]))
         self.assertAlmostEqual(max(diff1, diff2), 0., places=5)
+        # Using 5 significant places works only if you use the same exact configuration for
+        # the run, including using get_act instead of get_act_by_step in network.flat_run.
+        # When there are differences (e.g. using run instead of flat_run) the max of
+        # diff1 and diff2 is around 0.02, meaning you'd have to use places=2 in order to
+        # pass the unit test.
 
 
 class test_topology(unittest.TestCase):

@@ -981,8 +981,8 @@ class network():
             
             # store current unit activities
             for uid, unit in enumerate(self.units):
-                #unit_store[uid][step] = self.get_act(uid, self.sim_time)
-                unit_store[uid][step] = self.get_act_by_step(uid, 0)
+                unit_store[uid][step] = self.get_act(uid, self.sim_time)
+                #unit_store[uid][step] = self.get_act_by_step(uid, 0)
            
             # store current plant state variables 
             for pid, plant in enumerate(self.plants):
