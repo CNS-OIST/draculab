@@ -238,19 +238,21 @@ class ei_network():
 
     def add_connection_clone(self, orig_source, orig_target, new_source, new_target):
         """
-            Add a connection with the same structure as a previously added connection.
+            Add a connection with the same structure as a previously added connections.
 
-            Given a previously added connection (using add_connection) from orig_source
+            Given previously added connections (using add_connection) from orig_source
             to orig_target, this method will add a connection from new_source to new_target
             with exactly the same structure. For this to make sense, there needs to be a
             one-to-one correspondence between the orig_(source,target) and new_(source,target)
             populations. Thus, this method can only be used when the 'orig' populations have
             the same number of units as their 'new' counterparts, and the order in which
-            they appear in the 'e', 'i', or 'x' list is "the same".
+            they appear in the 'e', 'i', or 'x' list is "the same". If many connections
+            have been added between the original source and target from multiple calls to 
+            add_connection, all of them will be cloned.
 
             This is useful to add connections to two different ports of the target unit.
-            It is also useful to set 'balanced' inputs, that for each connection to an
-            excitatory unit, also connect to a corresponding inhibitory unit.
+            It is also useful to set 'balanced' inputs, where for each connection to an
+            excitatory unit there is also a connection to a corresponding inhibitory unit.
             
             Args:
                 orig_source: a list or a tuple with two entries. 
@@ -281,18 +283,30 @@ class ei_network():
             As with ei_network.add_connection, the connection will be added to the draculab
             network once ei_network.build is run. The parameter dictionaries can be modified
             before this point, but notice that all entries of the dictionaries that specify
-            how topo_connect selects connections will not be used. The parameter dictionaries
-            will be initially populated with copies of the dictionaries for the original
-            connection, although the default 'boundary' and 'transform' entries will be
-            updated to use the new populations.
-
+            how topo_connect selects connections will not be used. 
+            
+            The parameter dictionaries will be initially populated with copies of the 
+            dictionaries for the original connection, with the following modifications:
+              * The mask and kernel will now be meaningless.
+              * The default 'boundary' and 'transform' entries will be updated to use the
+                new populations.
+              * Multapses will be allowed by default.
+              * The connection dictionary will contain a new entry, called 'clone_weights',
+                which will by default be set to True. In this default case, the weights of
+                the cloned connection will be equal to those of the copied connection. When
+                'clone_weights' is False, the weights are generated anew from the contents
+                of the dictionaries. In this last case, don't rely on the 'init_w' entry of
+                the syn_spec for the original connection, since this will be rewritten when
+                building the connection.
+              * The 'number_of_connections' entry, if present, will be deleted.
         """
         # The way this method signals ei_network.build to create the connections is by adding an entry
-        # in the cloned_connections list. Each list entry is a 2-tuple whose entries are dictionaries
-        # of the form:
+        # in the cloned_connections list. Each list entry is a 2-tuple whose entries are dictionaries.
+        # The first dictionary corresponds to the original connection, and has the form:
         # { 'src_lyr':source[0], 'src_pop':source[1], 'trg_lyr':target[0], 'trg_pop':target[1] }
-        # The first dictionary corresponds to the original connection, and the second to the
-        # new connection.
+        # The second dictionary corresponds to the new connection, and has the form:
+        # { 'src_lyr':source[0], 'src_pop':source[1],
+        #   'trg_lyr':target[0], 'trg_pop':target[1], 'num_str':num_str }
 
         # Make some tests
         if 'build()' in self.history:
@@ -305,12 +319,7 @@ class ei_network():
             raise ValueError('Population must be either e, i, (or x for senders) in ' +
                              'arguments to add_connection_clone')
 
-        # Add an entry in cloned_connections
-        self.cloned_connections.append( ({ 'src_lyr':orig_source[0], 'src_pop':orig_source[1], 
-                                         'trg_lyr':orig_target[0], 'trg_pop':orig_target[1] }, 
-                                         { 'src_lyr':new_source[0], 'src_pop':new_source[1], 
-                                         'trg_lyr':new_target[0], 'trg_pop':new_target[1] } ))
-        # Create emtpy connection and synapse specification dictionaries
+       # Create emtpy connection and synapse specification dictionaries
         name_str = new_source[0] + new_source[1] + '_' + new_target[0] + new_target[1] 
         num = 0
         num_str = str(num)
@@ -322,8 +331,16 @@ class ei_network():
         syn_dict_name = name_str + '_syn_clone' + num_str
         setattr(self, conn_dict_name, {})
         setattr(self, syn_dict_name, {})
+        exec('self.' + conn_dict_name + "['allow_multapses'] = True")
+        exec('self.' + conn_dict_name + "['clone_weights'] = True")
 
-
+        # Add an entry in cloned_connections
+        self.cloned_connections.append( 
+                       ( { 'src_lyr':orig_source[0], 'src_pop':orig_source[1], 
+                           'trg_lyr':orig_target[0], 'trg_pop':orig_target[1] }, 
+                         { 'src_lyr':new_source[0], 'src_pop':new_source[1], 
+                           'trg_lyr':new_target[0], 'trg_pop':new_target[1], 'num_str':num_str } ) )
+ 
 
     def set_param(self, dictionary, entry, value):
         """ Change a value in a parameter dictionary. 
@@ -365,12 +382,15 @@ class ei_network():
 
         # Populate the parameter dictionaries for the inter-layer connections
         for c in self.layer_connections:
-            name = c['src_lyr'] + c['src_pop'] + '_' + c['trg_lyr'] + c['trg_pop'] # base name of the dictionaries
-            conn_dict = self.__getattribute__(name+'_conn')  # The add_connection method created these
+                # base name of the dictionaries
+            name = c['src_lyr'] + c['src_pop'] + '_' + c['trg_lyr'] + c['trg_pop']
+            conn_dict = self.__getattribute__(name+'_conn') # The add_connection method created these
             syn_dict = self.__getattribute__(name+'_syn')  # The add_connection method created these
 
-            for sndr in [('e',self.e_conn, self.e_syn),('i',self.i_conn, self.i_syn),('x',self.x_conn, self.x_syn)]:
-                if c['src_pop'] == sndr[0]:   # if the connection is being sent from a population of type sndr[0] 
+            for sndr in [('e', self.e_conn, self.e_syn),
+                         ('i', self.i_conn, self.i_syn),
+                         ('x', self.x_conn, self.x_syn)]:
+                if c['src_pop'] == sndr[0]:  # if connection sent from a population of type sndr[0] 
                     for entry in sndr[1]:  # (e|i|x)_conn are default dictionaries created in __init__
                         if not entry in conn_dict:  # if the user didn't set a value for the entry
                             conn_dict[entry] = (sndr[1])[entry]  # set the default value
@@ -393,7 +413,8 @@ class ei_network():
                 #conn_dict['transform'] = lambda x : x + (tar_center - src_center) # EVIL BUG FROM HELL!!!
                 conn_dict['transform'] = self.make_transform(tar_center, src_center)
             else: # using custom transform
-                name = c['src_lyr'] + c['src_pop'] + '_' + c['trg_lyr'] + c['trg_pop'] # base name of the dictionaries
+                    # base name of the dictionaries
+                name = c['src_lyr'] + c['src_pop'] + '_' + c['trg_lyr'] + c['trg_pop']
                 self.annotate('Using custom transform in ' + name + ' connection.')
 
         # Create the connections
@@ -402,7 +423,7 @@ class ei_network():
             self.history.append("#---Parameter dictionaries used for inter-layer connections---")
         pp = pprint.PrettyPrinter(indent=4, compact=True)
         for c in self.layer_connections:
-            name = c['src_lyr'] + c['src_pop'] + '_' + c['trg_lyr'] + c['trg_pop'] # base name of the dictionaries
+            name = c['src_lyr'] + c['src_pop'] + '_' + c['trg_lyr'] + c['trg_pop'] # dictionaries' base name
             print('Creating ' + name + ' connection' + num_str, end='\n')
             conn_dict = self.__getattribute__(name+'_conn')  # The connection dictionary
             syn_dict = self.__getattribute__(name+'_syn')  # The synapse dictionary
@@ -413,10 +434,101 @@ class ei_network():
             # Place the connection dictionaries in the object's history
             self.history.append(name+'_conn = ' + pp.pformat(conn_dict) + '\n') 
             self.history.append(name+'_syn = ' + pp.pformat(syn_dict) + '\n') 
-            topo.topo_connect(self.net, src_pop, trg_pop, conn_dict, syn_dict) # creating layer!
+            # connect
+            topo.topo_connect(self.net, src_pop, trg_pop, conn_dict, syn_dict) # creating connection!
 
         # Create the cloned connections
-        
+            # Complete their parameter dictionaries
+        for c in self.cloned_connections:
+            orig_name = c[0]['src_lyr'] + c[0]['src_pop'] + '_' + \
+                        c[0]['trg_lyr'] + c[0]['trg_pop'] 
+            new_name = c[1]['src_lyr'] + c[1]['src_pop'] + '_' + \
+                       c[1]['trg_lyr'] + c[1]['trg_pop']
+            num_str = c[1]['num_str']
+            orig_conn_dict = self.__getattribute__(orig_name+'_conn')
+            orig_syn_dict = self.__getattribute__(orig_name+'_syn')
+            new_conn_dict = self.__getattribute__(new_name+'_conn_clone'+num_str)
+            new_syn_dict = self.__getattribute__(new_name+'_syn_clone'+num_str)
+            print('Building connection ' + new_name + ' clone ' + num_str)
+            # Modify the new connection dictionary to give it a giant mask and kernel 1
+            new_conn_dict['mask'] = {'circular':{'radius':1e6}}
+            new_conn_dict['kernel'] = 1.0
+
+            # The default 'boundary' and 'transform' entries of conn_dict must be created here
+                # geometry dict of the new source population
+            src_geom = self.layers[c[1]['src_lyr']].__getattribute__(c[1]['src_pop']+'_geom') 
+                # geometry dict of the target population
+            trg_geom = self.layers[c[1]['trg_lyr']].__getattribute__(c[1]['trg_pop']+'_geom')
+            if not 'boundary' in new_conn_dict:
+                new_conn_dict['boundary'] = {'center': np.array(trg_geom['center']), 
+                                             'extent' : trg_geom['extent']}
+            if not 'transform' in conn_dict:
+                # The default transform puts the center of the rectangle of the sending population
+                # on the center of the rectangle for the receiving population
+                tar_center = np.array( trg_geom['center'] )
+                src_center = np.array( src_geom['center'] )
+                conn_dict['transform'] = self.make_transform(tar_center, src_center)
+            else: # using custom transform
+                    # base name of the dictionaries
+                self.annotate('Using custom transform in ' + new_name+num_str + ' cloned connection.')
+
+            # Any dictionary entries not set by the user will come from the original connection
+            for entry in orig_conn_dict:
+                if not entry in new_conn_dict:
+                    new_conn_dict[entry] = orig_conn_dict[entry]
+            for entry in orig_syn_dict:
+                if not entry in new_syn_dict:
+                    new_syn_dict[entry] = orig_syn_dict[entry]
+
+            # Deleting 'number_of_connections'
+            if 'number_of_connections' in new_conn_dict:
+                new_conn_dict.pop('number_of_connections')
+
+            # Obtain the populations for the original and new source and targets
+            orig_src_lyr = self.layers[c[0]['src_lyr']]
+            orig_trg_lyr = self.layers[c[0]['trg_lyr']]
+            orig_src_pop = orig_src_lyr.__getattribute__(c[0]['src_pop'])  # source population (e|i|x)
+            orig_trg_pop = orig_trg_lyr.__getattribute__(c[0]['trg_pop'])  # target population (e|i)
+            new_src_lyr = self.layers[c[1]['src_lyr']]
+            new_trg_lyr = self.layers[c[1]['trg_lyr']]
+            new_src_pop = new_src_lyr.__getattribute__(c[1]['src_pop'])  # source population (e|i|x)
+            new_trg_pop = new_trg_lyr.__getattribute__(c[1]['trg_pop'])  # target population (e|i)
+            # Check population lengths
+            if (len(orig_src_pop) != len(new_src_pop) or 
+                len(orig_trg_pop) != len(new_trg_pop)):
+                raise AssertionError('numer of elements in the populations do not match ' +
+                                     ' for cloned connection ' + new_name)
+            # Place the connection dictionaries in the object's history
+            self.history.append(name+'_conn_clone'+num_str+' = ' + pp.pformat(new_conn_dict) + '\n') 
+            self.history.append(name+'_syn_clone'+num_str+' = ' + pp.pformat(new_syn_dict) + '\n') 
+            # connect
+              # First you have to extract the original connection structure without
+              # altering the connections yet, so clones don't copy connections from clones
+                  # all_syn_idx[i] will be a list with indexes to the elements in net.syns[trg_id]
+                  # that contain a synapse from a connection between the original source 
+                  # population and unit trg_id from the original target population
+            all_syn_idx = [[] for _ in orig_trg_pop]
+            for trg_idx, trg_id in enumerate(orig_trg_pop):
+                for syn_idx, syn in enumerate(self.net.syns[trg_id]):
+                    if syn.preID in orig_src_pop:
+                        all_syn_idx[trg_idx].append(syn_idx)
+              # Now you create the connections one by one
+            print(all_syn_idx)
+            print(new_conn_dict)
+            for trg_idx, trg_id in enumerate(orig_trg_pop):
+                for idx_list in all_syn_idx:
+                    for syn_idx in idx_list:
+                        pre_id = self.net.syns[trg_id][syn_idx].preID
+                        if new_conn_dict['clone_weights']:
+                            w = self.net.syns[trg_id][syn_idx].w
+                            new_conn_dict['weights'] = {'linear':{'c':w, 'a':0.}}
+                        elif not 'weights' in new_conn_dict:
+                            raise AssertionError('Weights not properly specified in connection ' +
+                                            new_name+num_str+ '. Please set weights attribute, ' +
+                                            'or set clone_weights=True')
+                        #print('conn from %d to %d' % (trg_id, pre_id))
+                        topo.topo_connect(self.net, [trg_id], [pre_id], new_conn_dict, new_syn_dict)
+                
         self.history.append("#()()()()()() Post build() history ()()()()()()")
 
         
