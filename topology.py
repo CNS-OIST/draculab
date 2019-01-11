@@ -136,7 +136,7 @@ class topology():
         1) All units involved must have a valid 'coordinates' attribute. One way to set the 
            coordinates is by using the create_group() method instead of network.create().
         2) The conn_spec dictionary uses a set of entries different to network.connect(). These 
-           entries specify the spatial connection profile using almost the same options as PyNEST's 
+           entries specify the spatial connection profile using options similar to PyNEST's 
            topology module.
 
         topo_connect() works by first specifing which units to connect, with which weights,
@@ -279,13 +279,19 @@ class topology():
             UserWarning when zero connections are made.
 
         """
-        # TODO: it would be very easy to implement the 'targets' option by reducing the to_list to 
-        # those units of a particular type at this point. I don't need that feature now, though.
-
-        if to_list == [] or from_list == []: # handling a fringe scenario
+        # A quick check for empty lists
+        if to_list == [] or from_list == []: # a fringe scenario
             from warnings import warn
             warn('topo_connect received an empty list as an argument', UserWarning)
             return
+
+        # It would be very easy to implement the 'targets' option by reducing the to_list to 
+        # those units of a particular type at this point. I don't need that feature now, though.
+        # It makes little sense to send connections to source units
+        target_types = [net.units[uid].type for uid in to_list]
+        if unit_types.source in target_types:
+            from warnings import warn
+            warn('topo_connect received source units as input targets')
 
         # If the coordinates of from_list units need to be transformed, we do it now
         if 'transform' in conn_spec and callable(conn_spec['transform']):

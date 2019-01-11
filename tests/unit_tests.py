@@ -14,6 +14,9 @@ import unittest
 from scipy.interpolate import interp1d
 from ei_net import *
 
+# Path were the .dat and .pkl files are located
+global test_path 
+test_path = '/home/z/projects/draculab/tests/'
 
 def load_data(filename):
     """
@@ -53,8 +56,8 @@ class test_comparison_1(unittest.TestCase):
     def setUpClass(self):
         self.tolerance = 0.0025 # test will fail if error larger than this
         # The .dat files should be in the same directory
-        self.xpp_dat = load_data('./sim1oderun.dat')
-        self.matlab_dat = load_data('./sim1matrun.txt')
+        self.xpp_dat = load_data(test_path+'sim1oderun.dat')
+        self.matlab_dat = load_data(test_path+'sim1matrun.txt')
 
     def setUp(self):
         self.net = self.create_test_network_1()
@@ -159,7 +162,8 @@ class test_comparison_2(unittest.TestCase):
     def setUpClass(self):
         self.tolerance = 0.01 # test will fail if difference is larger than this
         # The .dat files should be in the same directory
-        self.xpp_data = load_data('./sim3oderun5.dat')  # ran in XPP with lrate = 0.5
+        self.xpp_data = load_data(test_path+'sim3oderun5.dat')
+            # ran in XPP with lrate = 0.5
 
     def create_test_network_2(self, custom_fi=False):
         """ Creates a draculab network equivalent of the one in sim3.ode . 
@@ -170,7 +174,7 @@ class test_comparison_2(unittest.TestCase):
             as in test 2a of test2.ipynb.
         """
         ######### 1) Create a network
-        net_params = {'min_delay' : 0.1, 'min_buff_size' : 5, 'rtol' : 1e-4, 'atol' : 1e-4 } # parameter dictionary for the network
+        net_params = {'min_delay' : 0.1, 'min_buff_size' : 5, 'rtol' : 1e-4, 'atol' : 1e-4 }
         n2 = network(net_params)
         ######### 2) Put some units in the network
         # default parameters for the units
@@ -259,7 +263,7 @@ class test_comparison_3(unittest.TestCase):
         self.tolerance = 0.06 # test will fail if difference is larger than this
         self.noisy_tol = 0.5 # when noise is added
         # The .dat files should be in the same directory
-        self.xpp_data = load_data('./sim4aoderun.dat')  
+        self.xpp_data = load_data(test_path+'sim4aoderun.dat')  
 
     def create_test_network_3(self, noisy=False, sigma=0.):
         """ Creates a draculab network equivalent of the one in sim4a.ode . """
@@ -507,7 +511,7 @@ class test_plant(unittest.TestCase):
         # In pend.ode the zero angle aligns with the negative Y axis
         sim_dat[2][0][:,0] = sim_dat[2][0][:,0] + np.pi/2
         
-        xpp_dat = load_data('./pendoderun.dat')
+        xpp_dat = load_data(test_path+'pendoderun.dat')
         xpp_points1 = align_points(sim_dat[0], xpp_dat[0], xpp_dat[1])
         xpp_points2 = align_points(sim_dat[0], xpp_dat[0], xpp_dat[2])
         diff1 = max(np.abs(xpp_points1-sim_dat[2][0][:,0]))
@@ -556,7 +560,7 @@ class test_plant(unittest.TestCase):
         # In pend.ode the zero angle aligns with the negative Y axis
         sim_dat[2][0][:,0] = sim_dat[2][0][:,0] + np.pi/2
         # load the output of the two sigmoidals
-        sig_out = np.load('tco_12-14-18.pkl') 
+        sig_out = np.load(test_path+'tco_12-14-18.pkl') 
         diff1 = max(np.abs(sig_out[0]-sim_dat[1][2]))
         diff2 = max(np.abs(sig_out[1]-sim_dat[1][3]))
         self.assertAlmostEqual(max(diff1, diff2), 0., places=5)
@@ -580,7 +584,7 @@ class test_topology(unittest.TestCase):
         net_params = {'min_delay' : 0.2, 'min_buff_size' : 4 } # parameter dictionary for the network
         net = network(net_params)
         # Create two groups of units
-        unit_pars = { 'init_val' : 0.5, 'function' : lambda x:None, 'type' : unit_types.source } 
+        unit_pars = { 'init_val' : 0.5, 'tau' : 1., 'type' : unit_types.linear } 
         geom1 = {'shape':'sheet', 
                 'extent':[10.,10.], 
                 'center':[-8.,1.], 
@@ -618,7 +622,7 @@ class test_topology(unittest.TestCase):
             for syn in syn_list:
                 conns[syn.postID,syn.preID] = syn.w
         # retrieve saved connection matrix
-        retconn = np.load('topo_12-14-18.pkl')
+        retconn = np.load(test_path+'topo_12-14-18.pkl')
         max_diff = np.amax(np.abs(retconn-conns))
         self.assertAlmostEqual(max_diff, 0.) 
 

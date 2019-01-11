@@ -207,13 +207,17 @@ class ei_network():
               source[0] + source[1] + '_' + target[0] + target[1] + '_syn'    --> synapse dictionary
 
             The connection will be added to the draculab network when ei_network.build is run;
-            the parameter dictionaries should be customized before this point.
+            the parameter dictionaries should be customized before this point. Calling this
+            method repeatedly with the same source and target arguments will result in
+            connections between source and target being made several times using the same
+            dictionaries.
 
-            Notice that if the 'boundary' and 'transform' entries of the connection dictionary are not
+            If the 'boundary' and 'transform' entries of the connection dictionary are not
             specified before running build(), then a default boundary and transform will be used.
             The default boundary is the rectangle of the target population. The default transform puts 
             the center of the rectangle of the sending population on the center of the rectangle of the 
             receiving population.
+
         """
         # The way this method signals ei_network.build to create the connections is by adding an entry
         # in the layer_connections list. Each list entry consists of this dictionary:
@@ -267,6 +271,8 @@ class ei_network():
                 new_target: a list or a tuple with two entries. 
                         orig_target[0] : name of the new target layer (a string).
                         orig_target[1] : population receiving the projections ('e', or 'i').
+            Raises:
+                AssertionError, ValueError
 
             This method will create connection and synapse parameter dictionaries for the
             connection, which will be created with topo_connect.
@@ -299,6 +305,7 @@ class ei_network():
                 the syn_spec for the original connection, since this will be rewritten when
                 building the connection.
               * The 'number_of_connections' entry, if present, will be deleted.
+
         """
         # The way this method signals ei_network.build to create the connections is by adding an entry
         # in the cloned_connections list. Each list entry is a 2-tuple whose entries are dictionaries.
@@ -365,6 +372,9 @@ class ei_network():
         """ Build the layers and create the interlayer connections. 
             
             This is done after all parameter dictionaries have been specified.
+
+            Raises:
+                AssertionError
         """
         # Store record of network being built
         self.history.append('#()()()()()()()()()()()()()()()()()()')
@@ -504,30 +514,34 @@ class ei_network():
             # connect
               # First you have to extract the original connection structure without
               # altering the connections yet, so clones don't copy connections from clones
-                  # all_syn_idx[i] will be a list with indexes to the elements in net.syns[trg_id]
-                  # that contain a synapse from a connection between the original source 
-                  # population and unit trg_id from the original target population
-            all_syn_idx = [[] for _ in orig_trg_pop]
+                  # Assume a unit in the original target population has an index 'trg_idx'
+                  # in the orig_src_pop list, and an ID 'trg_id' in the network (e.g.
+                  # orig_src_pop[trg_idx] = trg_id).
+                  # trg_syn_idx[trg_idx] will be a list with indexes to all synapses in 
+                  # net.syns[trg_id] that connect a unit from the original source population
+                  # to that unit.
+            trg_syn_idx = [[] for _ in orig_trg_pop]
             for trg_idx, trg_id in enumerate(orig_trg_pop):
                 for syn_idx, syn in enumerate(self.net.syns[trg_id]):
                     if syn.preID in orig_src_pop:
-                        all_syn_idx[trg_idx].append(syn_idx)
+                        trg_syn_idx[trg_idx].append(syn_idx)
               # Now you create the connections one by one
-            print(all_syn_idx)
-            print(new_conn_dict)
             for trg_idx, trg_id in enumerate(orig_trg_pop):
-                for idx_list in all_syn_idx:
-                    for syn_idx in idx_list:
-                        pre_id = self.net.syns[trg_id][syn_idx].preID
-                        if new_conn_dict['clone_weights']:
-                            w = self.net.syns[trg_id][syn_idx].w
-                            new_conn_dict['weights'] = {'linear':{'c':w, 'a':0.}}
-                        elif not 'weights' in new_conn_dict:
-                            raise AssertionError('Weights not properly specified in connection ' +
-                                            new_name+num_str+ '. Please set weights attribute, ' +
-                                            'or set clone_weights=True')
-                        #print('conn from %d to %d' % (trg_id, pre_id))
-                        topo.topo_connect(self.net, [trg_id], [pre_id], new_conn_dict, new_syn_dict)
+                idx_list = trg_syn_idx[trg_idx]
+                for syn_idx in idx_list:
+                    pre_id = self.net.syns[trg_id][syn_idx].preID
+                    if new_conn_dict['clone_weights']:
+                        w = self.net.syns[trg_id][syn_idx].w
+                        new_conn_dict['weights'] = {'linear':{'c':w, 'a':0.}}
+                    elif not 'weights' in new_conn_dict:
+                        raise AssertionError('Weights not properly specified in connection ' +
+                                        new_name+num_str+ '. Please set weights attribute, ' +
+                                        'or set clone_weights=True')
+                    new_trg_id = new_trg_pop[trg_idx]
+                    new_pre_id = new_src_pop[orig_src_pop.index(pre_id)]
+                    # last line assumes that the population lists have no repetitions,
+                    # which is fair at this point.
+                    topo.topo_connect(self.net, [new_pre_id], [new_trg_id], new_conn_dict, new_syn_dict)
                 
         self.history.append("#()()()()()() Post build() history ()()()()()()")
 
