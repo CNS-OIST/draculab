@@ -759,7 +759,7 @@ class ei_network():
             inp_fig = plt.figure(figsize=(pl_wid,pl_hgt))
             inputs = np.transpose([self.all_activs[i] for i in layer.x])
             plt.plot(self.all_times, inputs, linewidth=1, figure=inp_fig)
-            plt.title('Inputs')
+            plt.title('Inputs at layer ' + lyr_name)
 
         # Plot some unit activities
         unit_fig = plt.figure(figsize=(pl_wid,pl_hgt))
