@@ -717,6 +717,10 @@ class network():
         """
         if self.sim_time > 0.:  # the network has been run before
             raise AssertionError("The network should not be flattened after simulating") 
+        if self.flat:
+            from warnings import warn
+            warn('Network is being flattened more than once', UserWarning)
+            return
 
         # obtain the maximum delay from all unit projections
         max0 = lambda x: 0 if len(x)==0 else max(x)  # auxiliary function
@@ -791,8 +795,12 @@ class network():
                         for inp in range(len(self.inp_src[uid]))]
                 self.acts_idx[uid] = (idx1, idx2)
             else:  # for source units, also initialize acts
-                self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
-                                            t in self.ts[self.init_idx[uid]:] ])
+                row = np.array([u.get_act(t) for t in self.ts[:] ])
+                # sometimes the source units have not been initialized, 
+                # and return 'None' types. Thus this check:
+                if not any([v is None for v in row]):
+                    if not (np.isnan(row)).any:
+                        self.acts[uid,:] = row 
         # Reinitializing the unit buffers as views of act, and times as views of ts
         self.link_unit_buffers()
         # specify the integration function for all units
@@ -835,17 +843,20 @@ class network():
             # initialize buffer
             init_buff = np.transpose(np.array([plant.init_state]*plant.buff_width))
             np.copyto(plant.buffer, init_buff)
-        # Initializing all rows in 'acts' corresponding to source units
+        # At one point I needed to track the value of input sums with a source unit.
+        # Initializing the inp_sum arrays permits initializing the function of those
+        # source units before the simulation starts.
         for uid, u in enumerate(self.units):
-            if not self.has_buffer[uid]:
-                self.acts[uid,:] = np.array([u.get_act(t) for
-                                        t in self.ts[:] ])
+            if u.multiport:
+                if hasattr(u, 'needs_mp_inp_sum') and u.needs_mp_inp_sum:
+                    u.upd_flat_mp_inp_sum(0.)
+                else:
+                    u.upd_flat_inp_sum(0.)
         #*****************
         self.flat = True 
         #*****************
-        # this last step is not strictly necessary, but right now the functions
-        # in self.act for plants are for the non-flat buffers. Thus we replace
-        # them with new ones, but this time self.flat = True
+        # At this point the functions in self.act for plants are for the non-flat
+        # buffers. Thus we replace them with new ones, but this time self.flat = True
         if self.n_plants > 0:
             for idx_l, l in enumerate(self.syns):
                 for idx_s, syn in enumerate(l):

@@ -839,7 +839,8 @@ class unit():
         a = np.minimum( a, 10.) # hard bound above
         x0 = self.scale_facs_rdc[self.exc_idx_rdc]
         t = self.net.min_delay
-        self.scale_facs_rdc[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
+        self.scale_facs_rdc[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * 
+                                                             np.exp(-self.tau_scale * a * t) )
 
 
     def upd_slide_thresh(self, time):

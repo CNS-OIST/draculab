@@ -82,7 +82,8 @@ class ei_network():
         self.net_number = net_number
         if self.net_number != None: 
             self.history.append('# parallel runner assigned this network the number ' + str(net_number))
-            self.inp_hist = {} # to produce an optional lists with the ID of all the inputs presented. See run()
+            self.inp_hist = {} # to produce optional lists with the ID of all the inputs 
+                               # presented. See run()
 
         # DEFAULT PARAMETER DICTIONARY FOR THE NETWORK
         self.net_params = {'min_delay' : 0.005, 
@@ -657,6 +658,15 @@ class ei_network():
         prev_pat = {} # dictionary to store the previous input patterns
         inp_pat = {} # dictionary to store the current input patterns
 
+        # when running parallel simulations with flat networks, the copy of the network from
+        # self.nets = pool.map(self.run_net, args)
+        # may result in the acts, times, and buffer attributes of the unit no longer being
+        # views of the corresponding arrays in the network. Moreover, calling network.flatten
+        # before calling ei_network.run can result in the buffers not being views.
+        # Thus this is needed:
+        if flat: 
+            self.net.link_unit_buffers()
+
         if not hasattr(self, 'all_times') or not hasattr(self, 'all_activs'): # if it's the first call to run()
             self.all_times = np.array([])  # a times vector that persists through multiple runs
             self.all_activs = np.tile([], (len(self.net.units),1))
@@ -678,12 +688,6 @@ class ei_network():
                         inp_pat[name] = self.default_inp_pat(self.present, lay.x_geom['rows'], lay.x_geom['columns'])
         else: # if not the first run
             inp_pat = self.last_pat
-            # when running parallel simulations with flat networks, the copy of the network from
-            # self.nets = pool.map(self.run_net, args)
-            # may result in the acts, times, and buffer attributes of the unit no longer being
-            # views of the corresponding arrays in the network. Thus this is needed:
-            if flat:
-                self.net.link_unit_buffers()
 
         if self.net_number != None:
             num_str = ' at network ' + str(self.net_number)
@@ -715,6 +719,7 @@ class ei_network():
                     self.default_inp_fun(prev_pat[name], inp_pat[name], t, pres_time, inp_units)
             # Simulating
             if flat:
+                #self.net.link_unit_buffers()
                 times, activs, plants = self.net.flat_run(pres_time)
             else:
                 times, activs, plants = self.net.run(pres_time)
@@ -1363,11 +1368,11 @@ class ei_layer():
             'tau_fast' : 0.04,
             'tau_mid' : .1, # 100 ms for medium low-pass filter
             'tau_slow' : 1, # 1 s for slow low-pass filter
-            'function' : lambda x: None }
+            'function' : lambda x: None } 
         self.track_pars = {'type' : unit_types.source,  # parameters for "tracking" units
             'init_val' : 0.,
             'tau_fast' : 0.04,
-            'function' : lambda x: None }
+            'function' : lambda x: None } 
         # CONNECTION PARAMETERS
         self.ee_conn = {'connection_type' : 'divergent',
             'mask' : {'circular': {'radius': .3}}, 
