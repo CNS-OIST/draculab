@@ -243,7 +243,7 @@ class ei_network():
 
     def add_connection_clone(self, orig_source, orig_target, new_source, new_target):
         """
-            Add a connection with the same structure as a previously added connections.
+            Add a connection with the same structure as previously added connections.
 
             Given previously added connections (using add_connection) from orig_source
             to orig_target, this method will add a connection from new_source to new_target
@@ -300,11 +300,16 @@ class ei_network():
               * Multapses will be allowed by default.
               * The connection dictionary will contain a new entry, called 'clone_weights',
                 which will by default be set to True. In this default case, the weights of
-                the cloned connection will be equal to those of the copied connection. When
-                'clone_weights' is False, the weights are generated anew from the contents
+                the cloned connection will be equal to those of the copied connection times
+                a scaling factor (see next point).
+                When 'clone_weights' is False, the weights are generated anew from the contents
                 of the dictionaries. In this last case, don't rely on the 'init_w' entry of
                 the syn_spec for the original connection, since this will be rewritten when
                 building the connection.
+              * Another new entry to the connection dictionary, called 'weight_scale' will
+                be used when 'clone_weights' is True. The weights of the cloned connections
+                will be equal to those of their original counterparts times the value of
+                'weight_scale', which is set to 1 by default.
               * The 'number_of_connections' entry, if present, will be deleted.
 
         """
@@ -341,6 +346,7 @@ class ei_network():
         setattr(self, syn_dict_name, {})
         exec('self.' + conn_dict_name + "['allow_multapses'] = True")
         exec('self.' + conn_dict_name + "['clone_weights'] = True")
+        exec('self.' + conn_dict_name + "['weight_scale'] = 1.")
 
         # Add an entry in cloned_connections
         self.cloned_connections.append( 
@@ -532,7 +538,7 @@ class ei_network():
                 for syn_idx in idx_list:
                     pre_id = self.net.syns[trg_id][syn_idx].preID
                     if new_conn_dict['clone_weights']:
-                        w = self.net.syns[trg_id][syn_idx].w
+                        w = self.net.syns[trg_id][syn_idx].w * new_conn_dict['weight_scale']
                         new_conn_dict['weights'] = {'linear':{'c':w, 'a':0.}}
                     elif not 'weights' in new_conn_dict:
                         raise AssertionError('Weights not properly specified in connection ' +
@@ -1543,10 +1549,12 @@ class ei_layer():
         if self.n['w_track'] > 0:
             self.w_track = self.net.create(self.n['w_track'], self.track_pars)
         # Create connections
-        topo.topo_connect(self.net, self.e, self.e, self.ee_conn, self.ee_syn)
-        topo.topo_connect(self.net, self.e, self.i, self.ei_conn, self.ei_syn)
-        topo.topo_connect(self.net, self.i, self.e, self.ie_conn, self.ie_syn)
-        topo.topo_connect(self.net, self.i, self.i, self.ii_conn, self.ii_syn)
+        if len(self.e) > 0:
+            topo.topo_connect(self.net, self.e, self.e, self.ee_conn, self.ee_syn)
+            topo.topo_connect(self.net, self.e, self.i, self.ei_conn, self.ei_syn)
+            topo.topo_connect(self.net, self.i, self.e, self.ie_conn, self.ie_syn)
+        if len(self.i) > 0:
+            topo.topo_connect(self.net, self.i, self.i, self.ii_conn, self.ii_syn)
         if self.n['x'] > 0: # if we have external inputs
             topo.topo_connect(self.net, self.x, self.i, self.xi_conn, self.xi_syn)
             topo.topo_connect(self.net, self.x, self.e, self.xe_conn, self.xe_syn)
