@@ -794,13 +794,18 @@ class network():
                         self.ts_buff_size - self.step_dels[uid][inp] - 1 + self.min_buff_size))
                         for inp in range(len(self.inp_src[uid]))]
                 self.acts_idx[uid] = (idx1, idx2)
-            else:  # for source units, also initialize acts
+            #else:
+            #    self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
+            #                                         t in self.ts[self.init_idx[uid]:] ])
+            #"""
+            else:  # for source units, also initialize their rows in acts
                 row = np.array([u.get_act(t) for t in self.ts[:] ])
                 # sometimes the source units have not been initialized, 
                 # and return 'None' types. Thus this check:
                 if not any([v is None for v in row]):
-                    if not (np.isnan(row)).any:
+                    if not (np.isnan(row)).any():
                         self.acts[uid,:] = row 
+            #"""
         # Reinitializing the unit buffers as views of act, and times as views of ts
         self.link_unit_buffers()
         # specify the integration function for all units
