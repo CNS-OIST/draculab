@@ -222,7 +222,7 @@ class plant():
         md = self.net.min_delay
         for delz, portz in zip(delays, ports):  # input delays
             if delz >= md: # ensuring delay not smaller than minimum delay
-                if delz % md < 1e-6: # delay a multiple of minimum delay
+                if (delz+1e-8) % md < 1e-6: # delay a multiple of minimum delay
                     self.inp_dels[portz].append(delz)
                 else:
                     raise ValueError('Delay of connection to plant is not multiple of min_delay')

@@ -322,7 +322,7 @@ class double_sigma_base(unit):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -370,15 +370,17 @@ class double_sigma_base(unit):
         else:
             n_branches = self.n_ports
             txt = ' '
+        self.needs_mp_inp_sum = True # use upd_flat_mp_inp_sum when flat
      
         # testing and initializing the branch parameters
         if n_branches != len(self.br_w):
             raise ValueError('Number of ports'+txt+'should equal the length of the branch_w parameter')
         elif min(self.br_w) <= 0:
             raise ValueError('Elements of branch_w should be positive')
-        elif sum(self.br_w) - 1. > 1e-4:
-            raise ValueError('Elements of branch_w should add to 1')
-        #
+        # Getting rid of this test...
+        #elif sum(self.br_w) - 1. > 1e-4:
+        #    raise ValueError('Elements of branch_w should add to 1')
+        
         if type(br_pars['slopes']) is list: 
             if len(br_pars['slopes']) == n_branches:
                 self.slopes = br_pars['slopes']    # slope of the local sigmoidal functions
@@ -420,7 +422,7 @@ class double_sigma_base(unit):
         #return ( self.f(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
         return ( cython_sig(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
 
-
+ 
 class double_sigma(double_sigma_base):
     """ 
     Sigmoidal unit with multiple dendritic branches modeled as sigmoidal units.
@@ -454,7 +456,7 @@ class double_sigma(double_sigma_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -492,6 +494,13 @@ class double_sigma(double_sigma_base):
         #    ret += self.br_w[i] * (self.f(self.threshs[i], self.slopes[i], np.dot(w[i],inp[i]))-self.phi)
         #return ret
 
+    def dt_fun(self, y, s):
+        """ Returns the derivative when state is y, at time substep s. """
+        inp_sum = sum( [ o * (self.f(th,sl,self.mp_inp_sum[p][s]) - self.phi)
+                     for o, th, sl, p in zip(self.br_w, self.threshs, self.slopes,
+                     range(self.n_ports)) ] )
+        return ( cython_sig(self.thresh, self.slope, inp_sum) - y ) * self.rtau
+
 
 class double_sigma_normal(double_sigma_base):
     """ A version of double_sigma units where the inputs are normalized.
@@ -527,7 +536,7 @@ class double_sigma_normal(double_sigma_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -609,7 +618,7 @@ class sigma_double_sigma(double_sigma_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     'branch_w' : The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list, so len(branch_w) = n_ports.
                     'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
@@ -641,14 +650,24 @@ class sigma_double_sigma(double_sigma_base):
         #
         # version 1. The big zip
         return np.dot(w[0], inp[0]) + sum(
-                    [ o*self.f(th,sl,np.dot(w,i)) for o,th,sl,w,i in 
+                    [ o*(self.f(th,sl,np.dot(w,i)) - self.phi) for o,th,sl,w,i in 
                       zip(self.br_w, self.threshs, self.slopes, w[1:], inp[1:]) ] )
         # version 2. The accumulator
         #ret = np.dot(w[0], inp[0])
         #for i in range(1,self.n_ports):
-        #    ret += self.br_w[i-1] * self.f(self.threshs[i-1], self.slopes[i-1], np.dot(w[i],inp[i]))
+        #    ret += self.br_w[i-1] * (self.f(self.threshs[i-1], self.slopes[i-1], 
+        #                             np.dot(w[i],inp[i])) - self.phi)
         #return ret
     
+    def dt_fun(self, y, s):
+        """ Returns the derivative when state is y, at time substep s. """
+        inp_sum = self.mp_inp_sum[0][s] # input sum at port 0
+        inp_sum += sum( [ o * (self.f(th,sl,self.mp_inp_sum[p][s]) - self.phi)
+                     for o, th, sl, p in zip(self.br_w, self.threshs, self.slopes,
+                     range(1,self.n_ports)) ] )
+        return ( cython_sig(self.thresh, self.slope, inp_sum) - y ) * self.rtau
+
+
 
 class sigma_double_sigma_normal(double_sigma_base):
     """ sigma_double_sigma unit with  normalized branch inputs.
@@ -686,7 +705,7 @@ class sigma_double_sigma_normal(double_sigma_base):
                 'thresh' : Threshold of the global sigmoidal function. 
                 'branch_params' : A dictionary with the following 3 entries:
                     branch_w: The "weights" for all branches. This is a list whose length is the number
-                            of branches. Each entry is a positive number, and all entries must add to 1.
+                            of branches. Each entry is a positive number.
                             The input port corresponding to a branch is the index of its corresponding 
                             weight in this list plus one. For example, if branch_w=[.2, .8], then
                             input port 0 is at the soma, input port 1 has weight .2, and port 2 weight .8 .
@@ -733,6 +752,1064 @@ class delta_linear(unit):
     Port 1 is for the desired value signal, which is used to produce the error.
     Port 2 is for the signal that indicates when to update the synaptic weights.
 
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                n_ports: number of inputs ports. Needs a valuer > 1
+                tau_fast: Time constant for the fast low-pass filter.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                slope: Slope of the sigmoidal function.
+                thresh: Threshold of the sigmoidal function.
+                tau: Time constant of the update dynamics.
+                tau_scale: sets the speed of change for the scaling factor
+                tau_relax: controls how fast the scaling factors return to 1 when rdc is off
+                c: Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
+                rdc_port: port ID of inputs used for rate distribution control.
+                sharpen_port: port ID where the inputs controlling rdc arrive.
+                branch_params: A dictionary with the following 3 entries:
+                    branch_w: The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    slopes: Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    threshs: Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                phi: This value is substracted from the branches' contribution. In this manner branches with
+                     zero input will contribute (0.5 - phi) times the branch weight.
+                OPTIONAL PARAMETERS
+                'sort_rdc' : A boolean value specifying whether to use the 'sorting' type of
+                             rdc control, which uses the exp_scale_sort_shrp requirement.
+                             If sort_rdc is absent or false, the default is non-sorting rdc.
+
+        """
+        self.extra_ports = 1 # The sharpen port is an extra port for double_sigma_base
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        ssrdc_sharp_base.__init__(self, ID, params, network)
+        self.nm_prts = list(range(self.n_ports)) # port list without the rdc and sharpen ports
+        del self.nm_prts[max(self.rdc_port,self.sharpen_port)]
+        del self.nm_prts[min(self.rdc_port,self.sharpen_port)]
+        #self.nm_prts = np.array(self.nm_prts, dtype='uint32')
+        
+    def get_mp_input_sum(self, time):
+        """ The input function of the ds_ssrdc_sharp unit. """
+        ws = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        rdcp = self.rdc_port # to make lines shorter
+        acc_sum = self.br_w[rdcp] * ( self.f( self.threshs[rdcp], self.slopes[rdcp], 
+                                            np.sum(self.scale_facs_rdc * ws[rdcp] * inps[rdcp]) -self.phi ) )
+        acc_sum += sum( [ self.br_w[p] * ( self.f( self.threshs[p], self.slopes[p], np.dot(ws[p],inps[p]) )
+                                           - self.phi ) for p in self.nm_prts ] )
+        return acc_sum 
+
+
+
+class multiport_trdc_base(unit):
+    """ 
+    The parent class for multiport units with threshold-based rate distribution control. 
+    
+    Based on the distribution of inputs at port 'rdc_port', this unit will use threshold-based rate
+    distribution control. If the unit is part of the population that projects to port 'rdc_port', this 
+    will contribute to produce an exponential distribution of firing rates.
+    
+    """
+    # The mechanism for firing-rate distribution control is the same as the one used in the
+    # exp_dist_sig_thr units. The only difference is that the 'balance' synaptic requirement has
+    # been replaced by 'balance_mp', which uses only the inputs at port 'rdc_port'.
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. Needs a valuer > 1
+                'tau_fast' : Time constant for the fast low-pass filter.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+        Raises:
+            ValueError
+
+        """
+        if hasattr(self, 'unit_initialized') and self.unit_initialized:
+            pass
+        else:    # if the parent constructor hasn't been called
+            unit.__init__(self, ID, params, network)
+
+        if self.n_ports < 2:
+            raise ValueError('Multiple ports required for classes derived from multiport_trdc_base')
+        else:
+            self.multiport = True
+        self.rdc_port = params['rdc_port'] # port for rate distribution control
+        self.tau_thr = params['tau_thr']  # the reciprocal of the threshold sliding time constant
+        self.c = params['c']  # The coefficient in the exponential distribution
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thresh, syn_reqs.lpf_fast])
+
+
+
+class double_sigma_trdc(double_sigma_base, multiport_trdc_base):
+    """ 
+    double-sigma unit with threshold-based rate distribution control.
+
+    The double-sigma model is inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    Each input belongs to a particular "branch". All inputs from the same branch add 
+    linearly, and the sum is fed into a sigmoidal function that produces the output of the branch. 
+    The output of all the branches is added linearly to produce the total input to the unit, 
+    which is fed into a sigmoidal function to produce the output of the unit.
+
+    Based on the distribution of inputs at port 'rdc_port', this unit will use threshold-based rate
+    distribution control. If the unit is part of the population that projects to port 'rdc_port', this 
+    will contribute to produce an exponential distribution of firing rates.
+
+    The equations of the doulble-sigma unit can be seen in the "double_sigma_unit" tiddler of 
+    the programming notes wiki.
+    """
+    # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+    # mutiport_trdc_base, however, only implements a constructor. This constructor will not
+    # call the unit constructor if unit_initialized=True .
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. 
+                'tau_fast' : Time constant for the fast low-pass filter.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant).
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+        Raises:
+            ValueError, NameError
+
+        """
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        multiport_trdc_base.__init__(self, ID, params, network)
+
+            
+    def get_mp_input_sum(self, time):
+        """ The input function of the double sigma unit. """
+        # The two versions below require almost identical times
+        #
+        # version 1. The big zip
+        return sum( [ o*(self.f(th,sl,np.dot(w,i)) - self.phi) for o,th,sl,w,i in 
+                      zip(self.br_w, self.threshs, self.slopes, 
+                          self.get_mp_weights(time), self.get_mp_inputs(time))  ] )
+        # version 2. The accumulator
+        #ret = 0.
+        #w = self.get_mp_weights(time)
+        #inp = self.get_mp_inputs(time)
+        #for i in range(self.n_ports):
+        #    ret += self.br_w[i] * (self.f(self.threshs[i], self.slopes[i], np.dot(w[i],inp[i]))-self.phi)
+        #return ret
+    
+
+
+class sigma_double_sigma_trdc(double_sigma_base, multiport_trdc_base):
+    """ 
+    sigma_double_sigma unit with threshold-based rate distribution control.
+
+    This model is a combination of the sigmoidal and sigma_double_sigma models, in recognition 
+    that a neuron usually receives inputs directly to the soma.
+
+    There are two types of inputs. Somatic inputs arrive at port 0 (the default port), and are
+    just like inputs to the sigmoidal units. Dendritic inputs arrive at ports with with ID 
+    larger than 0, and are just like inputs to double_sigma units.
+
+    Each dendritic input belongs to a particular "branch". All inputs from the same branch add 
+    linearly, and the sum is fed into a sigmoidal function that produces the output of the branch. 
+    The output of all the branches is added linearly to produce the total input to the unit, 
+    which is fed into a sigmoidal function to produce the output of the unit.
+
+    Based on the distribution of inputs at port 'rdc_port', this unit will use threshold-based rate
+    distribution control. If the unit is part of the population that projects to port 'rdc_port', this 
+    will contribute to produce an exponential distribution of firing rates.
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+    """
+    # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+    # mutiport_trdc_base, however, only implements a constructor. This constructor will not
+    # call the unit constructor if unit_initialized=True .
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. 
+                'tau_fast' : Time constant for the fast low-pass filter.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+
+        Raises:
+            ValueError, NameError
+
+        """
+        self.extra_ports = 1 # Used by the parent class' creator
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        multiport_trdc_base.__init__(self, ID, params, network)
+
+            
+    def get_mp_input_sum(self, time):
+        """ Identical to the input function of the sigma_double_sigma unit. """
+        w = self.get_mp_weights(time)
+        inp = self.get_mp_inputs(time)
+        # version 1 is slightly faster
+        #
+        # version 1. The big zip
+        return np.dot(w[0], inp[0]) + sum(
+                    [ o*(self.f(th,sl,np.dot(w,i))-self.phi) for o,th,sl,w,i in 
+                      zip(self.br_w, self.threshs, self.slopes, w[1:], inp[1:]) ] )
+        # version 2. The accumulator
+        #ret = np.dot(w[0], inp[0])
+        #for i in range(1,self.n_ports):
+        #    ret += self.br_w[i-1] * self.f(self.threshs[i-1], self.slopes[i-1], np.dot(w[i],inp[i]))
+        #return ret
+    
+
+class double_sigma_normal_trdc(double_sigma_base, multiport_trdc_base):
+    """ double_sigma units with normalized inputs, and threshold-based rate distro control.
+
+    Double sigma units are inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    Each input belongs to a particular "branch". All inputs from the same branch
+    add linearly, are normalized, and the normalized sum is fed into a sigmoidal function 
+    that produces the output of the branch. The output of all the branches is added linearly 
+    to produce the total input to the unit, which is fed into a sigmoidal function to produce 
+    the output of the unit.
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+
+    Based on the distribution of inputs at port 'rdc_port', this unit will use threshold-based rate
+    distribution control. If the unit is part of the population that projects to port 'rdc_port', this 
+    will contribute to produce an exponential distribution of firing rates.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports, tau_fast, and tau_slow are  no longer optional.
+                'n_ports' : number of inputs ports. 
+                'tau_slow' : time constant for the slow low-pass filter.
+                'tau_fast' : Time constant for the fast low-pass filter.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+        Raises:
+            ValueError, NameError
+        """
+        # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+        # mutiport_trdc_base, however, only implements a constructor. This constructor will not
+        # call the unit constructor if unit_initialized=True .
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        multiport_trdc_base.__init__(self, ID, params, network)
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum]) 
+     
+    
+    def get_mp_input_sum(self, time):
+        """ The input function of the normalized double sigma unit. """
+        # Removing zero or near-zero values from lpf_slow_mp_inp_sum
+        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
+        #
+        # version 1. The big zip
+        return sum( [ o*( self.f(th, sl, (np.dot(w,i)-y) / y) - self.phi ) for o,th,sl,y,w,i in 
+                     zip(self.br_w, self.threshs, self.slopes, lpf_inp_sum,
+                         self.get_mp_weights(time), self.get_mp_inputs(time))  ] )
+         
+
+class double_sigma_sharp(double_sigma_base, trdc_sharp_base):
+    """ 
+    double-sigma unit with threshold-based rate distribution control controled by a 'sharpen' port.
+
+    The double-sigma model is inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    Each input belongs to a particular "branch". All inputs from the same branch add 
+    linearly, and the sum is fed into a sigmoidal function that produces the output of the branch. 
+    The output of all the branches is added linearly to produce the total input to the unit, 
+    which is fed into a sigmoidal function to produce the output of the unit.
+
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use threshold-based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
+    to a default value called "thr_fix", with a rate set by "tau_fix".
+
+    The inputs at the sharpen port will not contribute to the activation of the unit. 
+
+    The equations of the doulble-sigma unit can be seen in the "double_sigma_unit" tiddler of 
+    the programming notes wiki.
+    """
+    # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+    # trdc_sharp_base, however, only implements a constructor. This constructor will not
+    # call the unit constructor if unit_initialized=True .
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. Should be larger than 1.
+                'tau_fast' : Time constant for the fast low-pass filter.
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
+                'sharpen_port' : port ID where the inputs controlling trdc arrive.
+
+        """
+        self.extra_ports = 1 # Used by the double_sigma_base creator
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        trdc_sharp_base.__init__(self, ID, params, network)
+
+            
+    def get_mp_input_sum(self, time):
+        """ The input function of the double sigma sharp unit. """
+        # First we should remove the inputs at the 'sharpen' port
+        weights = self.get_mp_weights(time)
+        inputs = self.get_mp_inputs(time)
+        del weights[self.sharpen_port]
+        del inputs[self.sharpen_port]
+
+        return sum( [ o*(self.f(th,sl,np.dot(w,i)) - self.phi) for o,th,sl,w,i in 
+                      zip(self.br_w, self.threshs, self.slopes, weights, inputs) ] )
+ 
+
+
+class sigma_double_sigma_sharp(double_sigma_base, trdc_sharp_base):
+    """ 
+    sigma_double_sigma unit with switchable threshold-based rate distribution control.
+
+    There are two types of inputs. Somatic inputs arrive at port 0 (the default port), and are
+    just like inputs to the sigmoidal units. Dendritic inputs arrive at ports with with ID 
+    larger than 0, and are just like inputs to double_sigma units.
+
+    Each dendritic input belongs to a particular "branch". All inputs from the same branch add 
+    linearly, and the sum is fed into a sigmoidal function that produces the output of the branch. 
+    The output of all the branches is added linearly to produce the total input to the unit, 
+    which is fed into a sigmoidal function to produce the output of the unit.
+
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use threshold-based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
+    to a default value called "thr_fix", with a rate set by "tau_fix".
+   
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+    """
+    # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+    # trdc_sharp_base, however, only implements a constructor. This constructor will not
+    # call the unit constructor if unit_initialized=True .
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                'n_ports' : number of inputs ports. 
+                'tau_fast' : time constant for the fast low-pass filter
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
+                'sharpen_port' : port ID where the inputs controlling trdc arrive.
+
+
+        """
+        self.extra_ports = 2 # One for the soma, one for 'sharpen_port'
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        trdc_sharp_base.__init__(self, ID, params, network)
+
+            
+    def get_mp_input_sum(self, time):
+        """ Identical to the input function of the sigma_double_sigma unit. """
+        w = self.get_mp_weights(time)
+        inp = self.get_mp_inputs(time)
+        del w[self.sharpen_port]
+        del inp[self.sharpen_port]
+        return np.dot(w[0], inp[0]) + sum(
+                    [ o*(self.f(th,sl,np.dot(w,i))-self.phi) for o,th,sl,w,i in 
+                      zip(self.br_w, self.threshs, self.slopes, w[1:], inp[1:]) ] )
+ 
+
+class double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
+    """ double_sigma units with normalized inputs and switchable threshold-based rate distro control.
+
+    Double sigma units are inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    Each input belongs to a particular "branch". All inputs from the same branch
+    add linearly, are normalized, and the normalized sum is fed into a sigmoidal function 
+    that produces the output of the branch. The output of all the branches is added linearly 
+    to produce the total input to the unit, which is fed into a sigmoidal function to produce 
+    the output of the unit.
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use threshold-based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
+    to a default value called "thr_fix", with a rate set by "tau_fix".
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports, tau_fast, and tau_slow are  no longer optional.
+                'n_ports' : number of inputs ports. 
+                'tau_slow' : time constant for the slow low-pass filter.
+                'tau_fast' : time constant for the fast low-pass filter
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    'branch_w' : The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list, so len(branch_w) = n_ports.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
+                'sharpen_port' : port ID where the inputs controlling trdc arrive.
+
+
+        """
+        # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+        # trdc_sharp_base, however, only implements a constructor. This constructor will not
+        # call the unit constructor if unit_initialized=True .
+        self.extra_ports = 1 # The sharpen port        
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        trdc_sharp_base.__init__(self, ID, params, network)
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum]) 
+     
+    
+    def get_mp_input_sum(self, time):
+        """ The input function of the normalized double sigma unit. """
+        # Removing zero or near-zero values from lpf_slow_mp_inp_sum
+        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
+        w = self.get_mp_weights(time)
+        inp = self.get_mp_inputs(time)
+        del w[self.sharpen_port]
+        del inp[self.sharpen_port]
+         
+        return sum( [ o*( self.f(th, sl, (np.dot(w,i)-y) / y) - self.phi ) for o,th,sl,y,w,i in 
+                     zip(self.br_w, self.threshs, self.slopes, lpf_inp_sum, w, inp)  ] )
+ 
+
+
+class sigma_double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
+    """ sigma_double_sigma units with  normalized branch inputs, and switchable threshold-based rate distro control.
+
+    Double sigma units are inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+
+    There are two types of inputs. Somatic inputs arrive at port 0 (the default port), and are
+    just like inputs to the sigmoidal units. Dendritic inputs arrive at ports with with ID 
+    larger than 0, and are just like inputs to double_sigma units.
+
+    Each dendritic input belongs to a particular "branch". All inputs from the same branch
+    add linearly, are normalized, and the normalized sum is fed into a sigmoidal function 
+    that produces the output of the branch. The output of all the branches is added linearly 
+    to produce the total input to the unit, which is fed into a sigmoidal function to produce 
+    the output of the unit. 
+    
+    ~~~~~~~~~~ In this version the somatic inputs are not normalized ~~~~~~~~~~
+
+    The equations can be seen in the "double_sigma_unit" tiddler of the programming notes wiki.
+
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use threshold-based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
+    to a default value called "thr_fix", with a rate set by "tau_fix".
+
+    The preferred way to assign the ports is: 0 -> soma; 1,...,n -> branches; n+1 -> sharpen. 
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports, tau_fast and tau_slow are  no longer optional.
+                'n_ports' : number of inputs ports. 
+                'tau_slow' : time constant for the slow low-pass filter.
+                'tau_fast' : time constant for the fast low-pass filter
+
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the global sigmoidal function.
+                'thresh' : Threshold of the global sigmoidal function. 
+                'branch_params' : A dictionary with the following 3 entries:
+                    branch_w: The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list plus one. For example, if branch_w=[.2, .8], then
+                            input port 0 is at the soma, input port 1 has weight .2, port 2 weight .8, and
+                            port 3 is the sharpening port.
+                    'slopes' : Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    'threshs' : Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                        
+                'tau' : Time constant of the update dynamics.
+                'phi' : This value is substracted from the branches' contribution.  Since all branch
+                        weights are positive, this allows to have negative contributions.
+                'rdc_port' : port ID of inputs used for rate distribution control.
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+                'c' : Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                'thr_fix' : default value of the threshold (when no distribution control is applied)
+                'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
+                'sharpen_port' : port ID where the inputs controlling trdc arrive.
+
+
+        """
+        # Inheritance for this unit has a "diamond" scheme, since both parents inherit from unit;
+        # trdc_sharp_base, however, only implements a constructor. This constructor will not
+        # call the unit constructor if unit_initialized=True .
+        self.extra_ports = 2 # The soma and the sharpen port        
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        trdc_sharp_base.__init__(self, ID, params, network)
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum]) 
+     
+    
+    def get_mp_input_sum(self, time):
+        """ The input function of the normalized double sigma unit. """
+        # Removing zero or near-zero values from lpf_slow_mp_inp_sum
+        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
+        w = self.get_mp_weights(time)
+        inp = self.get_mp_inputs(time)
+        del w[self.sharpen_port]
+        del inp[self.sharpen_port]
+         
+        return np.dot(w[0], inp[0]) + sum( [ o*( self.f(th, sl, (np.dot(w,i)-y) / y) - self.phi ) 
+               for o,th,sl,y,w,i in zip(self.br_w, self.threshs, self.slopes, lpf_inp_sum[1:], w[1:], inp[1:]) ] )
+ 
+
+class sds_n_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base): 
+    """
+    Sigma double-sigma unit normalized branch inputs and switchable synaptic-scaling rate distribution control.
+
+    Double sigma units are inspired by:
+    Poirazi et al. 2003 "Pyramidal Neuron as Two-Layer Neural Network" Neuron 37,6:989-999
+    There are two types of inputs. Somatic inputs arrive at port 0 (the default port), and are
+    just like inputs to the sigmoidal units. Dendritic inputs arrive at ports with with ID 
+    larger than 0, and are just like inputs to double_sigma units.
+    Each dendritic input belongs to a particular "branch". All inputs from the same branch
+    add linearly, are normalized, and the normalized sum is fed into a sigmoidal function 
+    that produces the output of the branch. The output of all the branches is added linearly 
+    to produce the total input to the unit, which is fed into a sigmoidal function to produce 
+    the output of the unit.
+    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
+    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
+    will use synaptic-scaling based rate distribution control to produce an exponential distribution of firing 
+    rates. When the inputs to the sharpen port are smaller than 0.5 the scale factors will decay exponentially
+    to the default value 1, with a rate set by the "tau_relax" parameter.
+    In this version the inputs at the rdc_port are not normalized, since this interacts with the scaling.
+    Also, notice that when the rdc_port is not 0 (e.g. at the soma), the ability to maintain the
+    rate distribution will be compromised, although scaling should still bias things in the right direction.
+    ~~~~ Because of this, these units make sense when the rdc port is 0 (e.g. the soma) ~~~~
+    Nevertheless, this is not enforced.
+    The inputs at the sharpen port will not contribute to the activation of the unit. 
+    The method to use for rate distribution control can be specified through the sort_rdc
+    parameter given to the constructor.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are no longer optional.
+                n_ports: number of inputs ports. Needs a valuer > 1
+                tau_fast: Time constant for the fast low-pass filter.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                slope: Slope of the sigmoidal function.
+                thresh: Threshold of the sigmoidal function.
+                tau: Time constant of the update dynamics.
+                tau_scale: sets the speed of change for the scaling factor
+                tau_relax: controls how fast the scaling factors return to 1 when rdc is off
+                c: Changes the homogeneity of the firing rate distribution.
+                    Values very close to 0 make all firing rates equally probable, whereas
+                    larger values make small firing rates more probable. 
+                    Shouldn't be set to zero (causes zero division in the cdf function).
+                Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
+                rdc_port: port ID of inputs used for rate distribution control.
+                sharpen_port: port ID where the inputs controlling rdc arrive.
+                branch_params: A dictionary with the following 3 entries:
+                    branch_w: The "weights" for all branches. This is a list whose length is the number
+                            of branches. Each entry is a positive number.
+                            The input port corresponding to a branch is the index of its corresponding 
+                            weight in this list plus one. For example, if branch_w=[.2, .8], then
+                            input port 0 is at the soma, input port 1 has weight .2, port 2 weight .8, and
+                            port 3 is the sharpening port.
+                    slopes: Slopes of the branch sigmoidal functions. It can either be a float value
+                            (resulting in all values being the same), it can be a list of length n_ports
+                            specifying the slope for each branch, or it can be a dictionary specifying a
+                            distribution. Currently only the uniform distribution is supported:
+                            {..., 'slopes':{'distribution':'uniform', 'low':0.5, 'high':1.5}, ...}
+                    threshs: Thresholds of the branch sigmoidal functions. It can either be a float
+                            value (resulting in all values being the same), it can be a list of length 
+                            n_ports specifying the threshold for each branch, or it can be a dictionary 
+                            specifying a distribution. Currently only the uniform distribution is supported:
+                            {..., 'threshs':{'distribution':'uniform', 'low':-0.1, 'high':0.5}, ...}
+                phi: This value is substracted from the branches' contribution. In this manner, a branch
+                        with no inputs may not contribute to the unit's activation.
+                OPTIONAL PARAMETERS
+                'sort_rdc' : A boolean value specifying whether to use the 'sorting' type of
+                             rdc control, which uses the exp_scale_sort_mp requirement.
+                             If sort_rdc is absent or false, the default is non-sorting rdc.
+        """
+        self.extra_ports = 2 # The soma and the sharpen port 
+        double_sigma_base.__init__(self, ID, params, network)
+        self.unit_initialized = True  # to avoid calling the unit constructor twice
+        ssrdc_sharp_base.__init__(self, ID, params, network)
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum])
+
+        self.nm_prts = list(range(self.n_ports)) # port list without the 0, rdc, and sharpen ports
+        if self.rdc_port != 0:
+            del self.nm_prts[max(self.rdc_port,self.sharpen_port)]
+            del self.nm_prts[min(self.rdc_port,self.sharpen_port)]
+            self.nm_prts = self.nm_prts[1:] # removes port 0
+        else:
+            del self.nm_prts[self.sharpen_port]
+            del self.nm_prts[0]
+        #self.nm_prts = np.array(self.nm_prts, dtype='uint32')
+        
+    def get_mp_input_sum(self, time):
+        """ The input function of the sds_ssrdc_sharp unit. """
+        ws = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        rdcp = self.rdc_port # to make lines shorter
+        # Removing zero or near-zero values from lpf_slow_mp_inp_sum
+        # If I ever use this unit seriously, this should be done at upd_lpf_slow_mp_inp_sum
+        lpf_i = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
+        acc_sum = 0
+        # Adding input from soma
+        if rdcp != 0:
+            acc_sum += (np.dot(ws[0], inps[0]) - lpf_i[0]) / lpf_i[0]
+        # Adding input from rdc port (not normalized)
+        acc_sum += self.br_w[rdcp] * ( self.f( self.threshs[rdcp], self.slopes[rdcp], 
+                   np.sum(self.scale_facs_rdc * ws[rdcp] * inps[rdcp] ) - self.phi ) )
+        # Adding inputs from the other ports
+        acc_sum += sum( [ self.br_w[p-1] * ( self.f( self.threshs[p-1], self.slopes[p-1], 
+                          (np.dot(ws[p],inps[p])-lpf_i[p])/lpf_i[p] - self.phi ) ) for p in self.nm_prts ] )
+        return acc_sum 
+
+
+class sliding_threshold_harmonic_rate_sigmoidal(unit):
+    """ Sigmoidal unit that slides its threshold in order to produce a harmonic pattern of firing rates.
+
+    What this means is that the threshold will adjust by following a gradient that comes from
+    the discrete Laplacian operator applied to the directed graph where the nodes are the units, and
+    the edges come from their connections.
+
+    In practice this means that the firing rate of the unit will be adjusted so it approaches the mean 
+    firing rate of its inputs. 
+
+    It is expected that one input port will have the inputs to be used for the rate harmonization,
+    usually the internal connections, and another port will have the external inputs, which are
+    ignored for rate harmonization. Thus, the number of ports should be at least 2, and the port
+    whose inputs are used to harmonize the rate are in the hr_port parameter.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are  no longer optional.
+                'n_ports' : number of inputs ports. At least two ports are required.
+                'tau_fast' : time constant for the fast low-pass filter
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS 
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Initial threshold of the sigmoidal function
+                'tau' : Time constant of the update dynamics.
+                'hr_port' : port whose inputs will be used to harmonize the rate
+                'tau_thr' : sets the speed of change for the threshold (reciprocal of time constant). 
+        Raises:
+            ValueError
+        """
+        if params['n_ports'] < 2:
+            raise ValueError('At least two ports whould be used with the st_hr_sig units')
+        else:
+            self.multiport = True
+        unit.__init__(self, ID, params, network)  # the parent's constructor
+        self.hr_port = params['hr_port'] # port for rate distribution control
+        self.tau_thr = params['tau_thr']  # the reciprocal of the threshold sliding time constant
+        self.slope = params['slope']    # slope of the sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.slide_thr_hr, syn_reqs.lpf_fast])
+
+    def f(self, arg):
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
+        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        return cython_sig(self.thresh, self.slope, arg)
+    
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        #return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+        return ( cython_sig(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+
+    def get_mp_input_sum(self, time):
+        """ The input function of st_hr_sig unit. """
+        weights = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        return sum([np.dot(weights[prt], inps[prt]) for prt in range(self.n_ports)])
+     
+    def upd_slide_thr_hr(self, time):
+        """ Updates the threshold of units with rate harmonization.
+        
+            This is the update method of the slide_thr_hr requirement. 
+        """
+        inputs = self.mp_inputs[self.hr_port]
+        mean_inp = np.mean(inputs) 
+        r = self.get_lpf_fast(0)
+        self.thresh -= self.tau_thr * ( mean_inp - r )
+        self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
+
+
+
+class synaptic_scaling_harmonic_rate_sigmoidal(unit): 
+    """
+    The synaptic weights are scaled to produce a harmonic pattern of firing rates.
+    
+    The weights of all excitatory inputs at the 'hr_port' port will adjust by following a gradient 
+    that comes from the discrete Laplacian operator applied to the directed graph where the nodes are 
+    the units, and the edges come from their connections.
+
+    In practice this means that ther firing rate of the unit will be adjusted so it approaches the mean 
+    firing rate of its inputs. 
+
+    It is expected that one input port will have the inputs to be used for the rate harmonization,
+    usually the internal connections, and another port will have the external inputs, which are
+    ignored for rate harmonization. Thus, the number of ports should be at least 2, and the port
+    whose inputs are used to harmonize the rate are in the hr_port parameter.
+ 
+    Whether an input is excitatory or inhibitory is decided by the sign of its initial value.
+    Synaptic weights initialized to zero will be considered excitatory.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            n_ports and tau_fast are  no longer optional.
+                'n_ports' : number of inputs ports. At least two ports are required.
+                'tau_fast' : time constant for the fast low-pass filter
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS (use of parameters is in flux. Definitions may be incorrect)
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function.
+                'tau' : Time constant of the update dynamics.
+                'tau_scale' : sets the speed of change for the scaling factor
+                'Kp' : Gain factor for the scaling of weights (makes changes bigger/smaller).
+                'hr_port' : port whose inputs will be used to harmonize the rate
+
+        Raises:
+            ValueError
+
+        The actual values used for scaling are calculated in upd_syn_scale_hr (below), 
+        which updates the array self.scale_facs .
+        """
+        if params['n_ports'] < 2:
+            raise ValueError('At least two ports whould be used with the ss_hr_sig units')
+        else:
+            self.multiport = True
+        unit.__init__(self, ID, params, network)
+        self.multiport = True  # This causes the port_idx list to be created in init_pre_syn_update
+        self.slope = params['slope']    # slope of the sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.tau_scale = params['tau_scale']  # the scaling time constant
+        self.Kp = params['Kp']  # gain for synaptic scaling
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.hr_port = params['hr_port'] # port for rate distribution control
+        
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.syn_scale_hr, syn_reqs.lpf_fast])
+        
+    def f(self, arg):
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
+        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        return cython_sig(self.thresh, self.slope, arg)
+    
+    def derivatives(self, y, t):
+        """ This function returns the derivatives of the state variables at a given point in time. """
+        # there is only one state variable (the activity)
+        #return ( self.f(self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+        return ( cython_sig(self.thresh, self.slope, self.get_mp_input_sum(t)) - y[0] ) * self.rtau
+
+    def get_mp_input_sum(self, time):
+        """ The input function of the ss_hr_sig unit. """
+        # TODO: calculate with the approach of sig_ssrdc_sharp
+        weights = self.get_mp_weights(time)
+        inps = self.get_mp_inputs(time)
+        acc_sum = 0.
+        for port in range(self.n_ports):
+            if port == self.hr_port:
+                acc_sum += sum( [sc * w * i for sc, w, i in zip(self.scale_facs_hr, weights[port], inps[port]) ] ) 
+            else:
+                acc_sum += np.dot(weights[port], inps[port]) 
+        return acc_sum 
+
+    def upd_syn_scale_hr(self, time):
+        """ Update the synaptic scale for units with 'rate harmonization'. 
+            
+            The scaling factors in self.scale_facs_hr correspond to the excitatory synapses
+            at the port hr_port. 
+
+            exc_idx_hr, and scale_facs_hr are initialized in add_syn_scale_hr, in
+            requirements.py .
+        """
+        # Other than the 'error', it's all as in upd_exp_scale_mp
+        inputs = self.mp_inputs[self.hr_port]
+        mean_inp = np.mean(inputs) 
+        r = self.get_lpf_fast(0)
+        error =  mean_inp - r
+        hr_inputs = self.mp_inputs[self.hr_port]
+        hr_weights = self.get_mp_weights(time)[self.hr_port]
+        u = np.dot(hr_inputs[self.exc_idx_hr], hr_weights[self.exc_idx_hr])
+        I = u - self.get_mp_input_sum(time) 
+        mu_exc = np.maximum( np.sum( hr_inputs[self.exc_idx_hr] ), 0.001 )
+        ss_scale = (u - I + self.Kp * error) / mu_exc
+        a = ss_scale / np.maximum(hr_weights[self.exc_idx_hr],.001)
+        x0 = self.scale_facs_hr[self.exc_idx_hr]
+        t = self.net.min_delay
+        self.scale_facs_hr[self.exc_idx_hr] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
+
+
+class delta_linear(unit):
+    """ A linear unit that modifies its weights using a continuous version of the delta rule.
+
+    This unit scales its input vector so it has a unit L2 norm. Moreover, there is an implicit bias
+    input that is always 1, and whose weight starts at 0 and changes with rate 'bias_lrate'.
+
+    Units in this class have 3 input ports. 
+    Port 0 is for the plastic synapses, which are of the delta_synapse class.
+    Port 1 is for the desired value signal, which is used to produce the error.
+    Port 2 is for the signal that indicates when to update the synaptic weights.
+
+    The weight of the bias input is updated by the unit, whereas the weights of all inputs
+    at port 0 are updated by their respective synapses, which must be of the 'delta' type.
+    These synapses update their weight using: w' = alpha * error * pre, where alpha controls
+    the learning rate, error is the scaled input sum at port 0 (the desired output) minus the 
+    (fast low-pass filtered) postsynaptic activity (the output), and pre is the
+    presynaptic activity.
+
+>>>>>>> master
     The delta_linear units have a variable named 'learning', which decays to zero exponentially
     with a time constant given as a paramter. If 'e' stands for learning, e' = -tau_e * e .
 
@@ -740,13 +1817,13 @@ class delta_linear(unit):
         * The signal at port 2 is ignored. 
         * The error transmitted to the synapses is the the desired output (e.g. the signal at
           port 1) minus the current activity. 
-        * Eligibility decays to 0 exponentially.
+        * e decays to 0 exponentially.
     When learning <= 0.5:
         * The error is 0 (which cancels plasticity at the synapses).
         * If the scaled sum of inputs at port 2 is smaller than 0.5, learning decays exponentially, 
           but if the input is larger than 0.5 then learning is set to the value 1.
 
-    See unit.upd_error for details.
+    The error is a synaptic requirement updated by the method upd_error below.
     After being set to 1, learning will take T = log(2)/tau_e time units to decay back to 0.5.
     During this time any non-zero error signal will cause plasticity at the synapses.
     """
@@ -775,21 +1852,24 @@ class delta_linear(unit):
         self.tau_e = params['tau_e'] # time constant for the decay of the learning
         self.bias_lrate = params['bias_lrate'] # learning rate of the bias
         self.bias = 0. # initial value of the bias input (updated in upd_error)
+        self.needs_mp_inp_sum = True # if flat, use upd_flat_mp_inp_sum
 
         self.syn_needs.update([syn_reqs.lpf_fast, syn_reqs.error, syn_reqs.mp_inputs, syn_reqs.inp_l2])
         
     def get_mp_input_sum(self,time):
-        """ The input function of the delta_linear unit. """
-        
+        """ The input sum function of the delta_linear unit. """
         return  sum( [syn.w * act(time - dely) for syn, act, dely in zip(
                      [self.net.syns[self.ID][i] for i in self.port_idx[0]],
                      [self.net.act[self.ID][i] for i in self.port_idx[0]],
                      [self.net.delays[self.ID][i] for i in self.port_idx[0]])] ) / self.inp_l2
-        #return np.dot(self.get_mp_inputs(time)[0], self.get_mp_weights(time)[0]) / self.inp_l2
         
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
         return ( self.gain * self.get_mp_input_sum(t) + self.bias  - y[0] ) / self.tau
+
+    def dt_fun(self, y, s):
+        """ Returns the derivative when state is y, at time substep s. """
+        return ( self.gain * self.mp_inp_sum[0][s] / self.inp_l2 + self.bias - y ) / self.tau
 
     def upd_error(self, time):
         """ update the error used by delta units."""
@@ -805,7 +1885,7 @@ class delta_linear(unit):
             #             [self.net.act[self.ID][i] for i in self.port_idx[1]],
             #             [self.net.delays[self.ID][i] for i in self.port_idx[1]])] ) 
             self.error = port1 - self.get_lpf_fast(0)
-            self.bias += self.bias_lrate * self.error
+            self.bias += self.net.min_delay * self.bias_lrate * self.error
             # to update 'learning' we can use the known solution to e' = -tau*e, namely
             # e(t) = e(t0) * exp((t-t0)/tau), instead of the forward Euler rule
             self.learning *= np.exp((self.last_time-time)/self.tau_e)

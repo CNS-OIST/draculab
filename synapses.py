@@ -215,7 +215,7 @@ class covariance_synapse(synapse):
         # For the postsynaptic activity, both fast and slow averages are used
         self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.lpf_slow])
         assert self.type is synapse_types.cov, ['Synapse from ' + str(self.preID) + ' to ' +
-                                                          str(self.postID) + ' instantiated with the wrong type']
+                                                str(self.postID)+' instantiated with the wrong type']
     
     def update(self, time):
         """ Update the weight according to the covariance learning rule."""
@@ -224,7 +224,6 @@ class covariance_synapse(synapse):
         avg_post = self.net.units[self.postID].get_lpf_slow(0)
         post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
-        
         # A forward Euler step with the covariance learning rule 
         self.w = self.w + self.alpha * (post - avg_post) * pre 
 
@@ -740,7 +739,10 @@ class delta_synapse(synapse):
 
         The version implemented here assumes that the error (des-post) is provided by the 
         postsynaptic unit, and has weight dynamics given by:
-        w' = alpha * error * pre,
+        w' = alpha * error * pre.
+
+        An alternative version (commented-out code) is:
+        w' = alpha * error * (pre -pre_lpf_slow) 
 
         Weight clipping is used to ensure that the weights of excitatory synapses don't
         become negative, and the weights of inhibitory synapses don't become positive. To
@@ -770,7 +772,7 @@ class delta_synapse(synapse):
                                      syn_reqs.error]) #, syn_reqs.pre_lpf_slow]) 
                                      # pre_lpf_slow only required if you're using the 2nd option
         # maximum and minimum values
-        if self.w >= 0:   # NOT YET USED
+        if self.w >= 0:   # if initially excitatory
             self.max_value = 10.
             self.min_value = 0.
         else:
@@ -787,6 +789,9 @@ class delta_synapse(synapse):
         err = self.post_unit.error
         self.w = self.w + self.alpha * err * pre
         #self.w = self.w + self.alpha * err * (pre - pre_lpf_slow)
+        # clipping values that are too large or too small
+        self.w = max(min(self.w, self.max_value), self.min_value)
+        
         
 
 

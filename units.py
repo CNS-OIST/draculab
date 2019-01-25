@@ -11,7 +11,7 @@ from cython_utils import * # interpolation and integration methods including cyt
                            # cython_sig, euler_int, euler_maruyama, exp_euler
 from scipy.integrate import odeint # to integrate ODEs
 #from array import array # optionally used for the unit's buffer
-#from scipy.integrate import solve_ivp # to integrate ODEs
+from scipy.integrate import solve_ivp # to integrate ODEs
 #from scipy.interpolate import interp1d # to interpolate values
 
 
@@ -57,7 +57,7 @@ class unit():
             self.delay = params['delay']
             # delay must be a multiple of net.min_delay. Next line checks that.
             assert (self.delay+1e-6)%self.net.min_delay < 2e-6, ['unit' + str(self.ID) +
-                                                                 ': delay is not a multiple of min_delay']
+                                                       ': delay is not a multiple of min_delay']
         else:  # giving a temporary value
             self.delay = 2 * self.net.min_delay
         # These are the optional parameters.
@@ -70,32 +70,35 @@ class unit():
         if 'n_ports' in params: self.n_ports = params['n_ports']
         else: self.n_ports = 1
         if self.n_ports < 2:
-            self.multiport = False # If True, the port_idx list is created in init_pre_syn_update in
-                                    # order to support customized get_mp_input* functions
+            self.multiport = False # If True, the port_idx list is created in init_pre_syn_update
+                                   # in order to support customized get_mp_input* functions
         else:
             self.multiport = True
+            self.needs_mp_inp_sum = False # by default, upd_flat_inp_sum is used 
+                                          # instead of upd_flat_mp_inp_sum
         if 'integ_meth' in params: # a particular integration method is specified for the unit
             if self.type is unit_types.source:
-                raise AssertionError('Specifying an integration method for source units can result in errors')
+                raise AssertionError('Specifying an integration method for ' + 
+                                     'source units can result in errors')
             if params['integ_meth'] == "euler":
                 self.update = self.euler_update
             elif params['integ_meth'] == "euler_maru":
                 if not 'mu' in params or not 'sigma' in params:
-                    raise AssertionError('Euler-Maruyama integration requires mu and sigma parameters')
+                    raise AssertionError('Euler-Maruyama integration ' +
+                                         'requires mu and sigma parameters')
                 self.update = self.euler_maru_update
             elif params['integ_meth'] == "exp_euler":
                 if not 'lambda' in params:
-                    raise AssertionError('The exponential Euler method requires a lambda parameter')
+                    raise AssertionError('The exponential Euler method ' +
+                                         'requires a lambda parameter')
                 if not 'mu' in params or not 'sigma' in params:
-                    raise AssertionError('Exponential Euler integration requires mu and sigma parameters')
+                    raise AssertionError('Exponential Euler integration requires ' +
+                                         'mu and sigma parameters')
                 self.update = self.exp_euler_update
             elif params['integ_meth'] == "odeint":
                 self.update = self.odeint_update
             elif params['integ_meth'] == "solve_ivp":
-                self.update = self.solve_ivp
-                from warnings import warn
-                warn(['Additional code modifications are required for solve_ivp. \
-                      See unit.solve_ivp_update documentation'], UserWarning)
+                self.update = self.solve_ivp_update
             elif params['integ_meth'] == 'custom':
                 pass
             else:
@@ -267,9 +270,6 @@ class unit():
         source and kwta units override this with shorter update functions.
         """
         # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
-
-        # Maybe there should be a single 'times' array in the network, to avoid those rolls,
-        # but they add very little to the simualation times
         #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.min_buff_size)
@@ -292,26 +292,30 @@ class unit():
         corresponding to the latest "min_delay" time units, introducing "min_buff_size" new 
         values. In addition, all the synapses of the unit are updated.
         source and kwta units override this with shorter update functions.
-
-        NOTICE: solve_ivp requires that the derivatives function has its parameters in the
-                opposite of the order used by odeint. Thus, to make it work you need to change
-                the order of the arguments in all the derivatives functions, from 
-                derivatives(self, y, t) to derivatives(self, t, y).
-                In vi it takes one command: :%s/derivatives(self, y, t)/derivatives(self, t, y)/
-                Also, make sure that the import command at the top is uncommented for solve_ivp.
-                One more thing: to use the stiff solvers the derivatives must return a list or 
-                array, sothe returned value must be enclosed in square brackets in 
-                <unit_type>.derivatives.
         """
         #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
         new_times = self.times[-1] + self.times_grid
         self.times = np.roll(self.times, -self.min_buff_size)
         self.times[self.offset:] = new_times[1:]
-        solution = solve_ivp(self.derivatives, (new_times[0], new_times[-1]), [self.buffer[-1]],
+        solution = solve_ivp(self.solve_ivp_diff, (new_times[0], new_times[-1]), [self.buffer[-1]],
                              method='LSODA', t_eval=new_times, rtol=self.rtol, atol=self.atol)
         self.buffer = np.roll(self.buffer, -self.min_buff_size)
         self.buffer[self.offset:] = solution.y[0,1:]
         self.upd_reqs_n_syns(time)
+
+
+    def solve_ivp_diff(self, t, y):
+        """ The derivatives function used by solve_ivp_update. 
+
+        solve_ivp requires that the derivatives function has its parameters in the
+        opposite of the order used by odeint. Thus, to make it work you need to change
+        the order of the arguments in all the derivatives functions, from 
+        derivatives(self, y, t) to derivatives(self, t, y).
+        Also, make sure that the import command at the top is uncommented for solve_ivp.
+        One more thing: to use the stiff solvers the derivatives must return a list or 
+        array, so the returned value must be enclosed in square brackets.
+        """
+        return [self.derivatives(y, t)]
 
 
     def euler_update(self, time):
@@ -345,6 +349,9 @@ class unit():
             self.mu = 0. # Mean of the white noise
             self.sigma = 0.0 # standard deviation of Wiener process.
         """
+        new_times = self.times[-1] + self.times_grid
+        self.times = np.roll(self.times, -self.min_buff_size)
+        self.times[self.offset:] = new_times[1:]
         # euler_maruyama_ is defined in cython_utils.pyx
         euler_maruyama(self.derivatives, self.buffer, time,
                         self.buff_size-self.min_buff_size, self.time_bit, self.mu, self.sigma)
@@ -372,7 +379,7 @@ class unit():
 
 
     def upd_reqs_n_syns(self, time):
-        """ Update the unit's requirements and its synapses.
+        """ Update the unit's requirements and those of its synapses.
 
             This should be called at every min_delay integration step, after the unit's
             buffers have been updated.
@@ -531,13 +538,15 @@ class unit():
 
         # If we require support for multiple input ports, create the port_idx list.
         # port_idx is a list whose elements are lists of integers.
-        # port_idx[i] contains the indexes in net.syns[self.ID] (or net.delays[self.ID], or net.act[self.ID])
+        # port_idx[i] contains the indexes in net.syns[self.ID] 
+        # (or net.delays[self.ID], or net.act[self.ID])
         # of the synapses whose input port is 'i'.
         if self.multiport is True:
             self.port_idx = [ [] for _ in range(self.n_ports) ]
             for idx, syn in enumerate(self.net.syns[self.ID]):
                 if syn.port >= self.n_ports:
-                    raise ValueError('Found a synapse input port larger than or equal to the number of ports')
+                    raise ValueError('Found a synapse input port larger than ' +
+                                     'or equal to the number of ports')
                 else:
                     self.port_idx[syn.port].append(idx) 
 
@@ -715,6 +724,161 @@ class unit():
                                    np.exp( (self.last_time-time)/self.tau_slow ) for i in range(self.n_ports)]
 
 
+<<<<<<< HEAD
+=======
+    def upd_balance(self, time):
+        """ Updates two numbers called  below, and above.
+
+            below = fraction of inputs with rate lower than this unit.
+            above = fraction of inputs with rate higher than this unit.
+
+            Those numbers are useful to produce a given firing rate distribtuion.
+
+            NOTICE: this version does not restrict inputs to exp_rate_dist synapses.
+        """
+        inputs = self.inp_vector
+        N = len(inputs)
+        r = self.buffer[-1] # current rate
+        self.above = ( 0.5 * (np.sign(inputs - r) + 1.).sum() ) / N
+        self.below = ( 0.5 * (np.sign(r - inputs) + 1.).sum() ) / N
+        #assert abs(self.above+self.below - 1.) < 1e-5, ['sum was not 1: ' + 
+        #                            str(self.above + self.below)]
+
+
+    def upd_balance_mp(self, time):
+        """ Updates two numbers called  below, and above. Used in units with multiple input ports.
+
+            below = fraction of inputs with rate lower than this unit.
+            above = fraction of inputs with rate higher than this unit.
+
+            Those numbers are useful to produce a given firing rate distribtuion among
+            the population of units that connect to the 'rdc_port'.
+
+            This is the same as upd_balance, but ports other than the rdc_port are ignored.
+        """
+        inputs = self.mp_inputs[self.rdc_port]
+        N = len(inputs)
+        r = self.buffer[-1] # current rate
+        self.above = ( 0.5 * (np.sign(inputs - r) + 1.).sum() ) / N
+        self.below = ( 0.5 * (np.sign(r - inputs) + 1.).sum() ) / N
+
+
+    def upd_exp_scale(self, time):
+        """ Updates the synaptic scaling factor used in exp_dist_sigmoidal units.
+
+            The algorithm is a multiplicative version of the  one used in exp_rate_dist synapses.
+            It scales all excitatory inputs.
+        """
+        #r = self.get_lpf_fast(0)
+        r = self.buffer[-1] # current rate
+        r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
+        exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+        error = self.below - self.above - 2.*exp_cdf + 1. 
+
+        # First APCTP version (12/13/17)
+        ######################################################################
+        #u = (np.log(r/(1.-r))/self.slope) + self.thresh  # this u lags, so I changed it
+        weights = np.array([syn.w for syn in self.net.syns[self.ID]])
+        #u = np.dot(self.inp_vector[self.exc_idx], weights[self.exc_idx])
+        #u = self.get_input_sum(time)
+        u = self.get_exp_sc_input_sum(time)
+        I = np.sum( self.inp_vector[self.inh_idx] * weights[self.inh_idx] ) 
+        #I = u - np.sum( self.inp_vector.get()[self.exc_idx] * weights[self.exc_idx] ) 
+        mu_exc = np.maximum( np.sum( self.inp_vector[self.exc_idx] ), 0.001 )
+        #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
+        #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc
+        ss_scale = (u - I + self.Kp * error) / mu_exc
+        #self.scale_facs[self.exc_idx] += self.tau_scale * (ss_scale/np.maximum(weights[self.exc_idx],.05) - 
+        #                                                    self.scale_facs[self.exc_idx])
+        # ------------ soft weight-bounded version ------------
+        # Soft weight bounding implies that the scale factors follow the logistic differential 
+        # equation. This equation has the form x' = r (a - x) x, and has a solution
+        # x(t) = a x(0) / [ x(0) + (a - x(0))*exp(-a r t) ] .
+        # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
+        # We can use this analytical solution to update the scale factors on each update.
+        a = ss_scale / np.maximum(weights[self.exc_idx],.001)
+        a = np.minimum( a, 10.) # hard bound above
+        x0 = self.scale_facs[self.exc_idx]
+        t = self.net.min_delay
+        self.scale_facs[self.exc_idx] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
+        #self.scale_facs[self.exc_idx] += self.tau_scale * self.scale_facs[self.exc_idx] * (
+        #                                 ss_scale/np.maximum(weights[self.exc_idx],.05) - 
+        #                                 self.scale_facs[self.exc_idx] )
+
+
+    def upd_exp_scale_mp(self, time):
+        """ Updates the synaptic scaling factors used in multiport ssrdc units.
+
+            The algorithm is the same as upd_exp_scale, but only the inputs at the rdc_port
+            are considered.
+        """
+        #r = self.get_lpf_fast(0)  # lpf'd rate
+        r = self.buffer[-1] # current rate
+        r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
+        exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+        error = self.below - self.above - 2.*exp_cdf + 1. 
+
+        # First APCTP version (12/13/17)
+        ######################################################################
+        #u = (np.log(r/(1.-r))/self.slope) + self.thresh
+        rdc_inp = self.mp_inputs[self.rdc_port]
+        rdc_w = self.get_mp_weights(time)[self.rdc_port]
+        u = np.sum(self.scale_facs_rdc[self.exc_idx_rdc]*rdc_inp[self.exc_idx_rdc]*rdc_w[self.exc_idx_rdc])
+        I = u - self.get_mp_input_sum(time)     
+        mu_exc = np.maximum( np.sum( rdc_inp[self.exc_idx_rdc] ), 0.001 )
+        #fpr = 1. / (self.c * r * (1. - r)) # reciprocal of the sigmoidal's derivative
+        #ss_scale = (u - I + self.Kp * fpr * error) / mu_exc # adjusting for sigmoidal's slope
+        ss_scale = (u - I + self.Kp * error) / mu_exc
+        #self.scale_facs[self.exc_idxrdc] += self.tau_scale * (ss_scale/np.maximum(weights[self.exc_idx_rdc],.05) - 
+        #                                                    self.scale_facs[self.exc_idx_rdc])
+        # ------------ weight-bounded version ------------
+        # Soft weight bounding implies that the scale factors follow the logistic differential 
+        # equation. This equation has the form x' = r (a - x) x, and has a solution
+        # x(t) = a x(0) / [ x(0) + (a - x(0))*exp(-a r t) ] .
+        # In our case, r = tau_scale, and a = ss_scale / weights[self.ID] .
+        # We can use this analytical solution to update the scale factors on each update.
+        a = ss_scale / np.maximum(rdc_w[self.exc_idx_rdc],.001)
+        a = np.minimum( a, 10.) # hard bound above
+        x0 = self.scale_facs_rdc[self.exc_idx_rdc]
+        t = self.net.min_delay
+        self.scale_facs_rdc[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * 
+                                                             np.exp(-self.tau_scale * a * t) )
+
+
+    def upd_slide_thresh(self, time):
+        """ Updates the threshold of exp_dist_sig_thr units and some other 'trdc' units.
+
+            The algorithm is an adapted version of the  one used in exp_rate_dist synapses.
+        """
+        r = self.get_lpf_fast(0)
+        r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
+        exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+        error = self.below - self.above - 2.*exp_cdf + 1. 
+        self.thresh -= self.tau_thr * error
+        self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
+        
+
+    def upd_slide_thresh_shrp(self, time):
+        """ Updates the threshold of trdc units when input at 'sharpen' port is larger than 0.5 .
+
+            The algorithm is based on upd_slide_thresh.
+        """
+        idxs = self.port_idx[self.sharpen_port]
+        inps = self.mp_inputs[self.sharpen_port]
+        ws = [self.net.syns[self.ID][idx].w for idx in idxs]
+        sharpen = sum( [w*i for w,i in zip(ws, inps)] )
+            
+        if sharpen > 0.5:
+            r = self.get_lpf_fast(0)
+            r = max( min( .995, r), 0.005 ) # avoids bad arguments and overflows
+            exp_cdf = ( 1. - np.exp(-self.c*r) ) / ( 1. - np.exp(-self.c) )
+            error = self.below - self.above - 2.*exp_cdf + 1. 
+            self.thresh -= self.tau_thr * error
+        else:
+            self.thresh += self.tau_fix * (self.thr_fix - self.thresh)
+        self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
+
+>>>>>>> master
 
     ##########################################
     # END OF UPDATE METHODS FOR REQUIREMENTS #
@@ -723,7 +887,7 @@ class unit():
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # METHODS FOR FLAT NETWORKS ~~~~~~~~~~~~~
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    def upd_flat_inp_sum(self,time):
+    def upd_flat_inp_sum(self, time):
         """ Updates the vector with input sums for each substep of the current step. """
         # Obtain the input vector 'step_inps'
         # step_inps is a 2D numpy array. step_inps[j,k] provides the activity
@@ -740,10 +904,34 @@ class unit():
         w_vec = np.array([syn.w for syn in self.net.syns[self.ID]]) # update weights
         self.inp_sum = np.matmul(w_vec, self.step_inps)
 
+    def upd_flat_mp_inp_sum(self, time):
+        """ The multiport version of upd_flat_inp_sum. """
+        # step_inps is obtained as before, for all inputs
+        self.step_inps = self.acts[self.acts_idx]
+        # mp_step_inps will be a list where the i-th entry is a slice of step_inps
+        # with only the rows for the inputs at the i-th port.
+        self.mp_step_inps = []
+        for idx in self.port_idx:
+            if len(idx) > 0:
+                self.mp_step_inps.append(self.step_inps[idx])
+            else: # no inputs at this port
+                self.mp_step_inps.append(np.array([]))
+        # mp_inp_sum will be a list where the i-th entry is a 1D np array of
+        # length min_buff_size; it contains the input sums at the i-th port for all
+        # substeps of the current simulation step.
+        self.mp_inp_sum = []
+        weights = self.get_mp_weights(time)
+        for inp,w in zip(self.mp_step_inps, weights):
+            if inp.size > 0:
+                self.mp_inp_sum.append(np.matmul(w, inp))
+            else:
+                self.mp_inp_sum.append(np.zeros(self.min_buff_size))
+
+
     def flat_euler_update(self, time):
         """ The forward Euler integration method used with network.flat_update3. """
         # This will fail if you haven't called upd_flat_inp_sum in the current step,
-        # because dt_fun3 uses self.inp_sum to obtain the derivative
+        # because dt_fun uses self.inp_sum to obtain the derivative
         # Roll the buffer
         base = self.buffer.size - self.min_buff_size
         # rolling is not being done in network.flat_update3
@@ -755,7 +943,7 @@ class unit():
                                     self.dt_fun(self.buffer[base+idx-1], idx) )
 
 
-    def flat_euler_maru_update(self,time):
+    def flat_euler_maru_update(self, time):
         """ The Euler-Maruyama integration used with network.flat_update3. """
         base = self.buffer.size - self.min_buff_size
         noise = self.sigma * np.random.normal(loc=0., scale=self.sqrdt,

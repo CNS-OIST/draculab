@@ -31,8 +31,8 @@ class topology():
         The units of measurement (e.g. millimeters) are unspecified; the implementer is
         responsible for their consistency.
         
-        The current implementation can only do one thing: create flat 2D layers with a given
-        number of rows and columns.
+        The current implementation can only do two things: create flat 2D layers with a given
+        number of rows and columns, or place units randomly in a 2D sheet.
 
         Args:
             net : The network where the units will be created.
@@ -53,8 +53,9 @@ class topology():
                                     all units will come from putting 'columns' points inside an interval of 
                                     length equal to the first 'extent' value; the distance between 
                                     contiguous points is twice the distance of the first and last points
-                                    to the edge of the interval. The second coordinates of all units will be
-                                    created similarly using 'rows'.
+                                    to the edge of the interval. This implies that the distance between contiguous
+                                    points along the x coordinate is width/(number of columns). 
+                                    The second coordinates of all units will be created similarly using 'rows'.
                                 'random' : The coordinates of each unit are selected from a uniform random
                                     distribution. The geometry dictionary must also include a 'n_units'
                                     value specifying how many units to create.
@@ -135,7 +136,7 @@ class topology():
         1) All units involved must have a valid 'coordinates' attribute. One way to set the 
            coordinates is by using the create_group() method instead of network.create().
         2) The conn_spec dictionary uses a set of entries different to network.connect(). These 
-           entries specify the spatial connection profile using almost the same options as PyNEST's 
+           entries specify the spatial connection profile using options similar to PyNEST's 
            topology module.
 
         topo_connect() works by first specifing which units to connect, with which weights,
@@ -278,13 +279,19 @@ class topology():
             UserWarning when zero connections are made.
 
         """
-        # TODO: it would be very easy to implement the 'targets' option by reducing the to_list to 
-        # those units of a particular type at this point. I don't need that feature now, though.
-
-        if to_list == [] or from_list == []: # handling a fringe scenario
+        # A quick check for empty lists
+        if to_list == [] or from_list == []: # a fringe scenario
             from warnings import warn
             warn('topo_connect received an empty list as an argument', UserWarning)
             return
+
+        # It would be very easy to implement the 'targets' option by reducing the to_list to 
+        # those units of a particular type at this point. I don't need that feature now, though.
+        # It makes little sense to send connections to source units
+        target_types = [net.units[uid].type for uid in to_list]
+        if unit_types.source in target_types:
+            from warnings import warn
+            warn('topo_connect received source units as input targets')
 
         # If the coordinates of from_list units need to be transformed, we do it now
         if 'transform' in conn_spec and callable(conn_spec['transform']):
@@ -379,7 +386,11 @@ class topology():
             if 'number_of_connections' in conn_spec:
                 kerneled = self.filter_ids(net, masked, uc, conn_spec['kernel'], fids_dic)
                 if len(kerneled) < conn_spec['number_of_connections']:
+<<<<<<< HEAD
                     raise ValueError('number_of_connections is larger than number ' + \
+=======
+                    raise ValueError('number_of_connections is larger than number ' +
+>>>>>>> master
                                      'of targets with significant connection probability')
             # second, specify the kernel function
             if type(conn_spec['kernel']) is float or type(conn_spec['kernel']) is int:

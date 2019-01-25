@@ -172,17 +172,15 @@ def euler_maruyama(derivatives, double[::1] buff, double t0, Py_ssize_t offset,
     cdef Py_ssize_t i, step
     for i in range(offset):
         buff[i] = buff[i+mbs]
-
     cdef double t = t0
     cdef double factor = sigma*np.sqrt(dt)
-    cdef double mudt = mu*dt
     #cdef float[:] noise = np.random.normal(loc=0., scale=1., size=buff.shape[0]-offset)
     sqrdt = np.sqrt(dt)
     for step in range(offset, len(buff)):
         #buff[step] = buff[step-1] + ( dt * derivatives([buff[step-1]], t) + mudt
-        buff[step] = buff[step-1] + ( dt * <double>derivatives([buff[step-1]], t) + mudt
+        buff[step] = buff[step-1] + ( dt * (<double>derivatives([buff[step-1]], t) + mu)
                                   + sigma * np.random.normal(loc=0., scale=sqrdt) )
-        buff[step] = max(buff[step], 0.)
+        buff[step] = max(buff[step], 0.) # RECTIFIES BY DEFAULT!!!!
         t = t + dt
     """
     cdef double factor = sigma*np.sqrt(dt)
@@ -234,17 +232,17 @@ def exp_euler(derivatives, double x0, double t0, int n_steps,
     cdef double sc3 = c3*sigma
     x = np.zeros(n_steps, dtype=np.dtype('d'))
     x[0] = x0
-    cdef double[:] noise = np.random.normal(loc=0., scale=1., size=n_steps)
-    return exp_euler_impl(derivatives, x, t0, n_steps, dt, mu, eAt, c2, sc3, noise)
+    cdef double[:] noise = sc3 * np.random.normal(loc=0., scale=1., size=n_steps)
+    return exp_euler_impl(derivatives, x, t0, n_steps, dt, mu, eAt, c2, noise)
 
  
 cdef double[:] exp_euler_impl(derivatives, double[:] x, double t0, int n_steps, 
-                       double dt, double mu, double eAt, double c2, double sc3, double[:] noise):
+                       double dt, double mu, double eAt, double c2, double[:] noise):
     cdef Py_ssize_t step
     cdef double t = t0
     cdef double mudt = mu*dt
     for step in range(1, n_steps, 1):
         x[step] = ( eAt*x[step-1] + c2*<double>derivatives(<float>x[step-1], <float>t)
-                + sc3*noise[step] + mudt )
+                + noise[step] + mudt )
         t += dt
     return x

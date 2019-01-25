@@ -25,6 +25,7 @@ class network():
     fifth, you use set_plant_inputs() and set_plant_outputs() to connect the plants;
     finally you use the run() method to run the simulation.
 
+    More information is provided by the tutorials.
     """
 
     def __init__(self, params):
@@ -416,8 +417,10 @@ class network():
                 if len(syn_spec['inp_ports']) == n_conns:
                     portz = syn_spec['inp_ports']
                 else:
-                    raise ValueError('Number of input ports specified does not \
-                                      match number of connections created')
+                    print(syn_spec['inp_ports'])
+                    print(n_conns)
+                    raise ValueError('Number of input ports specified does not ' +
+                                     'match number of connections created')
             else:
                 raise TypeError('Input ports were specified with the wrong data type')
         else:
@@ -690,7 +693,7 @@ class network():
 
 
     def flatten(self):
-        """ Move unit buffers into the network. 
+        """ Move the buffers into the network object. 
         
             The unit and plant buffers will be placed in a single 2D numpy array called
             'acts' in the network object, but each unit will retain a buffer that is a
@@ -699,10 +702,15 @@ class network():
             The 'times' array of all units is also replaced by a sngle 'ts' array.
 
             After this method is called, the network can only be run with the
-            'flat_run' method.
+            'flat_run' method. Flattening a network should only be done after the
+            network is fully built.
         """
         if self.sim_time > 0.:  # the network has been run before
             raise AssertionError("The network should not be flattened after simulating") 
+        if self.flat:
+            from warnings import warn
+            warn('Network is being flattened more than once', UserWarning)
+            return
 
         # obtain the maximum delay from all unit projections
         max0 = lambda x: 0 if len(x)==0 else max(x)  # auxiliary function
@@ -776,12 +784,24 @@ class network():
                         self.ts_buff_size - self.step_dels[uid][inp] - 1 + self.min_buff_size))
                         for inp in range(len(self.inp_src[uid]))]
                 self.acts_idx[uid] = (idx1, idx2)
-            else:  # for source units, also initialize acts
-                self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
-                                            t in self.ts[self.init_idx[uid]:] ])
+            #else:
+            #    self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
+            #                                         t in self.ts[self.init_idx[uid]:] ])
+            #"""
+            else:  # for source units, also initialize their rows in acts
+                row = np.array([u.get_act(t) for t in self.ts[:] ])
+                # sometimes the source units have not been initialized, 
+                # and return 'None' types. Thus this check:
+                if not any([v is None for v in row]):
+                    if not (np.isnan(row)).any():
+                        self.acts[uid,:] = row 
+            #"""
         # Reinitializing the unit buffers as views of act, and times as views of ts
+        self.link_unit_buffers()
+        # specify the integration function for all units
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
+<<<<<<< HEAD
                 u.buffer = np.ndarray(shape=(self.buff_len[uid]), 
                                       buffer=self.acts[uid,self.init_idx[uid]:],
                                       dtype=self.bf_type)
@@ -793,9 +813,13 @@ class network():
                 # of the j-th input to unit i in the k-th substep of the current timestep.
                 u.step_inps = self.acts[self.acts_idx[uid]]
                 # specify the integration function for all units
+=======
+>>>>>>> master
                 if u.type in [unit_types.noisy_linear, unit_types.noisy_sigmoidal]:
                     if u.lambd > 0.:
                         u.flat_update = u.flat_exp_euler_update
+                        #u.flat_update = u.flat_euler_maru_update
+                        #u.sqrdt = np.sqrt(u.time_bit)
                         u.integ_meth = "exp_euler"
                     else:
                         u.flat_update = u.flat_euler_maru_update
@@ -803,10 +827,12 @@ class network():
                     continue
                 if u.integ_meth in ["odeint", "solve_ivp", "euler"]:
                     u.flat_update = u.flat_euler_update
+                    """
                     if u.integ_meth in ["odeint", "solve_ivp"]:
                         from warnings import warn
                         warn('Integration method ' + u.integ_meth + \
                              ' subsituted by Forward Euler in some units', UserWarning)
+                    """
                 elif u.integ_meth == "euler_maru":
                     u.flat_update = u.flat_euler_maru_update
                 elif u.integ_meth == "exp_euler":
@@ -826,12 +852,20 @@ class network():
             # initialize buffer
             init_buff = np.transpose(np.array([plant.init_state]*plant.buff_width))
             np.copyto(plant.buffer, init_buff)
+        # At one point I needed to track the value of input sums with a source unit.
+        # Initializing the inp_sum arrays permits initializing the function of those
+        # source units before the simulation starts.
+        for uid, u in enumerate(self.units):
+            if u.multiport:
+                if hasattr(u, 'needs_mp_inp_sum') and u.needs_mp_inp_sum:
+                    u.upd_flat_mp_inp_sum(0.)
+                else:
+                    u.upd_flat_inp_sum(0.)
         #*****************
         self.flat = True 
         #*****************
-        # this last step is not strictly necessary, but right now the functions
-        # in self.act for plants are for the non-flat buffers. Thus we replace
-        # them with new ones, but this time self.flat = True
+        # At this point the functions in self.act for plants are for the non-flat
+        # buffers. Thus we replace them with new ones, but this time self.flat = True
         if self.n_plants > 0:
             for idx_l, l in enumerate(self.syns):
                 for idx_s, syn in enumerate(l):
@@ -839,6 +873,55 @@ class network():
                         self.act[idx_l][idx_s] = \
                             self.plants[syn.plant_id].get_state_var_fun(syn.plant_out)
 
+
+    def link_unit_buffers(self):
+        """ Initializes the buffer, times, acts, and step_inps of all units.
+        
+            The important thing about this initialization is that buffer,
+            times, and acts are initialized as views of the acts and times
+            arrays of this network object.
+            
+            This routine is outside the body of network.flatten because it is
+            useful on its own sometimes. In particular, when the network is
+            copied, sometimes the link between unit.acts and network.acts is
+            lost.
+        """
+        for uid, u in enumerate(self.units):
+            if self.has_buffer[uid]:
+                u.buffer = np.ndarray(shape=(self.buff_len[uid]), 
+                                      buffer=self.acts[uid,self.init_idx[uid]:],
+                                      dtype=self.bf_type)
+                u.times = np.ndarray(shape=(self.buff_len[uid]), 
+                                     buffer=self.ts[self.init_idx[uid]:], dtype=self.bf_type)
+                """
+                # Below is code used to create a version where the step_inps matrix is
+                # obtained using logical indexing. Somehow it is slower...
+                u.acts = np.frombuffer(self.acts.data)
+                # Using frombuffer creates a 'flat' view, which the unit will address
+                # using a 1-D 'acts_idx' array that we'll create next
+                u.acts_idx = [False] * self.acts.size
+                idx = self.acts_idx[uid]
+                for i,l in enumerate(idx[0]):
+                    for j,e in enumerate(l):
+                        u.acts_idx[e*self.ts_buff_size + idx[1][i][j]] = True
+                u.n_inps = len(idx[0])
+                """
+                u.acts = self.acts.view()
+                u.acts_idx = self.acts_idx[uid]
+                # step_inps is a 2D numpy array. step_inps[j,k] provides the activity
+                # of the j-th input to unit i in the k-th substep of the current timestep.
+                u.step_inps = self.acts[self.acts_idx[uid]]
+                """
+                # experimental bit to test with numba
+                #-----------------------------------------------------
+                u.flat_acts_idx = np.array([False] * self.acts.size)
+                idx = self.acts_idx[uid]
+                for i,l in enumerate(idx[0]):
+                    for j,e in enumerate(l):
+                        u.flat_acts_idx[e*self.ts_buff_size + idx[1][i][j]] = True
+                u.n_inps = len(idx[0])
+                #-----------------------------------------------------
+                """
 
     def get_act(self, uid, t):
         """ Get the activity of unit with ID 'uid' at time 't'.
@@ -871,7 +954,10 @@ class network():
         # update input sums
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
-                u.upd_flat_inp_sum(time)
+                if u.multiport and u.needs_mp_inp_sum:
+                    u.upd_flat_mp_inp_sum(time)
+                else:
+                    u.upd_flat_inp_sum(time)
         # roll the full acts array
         base = self.ts.size - self.min_buff_size
         self.acts[:,:base] = self.acts[:,self.min_buff_size:]

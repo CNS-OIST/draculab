@@ -43,7 +43,7 @@ def add_lpf_mid(unit):
 def add_lpf_slow(unit):
     """ See 'add_lpf_fast' above. """
     if not hasattr(unit,'tau_slow'): 
-        raise NameError( 'The tau_slow requirement needs the parameter tau_mid, not yet set' )
+        raise NameError( 'The tau_slow requirement needs the parameter tau_slow, not yet set' )
     setattr(unit, 'lpf_slow', unit.init_val)
     setattr(unit, 'lpf_slow_buff', np.array( [unit.init_val]*unit.steps, dtype=unit.bf_type) )
 
@@ -82,7 +82,7 @@ def add_mp_inputs(unit):
         the mp_inputs requirement saves computations by ensuring that get_mp_inputs
         only gets called once per simulation step.
 
-        Quoting the docsting of unit.get_mp_inputs:
+        Quoting the docstring of unit.get_mp_inputs:
         "This method is for units where multiport = True, and that have a port_idx attribute.
         The i-th element of the returned list is a numpy array containing the raw (not multiplied
         by the synaptic weight) inputs at port i. The inputs include transmision delays."
