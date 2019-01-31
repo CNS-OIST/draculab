@@ -12,7 +12,7 @@ instantaneous connections are unrealistic, there is a minimum
 connection delay, and all connection delays in the network are
 multiples of it.
 
-The simulator is has a relatively simple architecture, so that
+The simulator has a relatively simple architecture, so that
 experienced Python users can understand its source code and make any 
 required adjustments.
 
