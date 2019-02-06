@@ -59,7 +59,7 @@ class network():
         else: self.rtol = 1e-6 # relative tolerance of the integrator
         if 'atol' in params: self.atol = params['atol']
         else: self.atol = 1e-6 # absolute tolerance of the integrator
-        self.flat = False # This network ha not been "flattened"
+        self.flat = False # This network has not been "flattened"
         
 
     def create(self, n, params):

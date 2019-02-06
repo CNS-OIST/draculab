@@ -112,6 +112,7 @@ class unit():
                                # It is initialized by the init_pre_syn_update function
         self.last_time = 0.  # time of last call to the update function
                             # Used by the upd_lpf_X functions
+        self.using_interp1d = False # True when interp1d is used for interpolation in get_act
         self.init_buffers() # This will create the buffers that store states and times
         self.functions = set() # will contain all the functions that update requirements
 
@@ -163,6 +164,10 @@ class unit():
                                                                #corresponding times for the buffer values
         self.times_grid = np.linspace(0, min_del, min_buff+1, dtype=self.bf_type) # used to create
                                      # values for 'times'. Initially its interval differs with 'times'
+        # The interpolator needs initialization before upd_interpolator is called
+        if self.using_interp1d:
+            self.interpolator = lambda t: cython_get_act3(t, self.times[0], self.time_bit,
+                                                          self.buff_size, self.buffer)
         
         
     def get_inputs(self, time):
@@ -390,6 +395,19 @@ class unit():
         for pre in self.net.syns[self.ID]:
             pre.update(time)
         self.last_time = time # last_time is used to update some pre_syn_update values
+        # If interp1d is being used for interpolation, use it to create a new interpolator.
+        if self.using_interp1d:
+            self.upd_interpolator()
+
+    def upd_interpolator(self):
+        """ Update the interp1d function used in the get_act method. """
+        # if using interp1d for interpolation (e.g. self.using_interp1d = True), 
+        # this method should be called by unit.upd_reqs_n_syns at each simulation step.
+        self.interpolator = interp1d(self.times, self.buffer, kind='cubic', 
+                                     bounds_error=False, copy=False,
+                                     fill_value="extrapolate", assume_sorted=True)
+        # Sometimes the ode solver asks about values slightly out of bounds, 
+        # so I set this to extrapolate
 
 
     def get_act(self,time):
@@ -402,17 +420,16 @@ class unit():
         """
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Below is the more general (but slow) interpolation using interp1d
-        # Make sure to import interp1d at the top of the file before using this.
-        # Sometimes the ode solver asks about values slightly out of bounds, 
-        # so I set this to extrapolate
+        # Make sure to set self.using_interp1d = True in unit.init.
+        # Also, make sure to import interp1d at the top of the file.
         #"""
-        return interp1d(self.times, self.buffer, kind='cubic', bounds_error=False, copy=False,
-                        fill_value="extrapolate", assume_sorted=True)(time)
+        #return self.interpolator(time)
         #"""
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Below the code for the second implementation.
         # This linear interpolation takes advantage of the ordered, regularly-spaced buffer.
         # Time values outside the buffer range receive the buffer endpoints.
+        # self.using_interp1d should be set to False
         """
         time = min( max(time,self.times[0]), self.times[-1] ) # clipping 'time'
         frac = (time-self.times[0])/(self.times[-1]-self.times[0])
@@ -426,6 +443,7 @@ class unit():
         # This is the third implementation. 
         # Takes advantage of the regularly spaced times using divmod.
         # Values outside the buffer range will fall between buffer[-1] and buffer[-2].
+        # self.using_interp1d should be set to False
         """
         base, rem = divmod(time-self.times[0], self.time_bit)
         # because time_bit is slightly larger than times[1]-times[0], we can limit
@@ -436,11 +454,13 @@ class unit():
         """
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # This is the second implementation, written in Cython
+        # self.using_interp1d should be set to False
         #return cython_get_act2(time, self.times[0], self.times[-1], self.times,
         #                        self.buff_size, self.buffer)
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # This is the third implementation, written in Cython
-        # return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
+        # self.using_interp1d should be set to False
+        return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
