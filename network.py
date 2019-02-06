@@ -36,7 +36,7 @@ class network():
         Args:
             params : parameter dictionary
             REQUIRED PARAMETERS
-                min_delay : minimum transmission delay, and simulation step size
+                min_delay : minimum transmission delay, and simulation step size.
                 min_buff_size : number of network states to store for each simulation step.
             OPTIONAL PARAMETERS 
                 rtol = relative tolerance in the ODE integrator.
@@ -53,8 +53,8 @@ class network():
         self.act = []    # act[i][j] is the function from which unit i obtains its j-th input
         self.syns = []   # syns[i][j] is the synapse object for the j-th connection to unit i
         self.min_delay = params['min_delay'] # minimum transmission delay
-        self.min_buff_size = params['min_buff_size']  # number of values stored during
-                                                      # a minimum delay period
+        self.min_buff_size = int(params['min_buff_size'])  # number of values stored during
+                                                           # a minimum delay period
         if 'rtol' in params: self.rtol = params['rtol']
         else: self.rtol = 1e-6 # relative tolerance of the integrator
         if 'atol' in params: self.atol = params['atol']

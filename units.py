@@ -405,10 +405,10 @@ class unit():
         # Make sure to import interp1d at the top of the file before using this.
         # Sometimes the ode solver asks about values slightly out of bounds, 
         # so I set this to extrapolate
-        """
-        return interp1d(self.times, self.buffer, kind='linear', bounds_error=False, copy=False,
+        #"""
+        return interp1d(self.times, self.buffer, kind='cubic', bounds_error=False, copy=False,
                         fill_value="extrapolate", assume_sorted=True)(time)
-        """
+        #"""
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # Below the code for the second implementation.
         # This linear interpolation takes advantage of the ordered, regularly-spaced buffer.
@@ -440,7 +440,7 @@ class unit():
         #                        self.buff_size, self.buffer)
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         # This is the third implementation, written in Cython
-        return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
+        # return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
         #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
