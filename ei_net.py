@@ -747,6 +747,7 @@ class ei_net():
             thr : units whose activity surpasses 'thr' will be highligthted.
         """
         get_ipython().run_line_magic('matplotlib', 'qt5')
+        #get_ipython().run_line_magic('matplotlib', 'widget')
         # notebook or qt5 
 
         self.unit_fig = plt.figure(figsize=(10,10))

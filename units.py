@@ -12,7 +12,7 @@ from cython_utils import * # interpolation and integration methods including cyt
 from scipy.integrate import odeint # to integrate ODEs
 #from array import array # optionally used for the unit's buffer
 from scipy.integrate import solve_ivp # to integrate ODEs
-#from scipy.interpolate import interp1d # to interpolate values
+from scipy.interpolate import interp1d # to interpolate values
 
 
 class unit():
@@ -402,12 +402,14 @@ class unit():
     def upd_interpolator(self):
         """ Update the interp1d function used in the get_act method. """
         # if using interp1d for interpolation (e.g. self.using_interp1d = True), 
-        # this method should be called by unit.upd_reqs_n_syns at each simulation step.
+        # this method should be called by unit.upd_reqs_n_syns at each simulation step,
+        # because self.times and self.buffer will have changed.
         self.interpolator = interp1d(self.times, self.buffer, kind='cubic', 
-                                     bounds_error=False, copy=False,
-                                     fill_value="extrapolate", assume_sorted=True)
+                                     bounds_error=False, copy=False, assume_sorted=True,
+                                     fill_value="extrapolate")
+                                     #fill_value=(self.buffer[0],self.buffer[-1])) 
         # Sometimes the ode solver asks about values slightly out of bounds, 
-        # so I set this to extrapolate
+        # so a fill_value is required. 
 
 
     def get_act(self,time):
@@ -418,32 +420,32 @@ class unit():
 
         This was the most time-consuming method in draculab (thus the various optimizations).
         """
-        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Below is the more general (but slow) interpolation using interp1d
-        # Make sure to set self.using_interp1d = True in unit.init.
-        # Also, make sure to import interp1d at the top of the file.
+        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        ## Below is the more general (but slow) interpolation using interp1d
+        ## Make sure to set self.using_interp1d = True in unit.init.
+        ## Also, make sure to import interp1d at the top of the file.
         #"""
         #return self.interpolator(time)
         #"""
-        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # Below the code for the second implementation.
-        # This linear interpolation takes advantage of the ordered, regularly-spaced buffer.
-        # Time values outside the buffer range receive the buffer endpoints.
-        # self.using_interp1d should be set to False
+        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        ## Below the code for the second implementation.
+        ## This linear interpolation takes advantage of the ordered, regularly-spaced buffer.
+        ## Time values outside the buffer range receive the buffer endpoints.
+        ## self.using_interp1d should be set to False
         """
         time = min( max(time,self.times[0]), self.times[-1] ) # clipping 'time'
         frac = (time-self.times[0])/(self.times[-1]-self.times[0])
         base = int(np.floor(frac*(self.buff_size-1))) # biggest index s.t. times[index] <= time
-        frac2 = ( time-self.times[base] ) / 
-                ( self.times[min(base+1,self.buff_size-1)] - self.times[base] + 1e-8 )
+        frac2 = ( time-self.times[base] ) /  (
+                  self.times[min(base+1,self.buff_size-1)] - self.times[base] + 1e-8 )
         return self.buffer[base] + frac2 * ( self.buffer[min(base+1,self.buff_size-1)] -
                                              self.buffer[base] )
         """
-        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # This is the third implementation. 
-        # Takes advantage of the regularly spaced times using divmod.
-        # Values outside the buffer range will fall between buffer[-1] and buffer[-2].
-        # self.using_interp1d should be set to False
+        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        ## This is the third implementation. 
+        ## Takes advantage of the regularly spaced times using divmod.
+        ## Values outside the buffer range will fall between buffer[-1] and buffer[-2].
+        ## self.using_interp1d should be set to False
         """
         base, rem = divmod(time-self.times[0], self.time_bit)
         # because time_bit is slightly larger than times[1]-times[0], we can limit
@@ -452,16 +454,16 @@ class unit():
         frac2 = rem/self.time_bit
         return self.buffer[base] + frac2 * ( self.buffer[base+1] - self.buffer[base] )
         """
-        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # This is the second implementation, written in Cython
-        # self.using_interp1d should be set to False
+        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        ## This is the second implementation, written in Cython
+        ## self.using_interp1d should be set to False
         #return cython_get_act2(time, self.times[0], self.times[-1], self.times,
-        #                        self.buff_size, self.buffer)
-        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # This is the third implementation, written in Cython
-        # self.using_interp1d should be set to False
+        #                       self.buff_size, self.buffer)
+        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        ## This is the third implementation, written in Cython
+        ## self.using_interp1d should be set to False
         return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
-        #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
     def pre_syn_update(self, time):
@@ -1106,8 +1108,8 @@ class sigmoidal(unit):
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
-        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
-        return cython_sig(self.thresh, self.slope, arg)
+        return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        #return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. """
