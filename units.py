@@ -164,10 +164,9 @@ class unit():
                                                                #corresponding times for the buffer values
         self.times_grid = np.linspace(0, min_del, min_buff+1, dtype=self.bf_type) # used to create
                                      # values for 'times'. Initially its interval differs with 'times'
-        # The interpolator needs initialization before upd_interpolator is called
+        # The interpolator needs initialization 
         if self.using_interp1d:
-            self.interpolator = lambda t: cython_get_act3(t, self.times[0], self.time_bit,
-                                                          self.buff_size, self.buffer)
+            self.upd_interpolator()
         
         
     def get_inputs(self, time):
