@@ -4,8 +4,22 @@ draculab.py
 draculab.py  (Delayed-Rate Adaptively-Connected Units Laboratory)
 A simulator of rate units with delayed connections.
 
-author:     Sergio Verduzco Flores
-date:       2017-2018
+    Copyright (C) 2018 Okinawa Institute of Science and Technology
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation, either version 3 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    You should have received a copy of the GNU General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+Author:     Sergio Verduzco Flores
 """
 
 # Enumeration classes provide human-readable and globally consistent constants
@@ -213,6 +227,7 @@ class plant_models(Enum):
     pendulum = 1
     point_mass_2D = 2
     conn_tester = 3
+    double_pendulum = 4
 
     def get_class(self):
         """ Return the class object corresponding to a given plant enum. 
@@ -231,6 +246,8 @@ class plant_models(Enum):
             plant_class = point_mass_2D
         elif self == plant_models.conn_tester:
             plant_class = conn_tester
+        elif self == plant_models.double_pendulum:
+            plant_class = double_pendulum
         else:
             raise NotImplementedError('Attempting to retrieve the class for an unknown plant model')
 

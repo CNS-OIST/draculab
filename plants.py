@@ -250,6 +250,11 @@ class pendulum(plant):
     Counterclockwise rotation and torques are positive. Angles are in radians, time is
     in seconds.
 
+    The equation of motion used is: I a = (mgL/2)cos(theta) - mu v + T
+    where I=inertia moment about axis of rotation, a=angular acceleration, g=gravity constant,
+    L=length of rod, theta=pendulum angle, mu=viscous friction coefficeint, m=mass of rod, 
+    v=angular velocity, T=external torque.
+
     Inputs to the model at port 0 are torques applied at the joint. Other ports are ignored.
 
     The get_state(time) function returns the two state variables of the model in a numpy 
@@ -298,13 +303,13 @@ class pendulum(plant):
         # Initialize the parameters specific to this model
         self.length = params['length']  # length of the rod [m]
         self.mass = params['mass']   # mass of the rod [kg]
-        # To get the moment of inertia assume a homogeneous rod, so I = m(l/2)^2
-        self.I = self.mass * self.length * self.length / 4.
+        # To get the moment of inertia assume a homogeneous rod, so I = m(l^2)/3
+        self.I = self.mass * self.length * self.length / 3.
         # The gravitational force per kilogram can be set as a parameter
         if 'g' in params: self.g = params['g']
         else: self.g = 9.8  # [m/s^2]
-        # But we'll usually use 'g' mutliplied by mass*length/2, so
-        self.glo2 = self.g * self.mass * self.length / 2.
+        # This constant is used to calculate torque from gravity
+        self.c = 0.5 * self.mass * self.g * self.length 
         # We may also have an input gain
         if 'inp_gain' in params: self.inp_gain = params['inp_gain']
         else: self.inp_gain = 1.
@@ -324,7 +329,7 @@ class pendulum(plant):
         """
         torque = self.inp_gain * self.get_input_sum(t,0)
         # torque may also come from gravity and friction
-        torque -= ( np.cos(y[0]) * self.glo2 ) + ( self.mu * y[1] ) 
+        torque -= self.c * np.cos(y[0]) +  self.mu * y[1]
         # angular acceleration = torque / (inertia moment)
         ang_accel = torque / self.I
         return np.array([y[1], ang_accel])
@@ -438,4 +443,156 @@ class point_mass_2D(plant):
         v1_sum = self.get_input_sum(t, 1)
         accel = (self.g0*v0_sum*self.vec0 + self.g1*v1_sum*self.vec1) / self.mass
         return np.array([y[2], y[3], accel[0], accel[1]])
+
+
+class double_pendulum(plant):
+    """ 
+    Model of two rigid, homogeneous rods with two 1-dimensional rotational joints.
+    
+    On the XY plane the shoulder joint is at the origin, the positive X direction
+    aligns with zero degrees, and gravity points in the negative Y direction.
+    Counterclockwise rotation and torques are positive. Angles are in radians, time is
+    in seconds.
+
+    The configuration of the pendulum is described by two angles theta_s and theta_e.
+    Let L1 be the line segment going from the shoulder to the elbow, and L2 the line
+    segment going from the elbow to the hand. 
+    theta_s is the angle formed by L1 with the positive x axis. theta_e is the angle
+    formed by the extension of L1 in the distal direction with the segment L2. 
+
+    Inputs to the model at port 0 are torques applied at the shoulder joint. 
+    Inputs at port 1 are torques applied at the elbow joint. Other ports are ignored.
+
+    The get_state(time) function returns the four state variables of the model in a numpy 
+    array. Shoulder angle has index 0, shoulder angular velocity has index 1, elbow angle
+    has index 2 and elbow angular velocity has index 3. The 'time' argument should be in
+    the interval [sim_time - del, sim_time], where sim_time is the current simulation time
+    (time of last simulation step), and del is the 'delay' value of the plant.
+
+    """
+    def __init__(self, ID, params, network):
+        """ The class constructor.
+
+        Args:
+            ID: An integer serving as a unique identifier in the network.
+            params: A dictionary with parameters to initialize the model.
+                REQUIRED PARAMETERS
+                'type' : A model from the plant_models enum.
+                'length1' : length of the rod1 [m]
+                'length2' : length of the rod2 [m]
+                'mass1' : mass of the rod1 [kg]
+                'mass2' : mass of the rod2 [kg]
+                'init_angle_s' : initial angle of the first joint (shoulder) [rad]
+                'init_angle_e' : initial angle of the second joint (elbow) [rad]
+                'init_ang_vel_s' : initial angular velocity of the first joint (shoulder) [rad/s]
+                'init_ang_vel_e' : initial angular velocity of the second joint (elbow) [rad/s]
+                OPTIONAL PARAMETERS
+                'g' : gravitational acceleration constant. [m/s^2] (Default: 9.8)
+                'inp_gain' : A gain value that multiplies the inputs. (Default: 1)
+                'mu_s' : Viscous friction coefficient at shoulder joint. (Default: 0)
+                'mu_e' : Viscous friction coefficient at elbow joint. (Default: 0)
+            network: the network where the plant instance lives.
+
+        Raises:
+            AssertionError.
+
+        """
+        # This is the stuff that goes into all model constructors. Adjust accordingly.
+        #-------------------------------------------------------------------------------
+        assert params['type'] is plant_models.double_pendulum, ['Plant ' + str(self.ID) + 
+                                                    ' instantiated with the wrong type']
+        params['dimension'] = 4 # notifying dimensionality of model to parent constructor
+        params['inp_dim'] = 2 # notifying there are two type of inputs
+        plant.__init__(self, ID, params, network) # calling parent constructor
+        # Using model-specific initial values, initialize the state vector.
+        self.init_state = np.array([params['init_angle_s'], params['init_ang_vel_s'],
+                                    params['init_angle_e'], params['init_ang_vel_e']])
+        self.buffer = np.array([self.init_state]*self.buff_width) # initializing buffer
+        #-------------------------------------------------------------------------------
+        # Initialize the parameters specific to this model
+        self.length1 = params['length1']  # length of the rod1 [m]
+        self.length2 = params['length2']  # length of the rod2 [m]
+        self.mass1 = params['mass1']   # mass of the rod1 [kg]
+        self.mass2 = params['mass2']   # mass of the rod2 [kg]
+        # To get the moment of inertia assume a homogeneous rod, so I = m(l^2)/12
+        self.I1 = self.mass1 * self.length1 * self.length1 #/ 12.
+        self.I2 = self.mass2 * self.length2 * self.length2 #/ 12.
+        # The gravitational force per kilogram can be set as a parameter
+        if 'g' in params: self.g = params['g']
+        else: self.g = 9.8  # [m/s^2]
+        # We may also have an input gain
+        if 'inp_gain' in params: self.inp_gain = params['inp_gain']
+        else: self.inp_gain = 1.
+        # We have a viscous friction coefficient
+        if 'mu_s' in params: self.mu_s = params['mu_s']
+        else: self.mu_s = 0.
+        if 'mu_e' in params: self.mu_e = params['mu_e']
+        else: self.mu_e = 0.
+        # Initial angular acceleration of shoulder
+        if 'als' in params: self.als = params['als']
+        else: self.als = 0. 
+        # Initial angular acceleration of elbow  
+        if 'ale' in params: self.ale = params['ale'] 
+        else: self.ale = 0.     
+
+    def solve2by2(self, c1, c2, c3, c4, c5, c6):
+        """ Solve a 2x2 system of linear equations of the form:
+            |C1 C2| |x| = |C3|
+            |C4 C5| |y| = |C6|
+
+            Args:
+                c1, c2, c3, c4, c5, c6: system's coefficients
+            Returns: 2-tuple with (x,y)
+
+        """
+        D = (c1*c5) - (c2*c4) # system's determinant
+        if np.abs(D) <= 1e-8:
+            from warnings import warn
+            warn('Unsolvable or ill-conditioned system in solve2by2')
+            return 0. , 0.
+        if c5 == 0.:
+            x = c6/c4
+            y = (c3 - c1*x) / c2
+        else:
+            x = ((c3*c5) - (c2*c6)) / D
+            # y = (c6 - c4*x) / c5
+            y = ((c1*c6) - (c3*c4)) / D
+        return x, y
+
+    def derivatives(self, y, t):
+        """ Returns the derivatives of the state variables at a given point in time. 
+
+    Args:
+            y[0] = angle of shoulder [radians]
+            y[1] = angular velocity of shoulder [radians / s]
+            y[2] = angle of elbow [radians]
+            y[3] = angular velocity of elbow [radians / s]
+            t = time at which the derivative is evaluated [s]
+        Returns:
+            4-element 1D Numpy array with angular velocity and acceleration of both joints.
+        """
+        torque_s = self.inp_gain * self.get_input_sum(t,0)
+        torque_s -= self.mu_s * y[1]
+        torque_e = self.inp_gain * self.get_input_sum(t,1)
+        torque_e -= self.mu_e * y[3]
+
+        dydx = np.zeros_like(y)
+    
+        dydx[0] = y[1]
+        dydx[2] = y[3]
+
+        A = (self.mass2 * self.length1 * self.length2) / 2.
+        Ie = self.I2 + ((self.mass2 * self.length2**2.) / 4.)
+        Is = self.I1 + ((self.mass1 * self.length1**2.) / 4.) + (self.mass2 * self.length1**2.)
+
+        c1 = Is + Ie + 2.*A*np.cos(y[2])
+        c2 = Ie + A*np.cos(y[2])
+        c3 = torque_s + A*np.sin(y[2]) * (y[3]**2. + 2.*y[3]*y[1]) 
+        c4 = Ie + A*np.cos(y[2])
+        c5 = Ie 
+        c6 = torque_e - A*np.sin(y[2]) * y[1]**2.
+    
+        dydx[1], dydx[3] = self.solve2by2(c1, c2, c3, c4, c5, c6)
+        return dydx
+ 
 
