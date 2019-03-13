@@ -497,13 +497,17 @@ class eigenvalue_test(unittest.TestCase):
 class test_plant(unittest.TestCase):
     """ Test some plants. """
     def test_pendulum(self):
-        """ test that the pendulum with no inputs is the same in XPP and draculab. """
-        net_params = {'min_delay' : 0.1, 'min_buff_size' : 4 } # parameter dictionary for the network
+        """ test that the pendulum with no inputs is the same in XPP and draculab . 
+        
+            Based on test6.ipynb. 
+        """
+        net_params = {'min_delay' : 0.1, 'min_buff_size' : 5 } # parameter dictionary for the network
         n1 = network(net_params)
-        # Notice the XPP model uses a massless rod with a mass at the end, so I need length=2
+        # Notice the XPP model uses a massless rod with a mass at the end, so I
+        # need L_c=1.5*L_s, mu_c = 0.75 mu_s.
         # Moreover, the angles are measured wrt different axes, so init_angle = 2 - pi/2
         plant_params = {'type' : plant_models.pendulum,
-                'length' : 2., 'mass' : 10., 'mu' : 2.,
+                'length' : 1.5, 'mass' : 10., 'mu' : 0.75 * 2.,
                 'init_angle' : 2.-(np.pi/2.), 'init_ang_vel' : 0.}
         n1.create(1, plant_params) # create a plant
         # Run the simulation
@@ -522,11 +526,11 @@ class test_plant(unittest.TestCase):
     def test_compare_output(self):
         """ Compare with the output of the first test in in test7.ipynb. 
 
-            Output was stored on 12/14/18.
+            Output was stored on 03/13/19.
         """
         # Create parameter dictionaries
-        plant_params = {'type' : plant_models.pendulum, 'length' : 2., 'inp_gain' : 10.,
-                        'mass' : 10., 'mu' : 2., 'init_angle' : 2-(np.pi/2.), 'init_ang_vel' : 0.}
+        plant_params = {'type' : plant_models.pendulum, 'length' : 1.5, 'inp_gain' : 10.,
+                        'mass' : 10., 'mu' : 1.5, 'init_angle' : 2-(np.pi/2.), 'init_ang_vel' : 0.}
         unit_pars = { 'init_val' : 0.5, 'function' : lambda x:None, 'type' : unit_types.source } 
         net_params = {'min_delay' : 0.1, 'min_buff_size' : 5, 'rtol' : 1e-5 }
         # Create network, plant, and input units
@@ -534,7 +538,7 @@ class test_plant(unittest.TestCase):
         sources = n1.create(2,unit_pars) # source units
         pend = n1.create(1,plant_params) # and a pendulum
         # Create some inputs
-        f1 = lambda x : np.sign(max(0.,x-5.))*4. # 0 for x<5, 4 for x>5
+        f1 = lambda x : np.sign(max(0.,x-5.))*2. # 0 for x<5, 2 for x>5
         f2 = lambda x : 2.*np.sin(max(0.,x-10.)) # 0 for x<10, 2*sin(x) for x>10
         n1.units[sources[0]].set_function(f1)
         n1.units[sources[1]].set_function(f2)
@@ -560,7 +564,7 @@ class test_plant(unittest.TestCase):
         # In pend.ode the zero angle aligns with the negative Y axis
         sim_dat[2][0][:,0] = sim_dat[2][0][:,0] + np.pi/2
         # load the output of the two sigmoidals
-        sig_out = np.load(test_path+'tco_12-14-18.pkl') 
+        sig_out = np.load(test_path+'tco_03-13-19.pkl') 
         diff1 = max(np.abs(sig_out[0]-sim_dat[1][2]))
         diff2 = max(np.abs(sig_out[1]-sim_dat[1][3]))
         self.assertAlmostEqual(max(diff1, diff2), 0., places=5)
