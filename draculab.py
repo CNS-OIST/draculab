@@ -227,7 +227,8 @@ class plant_models(Enum):
     pendulum = 1
     point_mass_2D = 2
     conn_tester = 3
-    double_pendulum = 4
+    simple_double_pendulum = 4
+    compound_double_pendulum = 5
 
     def get_class(self):
         """ Return the class object corresponding to a given plant enum. 
@@ -246,11 +247,12 @@ class plant_models(Enum):
             plant_class = point_mass_2D
         elif self == plant_models.conn_tester:
             plant_class = conn_tester
-        elif self == plant_models.double_pendulum:
-            plant_class = double_pendulum
+        elif self == plant_models.simple_double_pendulum:
+            plant_class = simple_double_pendulum
+        elif self == plant_models.compound_double_pendulum:
+            plant_class = compound_double_pendulum
         else:
             raise NotImplementedError('Attempting to retrieve the class for an unknown plant model')
-
         return plant_class
 
     def list_names():
