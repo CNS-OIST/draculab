@@ -28,3 +28,18 @@ Verduzco-Flores SO, DeSchutter E (2019) "Draculab: A Python simulator for firing
 neural networks with delayed adaptive connections " (under review)
 
 The lessons of this tutorial are given as [Jupyter](https://jupyter.org/) notebooks with filenames `tutorialX.ipynb`, where X stands for the tutorial number. It is recommended to follow the lessons in order using the notebooks, but for those users who prefer not to use Jupyter, the Python source code and instructions are included in the `tutorialX.py` files.
+
+The `tests` folder contains miscellaneous code to test various aspects of Draculab.
+Some basic unit tests are in `unit_tests.py`. Most unit tests have an associated Jupyter
+notebook named `testX.ipynb`, where `X` is some number. The `testX` notebooks run similar
+tests, but these may include plots and animations in order to facilitate debugging.
+
+Draculab contains a research-grade implementation of a planar arm, based on the
+dynamics of the double pendulum. The `planar_arm.ipynb` file in `tests` contains code to
+visualize the arm and its muscles for a given set of insertion points. There is
+also code to run a simulation with the `planar_arm` class, and visualize the
+results using an animation where the arm and the muscle activations can be observed.
+
+The `double_pendulum_validation.ipynb` notebook in `tests`
+shows how the double pendulum equations are derived using Sympy, and how
+those equations can be validated by comparing them with other derivations. 
