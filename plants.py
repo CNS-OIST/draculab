@@ -902,6 +902,8 @@ class planar_arm(plant):
         port 16-19: same, for muscle 4
         port 20-23: same, for muscle 5
         port 24-27: same, for muscle 6
+
+    See planar_arm.ipynb for an example.
     """
     def __init__(self, ID, params, network):
         """ The class constructor, called by network.create.
@@ -945,6 +947,7 @@ class planar_arm(plant):
                         used in rest_l are the lengths in the reference
                         position; e.g. the default value of rest_l is an array
                         like [1, 1, 1, 1, 1, 1].
+                m_gain: gain for the muscle forces (default 1).
             network: the network where the plant instance lives.
 
         Raises:
@@ -1023,24 +1026,44 @@ class planar_arm(plant):
         for i in range(6):
             assert self.ip[2*i][0] < self.ip[2*i+1][0], ['Distal insertion ' +
                    'point not right of proximal one for muscle' + str(i+1)]
+        for i in [1, 3]:
+            assert self.ip[i][1] > 0, ['Insertion point ' + str(i) +
+                   ' is expected to have a positive y coordinate']
+        for i in [5, 7]:
+            assert self.ip[i][1] < 0, ['Insertion point ' + str(i) +
+                   ' is expected to have a negative y coordinate']
         # intialize rest lengths
         if 'rest_l' in params:
             self.rest_l = params['rest_l']
         else:
             self.rest_l = np.ones(6)
+        if 'm_gain' in params: self.m_gain = params['m_gain']
+        else: self.m_gain = 1.
         # extract geometry information from the coordinates
         #~~ arm and forearm lengths
         self.l_arm = self.c_elbow[0]  # length of the upper arm
         self.l_farm = self.c_hand[1] - self.c_elbow[1] # length of forearm
+        #~~ insertion point 1
+        self.l_i1 = np.sqrt(self.p1[0]**2 + self.p1[1]**2)
+        self.a_i1 = np.arctan2(self.p1[1], self.p1[0])
         #~~ insertion point 2
         self.l_i2 = np.sqrt((self.p2[0]-self.c_elbow[0])**2 + self.p2[1]**2)
         self.a_i2 = np.arctan2(self.c_elbow[0]-self.p2[0], self.p2[1])
+        #~~ insertion point 3
+        self.l_i3 = np.sqrt(self.p3[0]**2 + self.p3[1]**2)
+        self.a_i3 = np.arctan2(self.p3[1], self.p3[0])
         #~~ insertion point 4
         self.l_i4 = np.sqrt(self.p4[0]**2 + self.p4[1]**2)
         self.a_i4 = np.arctan2(self.p4[1], self.p4[0])
+        #~~ insertion point 5
+        self.l_i5 = np.sqrt(self.p5[0]**2 + self.p5[1]**2)
+        self.a_i5 = np.arctan2(self.p5[1], self.p5[0])
         #~~ insertion point 6
         self.l_i6 = np.sqrt(self.p6[0]**2 + self.p6[1]**2)
         self.a_i6 = np.arctan2(self.p6[1], self.p6[0])
+        #~~ insertion point 7
+        self.l_i7 = np.sqrt(self.p7[0]**2 + self.p7[1]**2)
+        self.a_i7 = np.arctan2(self.p7[1], self.p7[0])
         #~~ insertion point 8
         self.l_i8 = np.sqrt((self.p8[0]-self.c_elbow[0])**2 + self.p8[1]**2)
         self.a_i8 = np.arctan(abs((self.c_elbow[0]-self.p8[0])/self.p8[1]))
@@ -1056,11 +1079,13 @@ class planar_arm(plant):
         #~~ insertion point 12
         self.l_i12 = np.sqrt((self.p12[0]-self.c_elbow[0])**2 + self.p12[1]**2)
         self.a_i12 = np.arctan(abs((self.c_elbow[0]-self.p12[0])/self.p12[1]))
-
+        # set limit rotation angles for shoulder insertion points (see upd_ip)
+        self.q1_min = -np.pi/12.
+        self.q1_max = np.pi/12.
         # create the muscles
         params = {'l0': 1., # resting length
-                's' : 1.5, # spring constant
-                'g1': 1.,  # contraction input gain
+                's' : 5., # spring constant
+                'g1': self.m_gain,  # contraction input gain
                 'g2': 1., # length afferent gain
                 'g3': 1., # velocity afferent gain
                 'dt': self.net.min_delay, # time step length
@@ -1072,6 +1097,7 @@ class planar_arm(plant):
             params['p1'] = self.ip[2*i]
             params['p2'] = self.ip[2*i+1]
             self.muscles.append(spring_muscle(params))
+        
 
     def upd_ip(self):
         """ Update the coordinates of all the insertion points (self.ip).
@@ -1081,6 +1107,11 @@ class planar_arm(plant):
             Returns: a list with 12 tuples, corresponding to the 12 insertion
                      points. 
         """
+        # An interesting question is whether the insertion points at the
+        # shoulder (p1,p3,p5,p7) should be allowed to rotate. There is some
+        # code to let them rotate within the range [q1_max, q1_min].
+        # It is not recommended to use this, since the muscle lengths will
+        # no longer determine the hand position.
         # retrieve current angles
         if self.net.flat:
             q1 = self.buffer[0, -1] # shoulder angle
@@ -1089,22 +1120,31 @@ class planar_arm(plant):
             q1 = self.buffer[-1, 0] 
             q2 = self.buffer[-1, 2] 
         q12 = q1+q2
+        q1_clip = max(min(q1, self.q1_max), self.q1_min)
         # update coordinates of the elbow and hand
         self.c_elbow = (self.l_arm*np.cos(q1), self.l_arm*np.sin(q1)) 
         self.c_hand = (self.c_elbow[0] + self.l_farm*np.cos(q12),
                        self.c_elbow[1] + self.l_farm*np.sin(q12))
         #~~ muscle 1
-        ip1 = self.p1
+        ip1 = self.p1 # if this point doesn't rotate
+        #ip1 = (self.l_i1*np.cos(q1_clip+self.a_i1), # if it rotates
+        #       self.l_i1*np.sin(q1_clip+self.a_i1))
         ip2 = (self.c_elbow[0] + self.l_i2*np.cos(q12+self.a_i2),
                self.c_elbow[1] + self.l_i2*np.sin(q12+self.a_i2))
         #~~ muscle 2
-        ip3 = self.p3
+        ip3 = self.p3  # if this point doesn't rotate
+        #ip3 = (self.l_i3*np.cos(q1_clip+self.a_i3), 
+        #       self.l_i3*np.sin(q1_clip+self.a_i3))
         ip4 = (self.l_i4*np.cos(q1+self.a_i4), self.l_i4*np.sin(q1+self.a_i4))
         #~~ muscle 3
-        ip5 = self.p5
+        ip5 = self.p5 # if this point doesn't rotate
+        #ip5 = (self.l_i5*np.cos(q1_clip+self.a_i5),
+        #       self.l_i5*np.sin(q1_clip+self.a_i5))
         ip6 = (self.l_i6*np.cos(q1+self.a_i6), self.l_i6*np.sin(q1+self.a_i6))
         #~~ muscle 4
-        ip7 = self.p7
+        ip7 = self.p7 # if this point doesn't rotate
+        #ip7 = (self.l_i7*np.cos(q1_clip+self.a_i7),
+        #       self.l_i7*np.sin(q1_clip+self.a_i7))
         ip8 = (self.c_elbow[0] - self.l_i8*np.cos(q12-self.a_i8),
                self.c_elbow[1] - self.l_i8*np.sin(q12-self.a_i8))
         #~~ muscle 5
@@ -1151,7 +1191,6 @@ class planar_arm(plant):
     	tau = ((i_dist[0]-self.c_elbow[0]) * F[1] - 
                (i_dist[1]-self.c_elbow[1]) * F[0])
     	return tau
-        
         
     def derivatives(self, y, t):
         """ Returns the derivatives of the state variables at a given point in time. 
