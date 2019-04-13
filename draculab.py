@@ -58,6 +58,7 @@ class unit_types(Enum):
     sds_n_ssrdc_sharp = 29
     noisy_linear = 30
     noisy_sigmoidal = 31
+    presyn_inh_sig = 32
 
     binary = 101 # from tutorial 5
 
@@ -134,6 +135,8 @@ class unit_types(Enum):
             unit_class = noisy_linear 
         elif self == unit_types.noisy_sigmoidal:
             unit_class = noisy_sigmoidal
+        elif self == unit_types.presyn_inh_sig:
+            unit_class = presyn_inh_sig
         # Temporary code from tutorial 5
         elif self == unit_types.binary:
             unit_class = binary_unit
@@ -301,6 +304,7 @@ class syn_reqs(Enum):
     inp_l2 = 29 # L2 norm of the inputs at port 0
     exp_scale_sort_mp = 30 # A single scale factor to produce exp rate distro in some mp ssrdc units
     exp_scale_sort_shrp = 31 # A scale factor to produce exp rate distro in some ssrdc_sharp units
+    norm_factor = 32 # A scale factor that normalizes the influence of each input on the model cell
 
     def list_names():
         """ Return a list with the name of all defined synaptic requirements. """
