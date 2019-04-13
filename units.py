@@ -898,6 +898,10 @@ class unit():
         self.thresh = max(min(self.thresh, 10.), -10.) # clipping large/small values
 
 
+    def upd_norm_factor(self,time):
+        pass
+        
+
     ##########################################
     # END OF UPDATE METHODS FOR REQUIREMENTS #
     ##########################################

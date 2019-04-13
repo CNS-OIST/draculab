@@ -499,6 +499,26 @@ def add_inp_l2(unit):
     setattr(unit, 'inp_l2', 1.)
 
 
+def add_norm_factor(unit):
+    """ Adds the normalization factor for inhibitory and excitatory inputs on the model cell."""
+
+    n_inh = 0 # count of inhibitory synapses 
+    n_exc = 0 # count of excitatory synapses 
+    for syn in unit.net.syns[unit.ID]:
+        if syn.w < 0:
+            n_inh += 1
+        else:
+            n_exc += 1
+
+    if n_inh == 0:
+        n_inh = 1
+    if n_exc == 0:
+        n_exc = 1
+           
+    setattr(unit, 's_inh', -unit.HYP/n_inh)
+    setattr(unit, 's_exc', (1.+unit.OD)/n_exc)
+
+
 #-------------------------------------------------------------------------------------
 # Use of the following classes has been deprecated because they slow down execution
 #-------------------------------------------------------------------------------------

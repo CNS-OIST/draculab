@@ -2617,3 +2617,87 @@ class binary_unit(unit):
             return (-1. - y)/self.tau
         else:
             return (1. - y)/self.tau
+
+
+class presyn_inh_sig(unit):
+    """
+    An implementation of a presynaptic inhibition sigmoidal unit.
+
+    Input to the model at port 0 is afferent activity. 
+    Input at port 1 is presynaptic control.
+    Input at port 2 is interneuronal control.  
+    Other ports are ignored. 
+    
+    Its output is produced by linearly suming the inputs at port 0 and port 1 
+    (times the synaptic weights), and feeding the sum to a sigmoidal function, 
+    which constraints the output to values beween zero and one. The result from that
+    first sigmoidal function is linearly summed up with the input at port 3 
+    (times the synaptic weight), and feeding the sum to a second sigmoidal function.
+    The sigmoidal function has the equation:
+    f(x) = 1. / (1. + exp(-slope*(x - thresh)))
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the 'unit' parent class.
+            n_ports is no longer optional.
+                'n_ports' : number of inputs ports is 3.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function.
+                'tau' : Time constant of the update dynamics.
+                'HYP' : Maximun hyperpolarization
+                'OD' : Maximum overdrive
+
+        Raises:
+            AssertionError.
+
+        """
+        unit.__init__(self, ID, params, network)
+        self.n_ports = 3   # number of inputs ports 
+        self.multiport = True   # the port_idx list is created in init_pre_syn_update in
+                                # order to support customized get_mp_input* functions
+        self.slope = params['slope']    # slope of the sigmoidal function
+        self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.HYP = params['HYP'] # maximun hyperpolarization
+        self.OD = params['OD'] # maximum overdrive
+        assert self.type is unit_types.presyn_inh_sig, ['Unit ' + str(self.ID) + 
+                                                            ' instantiated with the wrong type']
+
+        self.syn_needs.update([syn_reqs.norm_factor])
+        
+    def f(self, arg):
+        """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
+        #return 1. / (1. + np.exp(-self.slope*(arg - self.thresh)))
+        return cython_sig(self.thresh, self.slope, arg)
+    
+    def derivatives(self, y, t):
+        """ This function returns the derivative of the activity given its current values. """
+        return ( self.get_mp_input_sum(t) - y[0] ) * self.rtau
+
+    def get_mp_input_sum(self, t):
+        """ The input function of the presynaptic inhibition sigmoidal unit. """
+
+        w = self.get_mp_weights(t)
+        inp = self.get_mp_inputs(t)
+
+        exc_input = 0
+        inh_input = 0
+
+        for i in range(0,len(w[0])):
+            if w[0][i] < 0:
+                inh_input += w[0][i]*inp[0][i] + w[1][i]*inp[1][i]
+            else:
+                exc_input += w[0][i]*inp[0][i] + w[1][i]*inp[1][i]
+
+        exc_input = self.f(exc_input)
+        inh_input = self.f(inh_input)
+
+        sum2 = self.s_exc*exc_input + self.s_inh*inh_input + np.dot(w[2],inp[2])
+        sig2 = self.f(sum2)
+
+        return sig2
