@@ -666,15 +666,6 @@ class network():
         for idx, (output, target, port) in enumerate(connections):
             # specify that 'target' neuron has the 'output' input
             self.act[target].append(self.plants[plantID].get_state_var_fun(output))
-            """ # Instead of the line above I had this code. Not sure why...
-            if self.units[target].multiport: # if the unit has support for multiple input ports
-                self.act[target].append(self.plants[plantID].get_state_var)
-            else:
-                # It is important to run init_buffers before this, because the function returned
-                # by get_state_var_fun doesn't seem to update the buffer size. This is a potential
-                # bug when the plant outputs are connected twice, with larger delays on the second time.
-                self.act[target].append(self.plants[plantID].get_state_var_fun(output))
-            """
             # add a new synapse object for our connection
             syn_params = syn_spec.copy() # a copy of syn_spec just for this connection
             syn_params['preID'] = plantID

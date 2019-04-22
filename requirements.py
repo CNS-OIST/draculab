@@ -500,7 +500,10 @@ def add_inp_l2(unit):
 
 
 def add_norm_factor(unit):
-    """ Adds the normalization factor for inhibitory and excitatory inputs on the model cell."""
+    """ Adds the normalization factor for inhibitory and excitatory inputs on the model cell.
+    
+        This requirement is used by the presyn_inh_sig units.
+    """
 
     n_inh = 0 # count of inhibitory synapses 
     n_exc = 0 # count of excitatory synapses 

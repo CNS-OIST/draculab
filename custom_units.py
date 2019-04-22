@@ -2621,7 +2621,7 @@ class binary_unit(unit):
 
 class presyn_inh_sig(unit):
     """
-    An implementation of a presynaptic inhibition sigmoidal unit.
+    An implementation of a sigmoidal unit with presynaptic inhibition.
 
     Input to the model at port 0 is afferent activity. 
     Input at port 1 is presynaptic control.
@@ -2635,6 +2635,10 @@ class presyn_inh_sig(unit):
     (times the synaptic weight), and feeding the sum to a second sigmoidal function.
     The sigmoidal function has the equation:
     f(x) = 1. / (1. + exp(-slope*(x - thresh)))
+
+    These units are used to extend the model presented in:
+    Tsianos et al. "Useful properties of spinal circuits for learning and performing
+    planar reaches" J. Neural Eng. 11 (2014) 056006
     """
     def __init__(self, ID, params, network):
         """ The unit constructor.

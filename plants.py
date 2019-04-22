@@ -772,10 +772,12 @@ class spring_muscle():
             T = s*(l - l0) + g1*i1
         where T=tension, l=length, and i1=contracting stimulation
         The afferent outputs come from length, velocity, and tension:
-            affs[0] = g2*i2*l
-            affs[1] = g3*i3*v
+            affs[0] = g2*(1+i2)*l/l0, where l0 = resting length in meters.
+            affs[1] = g3*(1+i3)*v
             affs[2] = T
         where v is the contraction velocity, and i2,i3 are inputs.
+        These output are supposed to represent the Ia, II, and Ib afferents,
+        respectively.
         The contraction velocity is obtained as:
             v = v_scale * (L_fast - L_mid)
         where L_fast=fast LPF length, L_mid=medium LPF length.
@@ -849,8 +851,8 @@ class spring_muscle():
         # update the velocity
         self.v = self.v_scale * (self.l_lpf_fast - self.l_lpf_mid)
         # update afferents vector
-        self.affs[0] = self.g2 * i2 * self.l
-        self.affs[1] = self.g3 * i3 * self.v
+        self.affs[0] = self.g2 * (1.+i2) * self.l / self.l0
+        self.affs[1] = self.g3 * (1.+i3) * self.v
         self.affs[2] = self.T
 
 
@@ -894,7 +896,7 @@ class planar_arm(plant):
         port 2: angle of elbow [radians]
         port 3: angular velocity of elbow [radians / s]
         port 4: length of muscle 1
-        port 5: group Ia afferent output for muscle 1
+        port 5: group Ia afferent output for muscle 1 (see muscle model)
         port 6: group II afferent output for muscle 1
         port 7: group Ib afferent output for muscle 1
         port 8-11: same, for muscle 2
@@ -958,13 +960,10 @@ class planar_arm(plant):
         #-------------------------------------------------------------------------------
         assert params['type'] is plant_models.planar_arm, ['Plant ' +
                                  str(self.ID) + ' instantiated with the wrong type']
-        params['dimension'] = 4 # notifying dimensionality of model to parent constructor
+        params['dimension'] = 28 # notifying dimensionality of model to parent constructor
         params['inp_dim'] = 18 # notifying there are eighteen input ports
         plant.__init__(self, ID, params, network) # calling parent constructor
-        # Using model-specific initial values, initialize the state vector.
-        self.init_state = np.array([params['init_q1'], params['init_q1p'],
-                                    params['init_q2'], params['init_q2p']])
-        self.buffer = np.array([self.init_state]*self.buff_width) # initializing buffer
+        # Initialization of the buffer is done below.
         #-------------------------------------------------------------------------------
         # Initialize the double pendulum's parameters
         self.mass1 = params['mass1']   # mass of the rod1 [kg]
@@ -1083,7 +1082,7 @@ class planar_arm(plant):
         self.q1_min = -np.pi/12.
         self.q1_max = np.pi/12.
         # create the muscles
-        params = {'l0': 1., # resting length
+        mus_pars = {'l0': 1., # resting length
                 's' : 5., # spring constant
                 'g1': self.m_gain,  # contraction input gain
                 'g2': 1., # length afferent gain
@@ -1093,25 +1092,24 @@ class planar_arm(plant):
                 'p2': [] } # distal insertion point
         self.muscles = []
         for i in range(6):
-            params['l0'] = self.rest_l[i]
-            params['p1'] = self.ip[2*i]
-            params['p2'] = self.ip[2*i+1]
-            self.muscles.append(spring_muscle(params))
-        
+            mus_pars['l0'] = self.rest_l[i]
+            mus_pars['p1'] = self.ip[2*i]
+            mus_pars['p2'] = self.ip[2*i+1]
+            self.muscles.append(spring_muscle(mus_pars))
+        ##  initialize the state vector.
+        self.init_state = np.zeros(self.dim)
+        # initializing double pendulum state variables
+        self.init_state[0:4] = np.array([params['init_q1'], params['init_q1p'],
+                                         params['init_q2'], params['init_q2p']])
+        self.buffer = np.array([self.init_state]*self.buff_width) 
+        # initializing muscle state variables in the buffer
+        self.upd_muscle_buff(0.)
 
     def upd_ip(self):
         """ Update the coordinates of all the insertion points (self.ip).
 
             This method also updates the coordinates of the elbow and the hand.
-        
-            Returns: a list with 12 tuples, corresponding to the 12 insertion
-                     points. 
         """
-        # An interesting question is whether the insertion points at the
-        # shoulder (p1,p3,p5,p7) should be allowed to rotate. There is some
-        # code to let them rotate within the range [q1_max, q1_min].
-        # It is not recommended to use this, since the muscle lengths will
-        # no longer determine the hand position.
         # retrieve current angles
         if self.net.flat:
             q1 = self.buffer[0, -1] # shoulder angle
@@ -1127,24 +1125,16 @@ class planar_arm(plant):
                        self.c_elbow[1] + self.l_farm*np.sin(q12))
         #~~ muscle 1
         ip1 = self.p1 # if this point doesn't rotate
-        #ip1 = (self.l_i1*np.cos(q1_clip+self.a_i1), # if it rotates
-        #       self.l_i1*np.sin(q1_clip+self.a_i1))
         ip2 = (self.c_elbow[0] + self.l_i2*np.cos(q12+self.a_i2),
                self.c_elbow[1] + self.l_i2*np.sin(q12+self.a_i2))
         #~~ muscle 2
         ip3 = self.p3  # if this point doesn't rotate
-        #ip3 = (self.l_i3*np.cos(q1_clip+self.a_i3), 
-        #       self.l_i3*np.sin(q1_clip+self.a_i3))
         ip4 = (self.l_i4*np.cos(q1+self.a_i4), self.l_i4*np.sin(q1+self.a_i4))
         #~~ muscle 3
         ip5 = self.p5 # if this point doesn't rotate
-        #ip5 = (self.l_i5*np.cos(q1_clip+self.a_i5),
-        #       self.l_i5*np.sin(q1_clip+self.a_i5))
         ip6 = (self.l_i6*np.cos(q1+self.a_i6), self.l_i6*np.sin(q1+self.a_i6))
         #~~ muscle 4
         ip7 = self.p7 # if this point doesn't rotate
-        #ip7 = (self.l_i7*np.cos(q1_clip+self.a_i7),
-        #       self.l_i7*np.sin(q1_clip+self.a_i7))
         ip8 = (self.c_elbow[0] - self.l_i8*np.cos(q12-self.a_i8),
                self.c_elbow[1] - self.l_i8*np.sin(q12-self.a_i8))
         #~~ muscle 5
@@ -1155,8 +1145,35 @@ class planar_arm(plant):
         ip11 = (self.l_i11*np.cos(q1+self.a_i11), self.l_i11*np.sin(q1+self.a_i11))
         ip12 = (self.c_elbow[0] - self.l_i12*np.cos(q12-self.a_i12),
                 self.c_elbow[1] - self.l_i12*np.sin(q12-self.a_i12))
-
         self.ip = [ip1, ip2, ip3, ip4, ip5, ip6, ip7, ip8, ip9, ip10, ip11, ip12]
+
+    def upd_muscle_buff(self, time, flat=False):
+        """ Update the buffer entries for the muscle variables. 
+        
+            'time' is the time for which the muscle inputs will be retrieved.
+            Notice that regardles of the value of 'time', the muscle
+            insertion points used will be the latest ones.
+            
+            The 'flat' argument indicates whether the network is flattened,
+            which means that the buffer has the indexes reversed.
+        """
+        self.upd_ip() # update the coordinates of all insertion points
+        for idx, musc in enumerate(self.muscles):
+            musc.update(self.ip[2*idx], self.ip[2*idx+1],
+                        self.get_input_sum(time, 3*idx),
+                        self.get_input_sum(time, 3*idx+1),
+                        self.get_input_sum(time, 3*idx+2))
+            base = 4 * (idx + 1) # auxiliary index variable
+            if not flat:
+                self.buffer[:, base] = [musc.l] * self.buff_width
+                self.buffer[:, base+1] = [musc.affs[0]] * self.buff_width
+                self.buffer[:, base+2] = [musc.affs[1]] * self.buff_width
+                self.buffer[:, base+3] = [musc.affs[2]] * self.buff_width
+            else:
+                self.buffer[base, :] = [musc.l] * self.buff_width
+                self.buffer[base+1, :] = [musc.affs[0]] * self.buff_width
+                self.buffer[base+2, :] = [musc.affs[1]] * self.buff_width
+                self.buffer[base+3, :] = [musc.affs[2]] * self.buff_width
 
     def shoulder_torque(self, i_prox, i_dist, T):
     	""" Obtain the torque produced by a muscle wrt the shoulder joint.
@@ -1195,6 +1212,11 @@ class planar_arm(plant):
     def derivatives(self, y, t):
         """ Returns the derivatives of the state variables at a given point in time. 
 
+        Because the muscle model has no differential dynamics, this method only deals
+        with the first 4 state variables. This implies that during each integration
+        step the muscle tensions are considered to be constant.
+
+        The muscle variables are handled by the custom update methods.
         These equations were copy-pasted from double_pendulum_validation.ipynb .
 
         Args:
@@ -1211,10 +1233,6 @@ class planar_arm(plant):
                 dydt[2] : angular velocity of elbow [radians / s]
                 dydt[3] : angular acceleration of elbow [radians/s^2]
         """
-        # updating the muscles
-        self.upd_ip() # update the coordinates of all insertion points
-        for idx, musc in enumerate(self.muscles):
-            musc.update(self.ip[2*idx], self.ip[2*idx+1], 0., 0., 0.)
 	# obtaining the muscle torques
         #~~ muscle 1 wrt shouler
         tau1s = self.shoulder_torque(self.ip[0], self.ip[1], self.muscles[0].T)
@@ -1267,4 +1285,36 @@ class planar_arm(plant):
                        2.0*tau2)) / (L1**2*L2**2*m2*(4.0*m1 + 9.0*m2*sin(q2)**2 + 3.0*m2))
         return dydt
 
+           
+    def update(self, time):
+        ''' This function advances the state for net.min_delay time units. 
+        
+            Since the planar arm has 28 variables, 4 of which are handled by the ODE
+            integrator, it is necessary to customize this method so the right values
+            are entered into the buffer.
+        '''
+        # updating the double pendulum state variables
+        new_times = self.times[-1] + self.times_grid
+        self.times = np.roll(self.times, -self.net.min_buff_size)
+        self.times[self.offset:] = new_times[1:] 
+        new_buff = odeint(self.derivatives, self.buffer[-1,0:4], new_times, 
+                          rtol=self.rtol, atol=self.atol)
+        self.buffer = np.roll(self.buffer, -self.net.min_buff_size, axis=0)
+        self.buffer[self.offset:,0:4] = new_buff[1:,:] 
+        # updating the muscles
+        self.upd_muscle_buff(time)
+
+    def flat_update(self, time):
+        """ advances the state for net.min_delay time units when the network is flat. """
+        # self.times is a view of network.ts
+        nts = self.times[self.offset-1:] # times relevant for the update
+        solution = solve_ivp(self.dt_fun, (nts[0], nts[-1]), self.buffer[0:4,-1], 
+                             t_eval=nts, rtol=self.rtol, atol=self.atol)
+        np.put(self.buffer[0:4,self.offset:], range(self.net.min_buff_size*4), 
+               solution.y[:,1:])
+        # updating the muscles
+        self.upd_muscle_buff(time, flat=True)
+
+
+            
 
