@@ -74,71 +74,104 @@ class unit_types(Enum):
             NotImplementedError.
         """
         if self == unit_types.source:
+            from units.units import source
             unit_class = source
         elif self == unit_types.sigmoidal:
+            from units.units import sigmoidal
             unit_class = sigmoidal
         elif self == unit_types.linear:
+            from units.units import linear
             unit_class = linear
-        elif self == unit_types.mp_linear:
-            unit_class = mp_linear
-        elif self == unit_types.custom_fi:
-            unit_class = custom_fi
-        elif self == unit_types.custom_sc_fi:
-            unit_class = custom_scaled_fi
-        elif self == unit_types.kwta:
-            unit_class = kWTA
-        elif self == unit_types.exp_dist_sig:
-            unit_class = exp_dist_sigmoidal
-        elif self == unit_types.exp_dist_sig_thr:
-            unit_class = exp_dist_sig_thr
-        elif self == unit_types.double_sigma:
-            unit_class = double_sigma
-        elif self == unit_types.sigma_double_sigma:
-            unit_class = sigma_double_sigma
-        elif self == unit_types.double_sigma_n:
-            unit_class = double_sigma_normal
-        elif self == unit_types.double_sigma_trdc:
-            unit_class = double_sigma_trdc
-        elif self == unit_types.sds_trdc:
-            unit_class = sigma_double_sigma_trdc
-        elif self == unit_types.ds_n_trdc:
-            unit_class = double_sigma_normal_trdc
-        elif self == unit_types.ds_sharp:
-            unit_class = double_sigma_sharp
-        elif self == unit_types.sds_sharp:
-            unit_class = sigma_double_sigma_sharp
-        elif self == unit_types.ds_n_sharp:
-            unit_class = double_sigma_normal_sharp
-        elif self == unit_types.sds_n_sharp:
-            unit_class = sigma_double_sigma_normal_sharp
-        elif self == unit_types.sig_ssrdc_sharp:
-            unit_class = sig_ssrdc_sharp
-        elif self == unit_types.st_hr_sig:
-            unit_class = sliding_threshold_harmonic_rate_sigmoidal
-        elif self == unit_types.ss_hr_sig:
-            unit_class = synaptic_scaling_harmonic_rate_sigmoidal
-        elif self == unit_types.sig_trdc:
-            unit_class = sig_trdc
-        elif self == unit_types.sig_ssrdc:
-            unit_class = sig_ssrdc
-        elif self == unit_types.sig_trdc_sharp:
-            unit_class = sig_trdc_sharp
-        elif self == unit_types.sds_n:
-            unit_class = sigma_double_sigma_normal
-        elif self == unit_types.ds_ssrdc_sharp:
-            unit_class = ds_ssrdc_sharp
-        elif self == unit_types.delta_linear:
-            unit_class = delta_linear
-        elif self == unit_types.sds_n_ssrdc_sharp:
-            unit_class = sds_n_ssrdc_sharp
         elif self == unit_types.noisy_linear:
+            from units.units import noisy_linear 
             unit_class = noisy_linear 
         elif self == unit_types.noisy_sigmoidal:
+            from units.units import noisy_sigmoidal
             unit_class = noisy_sigmoidal
+        elif self == unit_types.mp_linear:
+            from units.custom_units import mp_linear
+            unit_class = mp_linear
+        elif self == unit_types.custom_fi:
+            from units.custom_units import custom_fi
+            unit_class = custom_fi
+        elif self == unit_types.custom_sc_fi:
+            from units.custom_units import custom_scaled_fi
+            unit_class = custom_scaled_fi
+        elif self == unit_types.kwta:
+            from units.custom_units import kWTA
+            unit_class = kWTA
+        elif self == unit_types.exp_dist_sig:
+            from units.custom_units import exp_dist_sigmoidal
+            unit_class = exp_dist_sigmoidal
+        elif self == unit_types.exp_dist_sig_thr:
+            from units.custom_units import exp_dist_sig_thr
+            unit_class = exp_dist_sig_thr
+        elif self == unit_types.double_sigma:
+            from units.custom_units import double_sigma
+            unit_class = double_sigma
+        elif self == unit_types.sigma_double_sigma:
+            from units.custom_units import sigma_double_sigma
+            unit_class = sigma_double_sigma
+        elif self == unit_types.double_sigma_n:
+            from units.custom_units import double_sigma_normal
+            unit_class = double_sigma_normal
+        elif self == unit_types.double_sigma_trdc:
+            from units.custom_units import double_sigma_trdc
+            unit_class = double_sigma_trdc
+        elif self == unit_types.sds_trdc:
+            from units.custom_units import sigma_double_sigma_trdc
+            unit_class = sigma_double_sigma_trdc
+        elif self == unit_types.ds_n_trdc:
+            from units.custom_units import double_sigma_normal_trdc
+            unit_class = double_sigma_normal_trdc
+        elif self == unit_types.ds_sharp:
+            from units.custom_units import double_sigma_sharp
+            unit_class = double_sigma_sharp
+        elif self == unit_types.sds_sharp:
+            from units.custom_units import sigma_double_sigma_sharp
+            unit_class = sigma_double_sigma_sharp
+        elif self == unit_types.ds_n_sharp:
+            from units.custom_units import double_sigma_normal_sharp
+            unit_class = double_sigma_normal_sharp
+        elif self == unit_types.sds_n_sharp:
+            from units.custom_units import sigma_double_sigma_normal_sharp
+            unit_class = sigma_double_sigma_normal_sharp
+        elif self == unit_types.sig_ssrdc_sharp:
+            from units.custom_units import sig_ssrdc_sharp
+            unit_class = sig_ssrdc_sharp
+        elif self == unit_types.st_hr_sig:
+            from units.custom_units import sliding_threshold_harmonic_rate_sigmoidal
+            unit_class = sliding_threshold_harmonic_rate_sigmoidal
+        elif self == unit_types.ss_hr_sig:
+            from units.custom_units import synaptic_scaling_harmonic_rate_sigmoidal
+            unit_class = synaptic_scaling_harmonic_rate_sigmoidal
+        elif self == unit_types.sig_trdc:
+            from units.custom_units import sig_trdc
+            unit_class = sig_trdc
+        elif self == unit_types.sig_ssrdc:
+            from units.custom_units import sig_ssrdc
+            unit_class = sig_ssrdc
+        elif self == unit_types.sig_trdc_sharp:
+            from units.custom_units import sig_trdc_sharp
+            unit_class = sig_trdc_sharp
+        elif self == unit_types.sds_n:
+            from units.custom_units import sigma_double_sigma_normal
+            unit_class = sigma_double_sigma_normal
+        elif self == unit_types.ds_ssrdc_sharp:
+            from units.custom_units import ds_ssrdc_sharp
+            unit_class = ds_ssrdc_sharp
+        elif self == unit_types.delta_linear:
+            from units.custom_units import delta_linear
+            unit_class = delta_linear
+        elif self == unit_types.sds_n_ssrdc_sharp:
+            from units.custom_units import sds_n_ssrdc_sharp
+            unit_class = sds_n_ssrdc_sharp
         elif self == unit_types.presyn_inh_sig:
+            from units.custom_units import presyn_inh_sig
             unit_class = presyn_inh_sig
         # Temporary code from tutorial 5
         elif self == unit_types.binary:
+            from units.custom_units import binary_unit
             unit_class = binary_unit
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
@@ -182,37 +215,53 @@ class synapse_types(Enum):
             ValueError.
         """
         if self == synapse_types.static:
+            from synapses.synapses import static_synapse
             syn_class = static_synapse
         elif self == synapse_types.oja:
+            from synapses.synapses import oja_synapse
             syn_class = oja_synapse
         elif self == synapse_types.antihebb:
+            from synapses.synapses import anti_hebbian_synapse
             syn_class = anti_hebbian_synapse
         elif self == synapse_types.cov:
+            from synapses.synapses import covariance_synapse
             syn_class = covariance_synapse
         elif self == synapse_types.anticov:
+            from synapses.synapses import anti_covariance_synapse
             syn_class = anti_covariance_synapse
         elif self == synapse_types.hebbsnorm:
+            from synapses.synapses import hebb_subsnorm_synapse
             syn_class = hebb_subsnorm_synapse
         elif self == synapse_types.sq_hebbsnorm:
+            from synapses.synapses import sq_hebb_subsnorm_synapse
             syn_class = sq_hebb_subsnorm_synapse
         elif self == synapse_types.inp_corr:
+            from synapses.synapses import input_correlation_synapse
             syn_class = input_correlation_synapse
         elif self == synapse_types.bcm:
+            from synapses.synapses import bcm_synapse
             syn_class = bcm_synapse
         elif self == synapse_types.homeo_inh:
+            from synapses.synapses import homeo_inhib_synapse
             syn_class = homeo_inhib_synapse
         elif self == synapse_types.corr_inh:
+            from synapses.synapses import corr_homeo_inhib_synapse
             syn_class = corr_homeo_inhib_synapse
         elif self == synapse_types.diff_hebbsnorm:
+            from synapses.synapses import diff_hebb_subsnorm_synapse
             syn_class = diff_hebb_subsnorm_synapse
         elif self == synapse_types.exp_rate_dist:
+            from synapses.synapses import exp_rate_dist_synapse
             syn_class = exp_rate_dist_synapse
         elif self == synapse_types.anticov_pre:
+            from synapses.synapses import anti_cov_pre_synapse 
             syn_class = anti_cov_pre_synapse 
         elif self == synapse_types.delta:
+            from synapses.synapses import delta_synapse 
             syn_class = delta_synapse 
         # Temporary code from tutorial 5
         elif self == synapse_types.switcher:
+            from synapses.synapses import switcher
             syn_class = switcher
 
         else:
@@ -246,16 +295,22 @@ class plant_models(Enum):
             NotImplementedError.
         """
         if self == plant_models.pendulum:
+            from plants.plants import pendulum 
             plant_class = pendulum 
         elif self == plant_models.point_mass_2D:
+            from plants.plants import point_mass_2D
             plant_class = point_mass_2D
         elif self == plant_models.conn_tester:
+            from plants.plants import conn_tester
             plant_class = conn_tester
         elif self == plant_models.simple_double_pendulum:
+            from plants.plants import simple_double_pendulum
             plant_class = simple_double_pendulum
         elif self == plant_models.compound_double_pendulum:
+            from plants.plants import compound_double_pendulum
             plant_class = compound_double_pendulum
         elif self == plant_models.planar_arm:
+            from plants.plants import planar_arm
             plant_class = planar_arm
         else:
             raise NotImplementedError('Attempting to retrieve the class for an unknown plant model')
@@ -313,10 +368,17 @@ class syn_reqs(Enum):
 
 # Importing the classes used by the simulator
 from network import *
+"""
 from units import *
 from custom_units import *
 from synapses import *
 from requirements import *
 from plants import *
 from topology import *
+"""
+import plants
+import synapses
+import units
+import requirements
+from tools.topology import *
 

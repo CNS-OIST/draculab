@@ -5,8 +5,7 @@ Add your experimental models in here, and don't forget to also add their
 names and class names in the unit_types Enum of draculab.py .
 """
 from draculab import unit_types, synapse_types, syn_reqs  # names of models and requirements
-from synapses import * # synapse models
-from units import *   # the unit class and its utilities
+from units.units import *
 import numpy as np
 from cython_utils import euler_int # the cythonized forward Euler integration
 from cython_utils import euler_maruyama # the cythonized Euler-Maruyama approximation

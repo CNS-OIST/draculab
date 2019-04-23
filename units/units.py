@@ -4,8 +4,7 @@ This file contains the basic unit models in the draculab simulator.
 """
 
 from draculab import unit_types, synapse_types, syn_reqs  # names of models and requirements
-from synapses import *  # synapse models
-from requirements import *
+from requirements.requirements import *
 import numpy as np
 from cython_utils import * # interpolation and integration methods including cython_get_act*,
                            # cython_sig, euler_int, euler_maruyama, exp_euler

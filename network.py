@@ -4,9 +4,6 @@ The network class used in the draculab simulator.
 """
 
 from draculab import unit_types, synapse_types, plant_models, syn_reqs  # names of models and requirements
-from units import *
-from synapses import *
-from plants import *
 import numpy as np
 from cython_utils import * # interpolation and integration methods including cython_get_act*,
 from requirements import *
@@ -496,6 +493,7 @@ class network():
         else:
             raise ValueError('Invalid value for delays when connecting units to plant')
         # Have to create a list with all the synaptic weights
+        static_synapse = synapse_types.static.get_class()
         if syn_spec['type'] is synapse_types.static: 
             synaps = []
             syn_spec['postID'] = plantID

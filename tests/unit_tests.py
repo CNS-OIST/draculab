@@ -12,7 +12,7 @@ import numpy as np
 import time
 import unittest
 from scipy.interpolate import interp1d
-from ei_net import *
+from tools.ei_net import *
 
 # Path were the .dat and .pkl files are located
 global test_path 

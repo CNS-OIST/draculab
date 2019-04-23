@@ -7,9 +7,6 @@ It implements functionality similar to that in NEST's topology module.
 """
 
 from draculab import unit_types, synapse_types, plant_models, syn_reqs  # names of models and requirements
-from units import *
-from synapses import *
-from network import *
 import numpy as np
 
 

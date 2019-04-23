@@ -6,7 +6,6 @@ initialization and updating methods.
 """
 
 from draculab import unit_types, synapse_types, syn_reqs
-from units import *
 import numpy as np
 
 
