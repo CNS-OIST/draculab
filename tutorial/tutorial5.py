@@ -23,15 +23,15 @@
 # Creating a new type of unit can be divided into 3 steps:
 # 
 # 1. Register the name of the new unit in `draculab.py`.  
-# The unit class will be written into `custom_units.py`, where you:  
+# The unit class will be written into `units/custom_units.py`, where you:  
 # 2. Add the `__init__` method.  
 # 3. Add the `derivatives` (or `dt_fun`) method.
 
-# Tor register the name of a new unit type open the `draculab.py` and locate the `unit_types` class, which is an [enum](https://docs.python.org/3/library/enum.html).
+# Tor register the name of a new unit type open the `draculab.py` file with a text editor and locate the `unit_types` class, which is an [enum](https://docs.python.org/3/library/enum.html).
 # 
 # In the `unit_type` class we define an attribute with the name of the unit, and assign it a unique integer value to identify it. In the case of our unit, we could call it "binary", and assign it the value 101.
 # 
-# Next, in the `unit_types.get_class` method we need to associate the name of the type (e.g. "binary") with the name of the class implementing it in `custom_units.py`. Once this is done we can create this type of units using `network.create(n, params_dict)`, where the paramters dictionary contains the entry `'type' = unit_types.binary`. In general it is better to have the type name and the name of the class being equal, but for the purpose of this tutorial, the class implementing binary units will be `binary_unit`.
+# Next, in the `unit_types.get_class` method we need to associate the name of the type (e.g. "binary") with the name of the class implementing it in `custom_units.py`. Once this is done we can create this type of unit using `network.create(n, params_dict)`, where the paramters dictionary contains the entry `'type' = unit_types.binary`. In general it is better to have the type name and the name of the class being equal, but for the purpose of this tutorial, the class implementing binary units will be `binary_unit`.
 
 # In[ ]:
 
@@ -40,15 +40,35 @@
 binary = 101
 # among the other unit names, and
 elif self == unit_types.binary:
+    from units.custom_units import binary_unit
     unit_class = binary_unit
 # among the elif statements of the get_class method
 
+# The code for this part of the tutorial will most likely be already
+# inserted in draculab.py and in custom_units.py, but we will pretend
+# that it is not.
 
-# Let's now write the class implementing the unit in `custom_units.py`.
+
+# The new unit can be added in a file other than `custom_units.py`.  If you want to add your model in a separate `.py` file in the `units` folder, all that is required is to specify the name of this file in `unit_models.get_class`. For example, you may put your code in a file `units/my_binary.py`, and then enter the following among the "elif" statements:
+# 
+# ```
+# elif self == unit_types.binary:
+#     from units.my_binary import binary_unit
+#     unit_class = binary_unit
+# ```
+# The `my_binary.py` file would require import statements similar to those in `custom_units`:
+# ```
+# from draculab import unit_types, synapse_types, syn_reqs
+# from units.units import *  
+# ```
+# 
+# Let's instead write the class implementing the unit in `custom_units.py`.
 
 # In[ ]:
 
 
+# This class is already in custom_units.py, but we'll
+# pretend that it isn't
 class binary_unit(unit):
     """ The unit type created in tutorial 5. """
     def __init__(self, ID, params, network):
@@ -152,7 +172,7 @@ plt.show()
 # A simple way to obtain an average that places more importance on the most recent values is to use a first order *low-pass filter*. A simple, yet effective version is defined by:
 # $\frac{d \langle x \rangle}{dt} = \frac{ x - \langle x \rangle }{ \tau_f } $.
 # 
-# Such a quantity can be calculated by the unit and made available to all its synapses if the unit contains a low-pass filter *requirement*. In general, a requirement can be added to a unit if the requirement's name is added to `syn_needs`, which is an object of the *set* data type in the unit. This can be done in the unit's constructor. The name of all available requirements can be seen in the `syn_reqs` enum class of `draculab.py`. Alternatively, they are displayed by the command `syn_reqs.list_names()`. Documentation about a particular requirement can be found in the methods of the `requirements.py`; in particular, in the methods called `add_<requirement name>`.
+# Such a quantity can be calculated by the unit and made available to all its synapses if the unit contains a low-pass filter *requirement*. In general, a requirement can be added to a unit if the requirement's name is added to `syn_needs`, which is an object of the *set* data type in the unit. This can be done in the unit's constructor. The name of all available requirements can be seen in the `syn_reqs` enum class of `draculab.py`. Alternatively, they are displayed by the command `syn_reqs.list_names()`. Documentation about a particular requirement can be found in the methods of the `requirements.py` file at the `requirements` folder; in particular, in the methods called `add_<requirement name>`.
 # 
 # In the case of requirements used by synapses, it is not necessary to add them in the constructors of the units we'll use. If we specify which requirements will be used by the synapse in its constructor, these will be automatically added to the relevant units by `network.connect`. The code in this example will illustrate this.
 # 
@@ -170,8 +190,12 @@ plt.show()
 switcher = 101
 # in the synapse_types class, and
 elif self == synapse_types.switcher:
+        from synapses.synapses import switcher
         syn_class = switcher
 # in the get_class method.
+
+# This code is actually already there, but
+# we'll pretend that it is not
 
 
 # In[ ]:
@@ -551,7 +575,7 @@ YYKWZGNM4/Pb  '-VscP4]b@W%     'Mf`   -L\///KM(%W!
 
 # ### SOLUTION TO EXERCISE 1
 # 
-# When the input (presynaptic activity, red line) is larger than the postsynaptic activity (e.g. red line above blue line) the weight (yellow line) starts to grow after a tiny delay, approaching the value 1. When the blue line is above the red line then the weight approaches -1.
+# When the input (presynaptic activity, red line) is larger than the postsynaptic activity (e.g. red line is above blue line) the weight (yellow line) starts to grow after a tiny delay, approaching the value 1. When the blue line is above the red line then the weight approaches -1.
 
 # ### SOLUTION TO EXERCISE 2
 # You should be able to observe a small difference at latter times in the simulation. Since no integration method was specified in the parameters of the binary unit, `odeint` is used by default. This integratator uses adaptive steps size and automatically switches between methods in order to achieve a desired accuracy. For details, se the notes on the "lsoda" integrator [here](https://docs.scipy.org/doc/scipy/reference/generated/scipy.integrate.ode.html#scipy.integrate.ode). In our case, the accuracy of integration used by `odeint` is set by the network parameters `atol` and `rtol`. These two were not explicitly written in the `net_params` dictionary, so they adopted their default $10^{-6}$ value, which is very precise (and relatively slow).
