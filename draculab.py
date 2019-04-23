@@ -88,6 +88,69 @@ class unit_types(Enum):
         elif self == unit_types.noisy_sigmoidal:
             from units.units import noisy_sigmoidal
             unit_class = noisy_sigmoidal
+        elif self == unit_types.exp_dist_sig:
+            from units.ds_rdc import exp_dist_sigmoidal
+            unit_class = exp_dist_sigmoidal
+        elif self == unit_types.exp_dist_sig_thr:
+            from units.ds_rdc import exp_dist_sig_thr
+            unit_class = exp_dist_sig_thr
+        elif self == unit_types.double_sigma:
+            from units.ds_rdc import double_sigma
+            unit_class = double_sigma
+        elif self == unit_types.sigma_double_sigma:
+            from units.ds_rdc import sigma_double_sigma
+            unit_class = sigma_double_sigma
+        elif self == unit_types.double_sigma_n:
+            from units.ds_rdc import double_sigma_normal
+            unit_class = double_sigma_normal
+        elif self == unit_types.double_sigma_trdc:
+            from units.ds_rdc import double_sigma_trdc
+            unit_class = double_sigma_trdc
+        elif self == unit_types.sds_trdc:
+            from units.ds_rdc import sigma_double_sigma_trdc
+            unit_class = sigma_double_sigma_trdc
+        elif self == unit_types.ds_n_trdc:
+            from units.ds_rdc import double_sigma_normal_trdc
+            unit_class = double_sigma_normal_trdc
+        elif self == unit_types.ds_sharp:
+            from units.ds_rdc import double_sigma_sharp
+            unit_class = double_sigma_sharp
+        elif self == unit_types.sds_sharp:
+            from units.ds_rdc import sigma_double_sigma_sharp
+            unit_class = sigma_double_sigma_sharp
+        elif self == unit_types.ds_n_sharp:
+            from units.ds_rdc import double_sigma_normal_sharp
+            unit_class = double_sigma_normal_sharp
+        elif self == unit_types.sds_n_sharp:
+            from units.ds_rdc import sigma_double_sigma_normal_sharp
+            unit_class = sigma_double_sigma_normal_sharp
+        elif self == unit_types.sig_ssrdc_sharp:
+            from units.ds_rdc import sig_ssrdc_sharp
+            unit_class = sig_ssrdc_sharp
+        elif self == unit_types.st_hr_sig:
+            from units.ds_rdc import sliding_threshold_harmonic_rate_sigmoidal
+            unit_class = sliding_threshold_harmonic_rate_sigmoidal
+        elif self == unit_types.ss_hr_sig:
+            from units.ds_rdc import synaptic_scaling_harmonic_rate_sigmoidal
+            unit_class = synaptic_scaling_harmonic_rate_sigmoidal
+        elif self == unit_types.sig_trdc:
+            from units.ds_rdc import sig_trdc
+            unit_class = sig_trdc
+        elif self == unit_types.sig_ssrdc:
+            from units.ds_rdc import sig_ssrdc
+            unit_class = sig_ssrdc
+        elif self == unit_types.sig_trdc_sharp:
+            from units.ds_rdc import sig_trdc_sharp
+            unit_class = sig_trdc_sharp
+        elif self == unit_types.sds_n:
+            from units.ds_rdc import sigma_double_sigma_normal
+            unit_class = sigma_double_sigma_normal
+        elif self == unit_types.ds_ssrdc_sharp:
+            from units.ds_rdc import ds_ssrdc_sharp
+            unit_class = ds_ssrdc_sharp
+        elif self == unit_types.sds_n_ssrdc_sharp:
+            from units.ds_rdc import sds_n_ssrdc_sharp
+            unit_class = sds_n_ssrdc_sharp
         elif self == unit_types.mp_linear:
             from units.custom_units import mp_linear
             unit_class = mp_linear
@@ -100,72 +163,9 @@ class unit_types(Enum):
         elif self == unit_types.kwta:
             from units.custom_units import kWTA
             unit_class = kWTA
-        elif self == unit_types.exp_dist_sig:
-            from units.custom_units import exp_dist_sigmoidal
-            unit_class = exp_dist_sigmoidal
-        elif self == unit_types.exp_dist_sig_thr:
-            from units.custom_units import exp_dist_sig_thr
-            unit_class = exp_dist_sig_thr
-        elif self == unit_types.double_sigma:
-            from units.custom_units import double_sigma
-            unit_class = double_sigma
-        elif self == unit_types.sigma_double_sigma:
-            from units.custom_units import sigma_double_sigma
-            unit_class = sigma_double_sigma
-        elif self == unit_types.double_sigma_n:
-            from units.custom_units import double_sigma_normal
-            unit_class = double_sigma_normal
-        elif self == unit_types.double_sigma_trdc:
-            from units.custom_units import double_sigma_trdc
-            unit_class = double_sigma_trdc
-        elif self == unit_types.sds_trdc:
-            from units.custom_units import sigma_double_sigma_trdc
-            unit_class = sigma_double_sigma_trdc
-        elif self == unit_types.ds_n_trdc:
-            from units.custom_units import double_sigma_normal_trdc
-            unit_class = double_sigma_normal_trdc
-        elif self == unit_types.ds_sharp:
-            from units.custom_units import double_sigma_sharp
-            unit_class = double_sigma_sharp
-        elif self == unit_types.sds_sharp:
-            from units.custom_units import sigma_double_sigma_sharp
-            unit_class = sigma_double_sigma_sharp
-        elif self == unit_types.ds_n_sharp:
-            from units.custom_units import double_sigma_normal_sharp
-            unit_class = double_sigma_normal_sharp
-        elif self == unit_types.sds_n_sharp:
-            from units.custom_units import sigma_double_sigma_normal_sharp
-            unit_class = sigma_double_sigma_normal_sharp
-        elif self == unit_types.sig_ssrdc_sharp:
-            from units.custom_units import sig_ssrdc_sharp
-            unit_class = sig_ssrdc_sharp
-        elif self == unit_types.st_hr_sig:
-            from units.custom_units import sliding_threshold_harmonic_rate_sigmoidal
-            unit_class = sliding_threshold_harmonic_rate_sigmoidal
-        elif self == unit_types.ss_hr_sig:
-            from units.custom_units import synaptic_scaling_harmonic_rate_sigmoidal
-            unit_class = synaptic_scaling_harmonic_rate_sigmoidal
-        elif self == unit_types.sig_trdc:
-            from units.custom_units import sig_trdc
-            unit_class = sig_trdc
-        elif self == unit_types.sig_ssrdc:
-            from units.custom_units import sig_ssrdc
-            unit_class = sig_ssrdc
-        elif self == unit_types.sig_trdc_sharp:
-            from units.custom_units import sig_trdc_sharp
-            unit_class = sig_trdc_sharp
-        elif self == unit_types.sds_n:
-            from units.custom_units import sigma_double_sigma_normal
-            unit_class = sigma_double_sigma_normal
-        elif self == unit_types.ds_ssrdc_sharp:
-            from units.custom_units import ds_ssrdc_sharp
-            unit_class = ds_ssrdc_sharp
         elif self == unit_types.delta_linear:
             from units.custom_units import delta_linear
             unit_class = delta_linear
-        elif self == unit_types.sds_n_ssrdc_sharp:
-            from units.custom_units import sds_n_ssrdc_sharp
-            unit_class = sds_n_ssrdc_sharp
         elif self == unit_types.presyn_inh_sig:
             from units.custom_units import presyn_inh_sig
             unit_class = presyn_inh_sig
@@ -368,14 +368,6 @@ class syn_reqs(Enum):
 
 # Importing the classes used by the simulator
 from network import *
-"""
-from units import *
-from custom_units import *
-from synapses import *
-from requirements import *
-from plants import *
-from topology import *
-"""
 import plants
 import synapses
 import units
