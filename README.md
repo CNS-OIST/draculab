@@ -25,9 +25,10 @@ accompanying paper, and then following the tutorials.
 The paper should be in the `tutorial` folder, in the `draculab_manuscript.pdf` file.
 Its reference is:
 Verduzco-Flores SO, DeSchutter E (2019) "Draculab: A Python simulator for firing rate
-neural networks with delayed adaptive connections " (under review)
+neural networks with delayed adaptive connections " Front. Neuroinform. 13,
+https://doi.org/10.3389/fninf.2019.00018
 
-The lessons of this tutorial are given as [Jupyter](https://jupyter.org/) notebooks with filenames `tutorialX.ipynb`, where X stands for the tutorial number. It is recommended to follow the lessons in order using the notebooks, but for those users who prefer not to use Jupyter, the Python source code and instructions are included in the `tutorialX.py` files.
+The lessons of the tutorial are given as [Jupyter](https://jupyter.org/) notebooks with filenames `tutorialX.ipynb`, where X stands for the tutorial number. It is recommended to follow the lessons in order using the notebooks, but for those users who prefer not to use Jupyter, the Python source code and instructions are included in the `tutorialX.py` files.
 
 The `tests` folder contains miscellaneous code to test various aspects of Draculab.
 Some basic unit tests are in `unit_tests.py`. Most unit tests have an associated Jupyter
