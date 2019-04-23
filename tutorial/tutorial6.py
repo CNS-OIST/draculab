@@ -34,6 +34,8 @@
 
 # We can begin by looking at the docstring of the two classes
 from draculab import *
+from units.custom_units import delta_linear
+from synapses.synapses import delta_synapse
 help(delta_linear)
 
 
@@ -92,6 +94,7 @@ def get_mp_input_sum(self,time):
 # In[ ]:
 
 
+from units.units import unit
 help(unit.get_mp_inputs)
 
 
@@ -229,7 +232,7 @@ def dt_fun(self, y, s):
 # The desired output will be the norm of the projection of the input vector on a given vector $\bf{v}$.
 # If the learning algorithm works, the weight vector of the delta unit must approach $\bf{v}$.
 # 
-# To create this simulation we use the `ei_net` class from `ei_net.py`.  
+# To create this simulation we use the `ei_net` class from `tools/ei_net.py`.  
 # This class is used to configure  and run simulations involving three different populations, called **e**, **i**, and **x**.  
 # These three populations are meant to contain excitatory, inhibitory, and source units respectively. An instance of the `ei_net` class contains default parameter dictionaries for the three populations, and for their connections. In theory we could just create an instance of `ei_net`, run `ei_net.build`, and then start running simulations with `ei_net.run`. Of course, those simulations would not use the network we want to simulate, so we need to adapt the parameters of `ei_net` for this end.
 # 
@@ -240,7 +243,7 @@ def dt_fun(self, y, s):
 # In[ ]:
 
 
-from ei_net import *
+from tools.ei_net import *
 help(ei_net)
 # ei_net contains many methods. 
 # It is not necessary to read all this documentation.
@@ -512,6 +515,8 @@ plt.show()
 # **ei_network** takes many objects similar to **ei_net**, rebranding them as _layers_. With **ei_network** we can
 # build networks consisting of many interconnected _layers_. This gives enough flexibility to build almost any network
 # you may want.
+# 
+# One drawback of **ei_network** is that each layer is assumed to have 3 populations (inhibitory, excitatory, and inputs). This can lead to empty populations, slighlty more cumbersome coding, and most importantly, to adding extra populations without realizing it. A new tool is being designed to address this.
 .
 .
 .
