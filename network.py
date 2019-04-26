@@ -6,7 +6,7 @@ The network class used in the draculab simulator.
 from draculab import unit_types, synapse_types, plant_models, syn_reqs  # names of models and requirements
 import numpy as np
 from cython_utils import * # interpolation and integration methods including cython_get_act*,
-from requirements import *
+#from requirements import *  # not sure this is necessary
 from array import array # optionally used for the unit's buffer
 #from numba import jit
 

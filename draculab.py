@@ -203,6 +203,8 @@ class synapse_types(Enum):
 
     switcher = 101 # from tutorial 5
 
+    diff_hebbsnorm2 = 201 # a variation on diff_hebbsnorm
+
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
 
@@ -263,6 +265,10 @@ class synapse_types(Enum):
         elif self == synapse_types.switcher:
             from synapses.synapses import switcher
             syn_class = switcher
+        # Synapses for the spinal model
+        elif self == synapse_types.diff_hebbsnorm2:
+            from synapses.spinal_syns import diff_hebb_subsnorm_synapse2
+            syn_class = diff_hebb_subsnorm_synapse2
 
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')

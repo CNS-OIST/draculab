@@ -199,12 +199,13 @@ def add_sc_inp_sum_sqhsn(unit):
 
 
 def add_diff_avg(unit):
-    """ Adds the average of derivatives for inputs with diff_hebb_subsnorm synapses."""
+    """ Adds the average of derivatives for inputs with diff_hebb_subsnorm(2) synapses."""
     dsnorm_list = [] # list with all presynaptic units providing
                      # diff_hebb_subsnorm synapses
     dsnorm_dels = [] # list with delay steps for each connection in dsnorm_list
     for syn in unit.net.syns[unit.ID]:
-        if syn.type is synapse_types.diff_hebbsnorm:
+        if (syn.type is synapse_types.diff_hebbsnorm or
+            syn.type is synapse_types.diff_hebbsnorm2):
             dsnorm_list.append(unit.net.units[syn.preID])
             dsnorm_dels.append(syn.delay_steps)
     n_dhebbsnorm = len(dsnorm_list) # number of diff_hebbsnorm synapses received
