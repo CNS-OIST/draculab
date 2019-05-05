@@ -661,6 +661,7 @@ class diff_hebb_subsnorm_synapse(synapse):
         """
         diff_avg = self.net.units[self.postID].diff_avg
         # pos_diff_avg = self.net.units[self.postID].pos_diff_avg
+        # TODO: modified delay
         Dpost = (self.net.units[self.postID].get_lpf_fast(0) - 
                  self.net.units[self.postID].get_lpf_mid(0) )
         Dpre = ( self.net.units[self.preID].get_lpf_fast(self.delay_steps) -

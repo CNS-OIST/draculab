@@ -504,7 +504,6 @@ def add_norm_factor(unit):
     
         This requirement is used by the presyn_inh_sig units.
     """
-
     n_inh = 0 # count of inhibitory synapses 
     n_exc = 0 # count of excitatory synapses 
     for syn in unit.net.syns[unit.ID]:
@@ -512,12 +511,10 @@ def add_norm_factor(unit):
             n_inh += 1
         else:
             n_exc += 1
-
     if n_inh == 0:
         n_inh = 1
     if n_exc == 0:
         n_exc = 1
-           
     setattr(unit, 's_inh', -unit.HYP/n_inh)
     setattr(unit, 's_exc', (1.+unit.OD)/n_exc)
 

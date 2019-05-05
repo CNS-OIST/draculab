@@ -258,7 +258,7 @@ class network():
                         'uniform' : the delay dictionary must also include 'low' and 'high' values.
                         Example: {..., 'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.} }
                         'equal_norm' : the weight vectors for units in 'to_list' are uniformly sampled
-                                      from the space of vectors with a given norm. The delay
+                                      from the space of vectors with a given norm. The init_w 
                                       dictionary must also include the 'norm' parameter.
                         Example: {..., 'init_w':{'distribution':'equal_norm', 'norm':1.5} }
                         If using a list to specify the initial weights, the first entries in the

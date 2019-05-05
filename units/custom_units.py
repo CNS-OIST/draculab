@@ -23,7 +23,6 @@ class custom_fi(unit):
     Because this unit operates in real time, it updates its value gradualy, with
     a 'tau' time constant.
     """
-
     def __init__(self, ID, params, network):
         """ The unit constructor.
 
