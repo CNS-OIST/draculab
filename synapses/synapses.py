@@ -604,8 +604,16 @@ class diff_hebb_subsnorm_synapse(synapse):
         where avg(pre_k') is the mean of the derivatives for all inputs with this synapse 
         type. This is the same formula as Hebbian learning with substractive normalization 
         (see hebb_subsnorm_synapse), where the unit activities have been replaced by their 
-        derivatives. As with the Hebbian rule, the differential version keeps the sum of 
-        synaptic weights invariant. 
+        derivatives, and there is delay in the post activity used. As with the Hebbian rule,
+        the differential version keeps the sum of synaptic weights invariant. 
+
+        The post activity needs to have a delay for the rule to make sense. There is a natural
+        correlation between pre_i' and post' arising from the fact that pre_i is exciting
+        the cell, so a positive pre_i'(t) will correlate with a positive post'(t). Thus, we
+        need to choose a delay D long enough so that post'(t-D) is independent of the
+        stimulation from pre_i(t). This delay might be larger than the one required by the
+        unit's connections, so in the unit constructor a long-enough 'delay' parameter must
+        be specified.
         
         Weights that become negative are clamped to zero and their corresponding inputs are
         subsequently ignored when computing the average derivative, until the weight becomes
@@ -629,15 +637,17 @@ class diff_hebb_subsnorm_synapse(synapse):
         """ The class constructor.
 
         Args:
-            params: same as the parent class, with one addition.
+            params: same as the parent class, with two additions.
             REQUIRED PARAMETERS
             'lrate' : A scalar value that will multiply the derivative of the weight.
+            'post_delay': delay steps in the post-synaptic activity.
 
         Raises:
             AssertionError.
         """
         synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.po_de = params['post_delay'] # delay in postsynaptic activity
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.lpf_fast,
                                      syn_reqs.lpf_mid, syn_reqs.diff_avg]) # pos_diff_avg
@@ -661,9 +671,8 @@ class diff_hebb_subsnorm_synapse(synapse):
         """
         diff_avg = self.net.units[self.postID].diff_avg
         # pos_diff_avg = self.net.units[self.postID].pos_diff_avg
-        # TODO: modified delay
-        Dpost = (self.net.units[self.postID].get_lpf_fast(0) - 
-                 self.net.units[self.postID].get_lpf_mid(0) )
+        Dpost = (self.net.units[self.postID].get_lpf_fast(self.po_de) - 
+                 self.net.units[self.postID].get_lpf_mid(self.po_de) )
         Dpre = ( self.net.units[self.preID].get_lpf_fast(self.delay_steps) -
                  self.net.units[self.preID].get_lpf_mid(self.delay_steps) )
         

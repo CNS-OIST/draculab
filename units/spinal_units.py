@@ -71,6 +71,41 @@ class am_pm_oscillator(unit):
         else:
             raise ValueError('Wrong specification of the interaction function F')
         
+    def odeint_update(self, time):
+        """ Advance the dynamics from time to time+min_delay for a multidimensinal unit.
+
+        This update function will replace the values in the activation buffer
+        corresponding to the latest "min_delay" time units, introducing "min_buff_size" new values.
+        In addition, all the synapses of the unit are updated.
+        """
+        # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
+        #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
+        new_times = self.times[-1] + self.times_grid
+        self.times = np.roll(self.times, -self.min_buff_size)
+        self.times[self.offset:] = new_times[1:]
+        # odeint also returns the initial condition, so to produce min_buff_size new values
+        # we need to provide min_buff_size+1 desired times, starting with 
+        # the one for the initial condition
+        new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times,
+                          rtol=self.rtol, atol=self.atol)
+        self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        self.buffer[self.offset:] = new_buff[1:,0]
+        self.upd_reqs_n_syns(time)
+
+    def get_act(self,time):
+        """ Gives you the activity at a previous time 't' (within buffer range).
+
+        This version works for units that store their previous activity values in a buffer.
+        Units without buffers (e.g. source units) have their own get_act function.
+        """
+        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+        ## This is the third implementation, written in Cython
+        ## self.using_interp1d should be set to False
+        return cython_get_act3(time, self.times[0], self.time_bit, 
+                               self.buff_size, self.buffer[-1,:])
+        ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
 
 
 

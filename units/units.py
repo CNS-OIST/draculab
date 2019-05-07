@@ -26,16 +26,24 @@ class unit():
             params: A dictionary with parameters to initialize the unit.
                 REQUIRED PARAMETERS
                 'type' : A unit type from the unit_types enum.
-                'init_val' : initial value for the activation
+                'init_val' : initial value for the activation. Multidimensional models
+                             use a 1D list or numpy array, where the activity has
+                             the index 0. When using a multidimensional model the
+                             'multidim' parameter must also be included, and be True.
                 OPTIONAL PARAMETERS
                 'delay': maximum delay among the projections sent by the unit.
-                         This should only be set by network.connect
+                         This is automatically set by network.connect; if included here
+                         the largest value between the one chosen by network.connect and
+                         the one specified here will be used.
                 'coordinates' : a numpy array specifying the spatial location of the unit.
                 'tau_fast' : time constant for the fast low-pass filter.
                 'tau_mid' : time constant for the medium-speed low-pass filter.
                 'tau_slow' : time constant for the slow low-pass filter.
                 'n_ports' : number of inputs ports. Defaults to 1.
                 'integ_meth' : a string specifying an integration method for the unit.
+                'multidim' : a Boolean value indicating whether the unit is modeled by an
+                             ODE with more than one equation. Defaults to False, and is set
+                             to False whenever 'init_val' has only one scalar value.
             network: the network where the unit lives.
 
         Raises:
@@ -47,7 +55,6 @@ class unit():
         self.net = network # the network where the unit lives
         self.rtol = self.net.rtol # local copies of the rtol and atol tolerances
         self.atol = self.net.atol
-        self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
         self.min_buff_size = network.min_buff_size # a local copy just to avoid the extra reference
         # The delay of a unit is the maximum delay among the projections it sends.
         # The final value of 'delay' should be set by network.connect(), after the unit is created;
@@ -59,6 +66,25 @@ class unit():
                                                        ': delay is not a multiple of min_delay']
         else:  # giving a temporary value
             self.delay = 2 * self.net.min_delay
+        if type(params['init_val']) in [float, int, np.float_, np.int_]:
+            self.init_val = params['init_val'] # initial value for the activation 
+            self.multidim = False
+        elif type(params['init_val']) in [list, np.ndarray]:
+            if len(params['init_val']) > 1:
+                self.init_val = params['init_val']
+                if 'multidim' in params and params['multidim'] is True:
+                    # We must have params['multidim']==True when init_val is not a scalar
+                    # to avoid ambiguity in network.create units.
+                    self.multidim = True
+                else:
+                    raise ValueError('When init_val is an array multidim must be set to True')
+            else:
+                self.init_val = params['init_val'][0] 
+                self.multidim = False
+        else:
+            stype = str(type(params['init_val']))
+            raise ValueError('Wrong type ' + stype + ' for the init_val ' +
+                             'parameter in the unit constructor')
         # These are the optional parameters.
         # Default values are sometimes omitted so an error can arise if the parameter was needed.
         if 'coordinates' in params: self.coordinates = params['coordinates']

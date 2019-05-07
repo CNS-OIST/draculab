@@ -147,9 +147,8 @@ class network():
         assert self.sim_time == 0., 'Units are being created when the simulation time is not zero'
 
         # Any entry in 'params' other than 'coordinates', 'type', 'function', 'branch_params',
-        # or 'integ_meth' should either be a scalar, a boolean, a list of length 'n', or a
-        # numpy array of length 'n'.  
-        # 'coordinates' should be either a list (with 'n' arrays) or a (1|2|3) array.
+        # 'integ_meth', or 'init_val'  should either be a scalar, a boolean, a list of length 'n', 
+        # or a numpy array of length 'n'.  
         listed = [] # the entries in 'params' specified with a list
         accepted_types = [float, int, bool, str] # accepted data types for parameters
         for par in params:
@@ -157,6 +156,7 @@ class network():
                 if not issubclass(type(params[par]), unit_types):
                     raise TypeError('Incorrect unit type')
             elif par == 'coordinates':
+            # 'coordinates' should be either a list (with 'n' arrays) or a (1|2|3) array.
                 if type(params[par]) is np.ndarray:
                     pass
                 elif type(params[par]) is list:
@@ -186,6 +186,20 @@ class network():
                         listed.append(par)
                 elif not type(params[par]) is str:
                     raise TypeError('Invalid type given for the integ_meth parameter')
+            elif par == 'init_val' and 'multidims' in params and params['multidim'] is True:
+            # 'init_val' can be a scalar, a list(array) or a list(array) of lists(arrays);
+            # this presents a possible ambiguity when it is a list, because it could either be
+            # the initial state of an n-dimensional model, or it could be the n scalar
+            # initial values of a scalar model. Thus we rely on unit.multidim .
+                if params[par][0] in [list, np.ndarray]:
+                # We have a list of lists (or ndarray of ndarrays, etc.)
+                    if len(params[par]) == n:
+                        listed.append(par)
+                    else:
+                        raise ValueError('list of multidimensional init_val ' +
+                                         'entries has incorrect number of elements')
+                elif not params[par][0] in [float, int, np.float_, np.int_]:
+                    raise TypeError('Incorrect type used in multidimensional init_val')
             elif (type(params[par]) is list) or (type(params[par]) is np.ndarray):
                 if len(params[par]) == n:
                     listed.append(par)

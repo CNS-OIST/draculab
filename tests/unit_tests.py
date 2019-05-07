@@ -734,7 +734,7 @@ class test_sigma_units(unittest.TestCase):
         xnet.set_param('e_pars', 'slope_wid', 0.)
         xnet.set_param('e_pars', 'thresh_min', .8)
         xnet.set_param('e_pars', 'thresh_wid', 0.)
-        xnet.set_param('e_pars', 'phi', 0)
+        xnet.set_param('e_pars', 'phi', 0.)
         xnet.set_param('e_pars', 'n_ports', 4)
         xnet.set_param('e_pars', 'branch_params', {'branch_w' : [0.25]*4, 'slopes' : 4, 'threshs' : 0.4})
         ## connection parameters
