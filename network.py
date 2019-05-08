@@ -186,7 +186,7 @@ class network():
                         listed.append(par)
                 elif not type(params[par]) is str:
                     raise TypeError('Invalid type given for the integ_meth parameter')
-            elif par == 'init_val' and 'multidims' in params and params['multidim'] is True:
+            elif par == 'init_val' and 'multidim' in params and params['multidim'] is True:
             # 'init_val' can be a scalar, a list(array) or a list(array) of lists(arrays);
             # this presents a possible ambiguity when it is a list, because it could either be
             # the initial state of an n-dimensional model, or it could be the n scalar
@@ -710,7 +710,7 @@ class network():
         
             The unit and plant buffers will be placed in a single 2D numpy array called
             'acts' in the network object, but each unit will retain a buffer that is a
-            view of part of a single row of 'acts'.
+            view of part of one or more rows in 'acts'.
 
             The 'times' array of all units is also replaced by a sngle 'ts' array.
 
@@ -754,7 +754,10 @@ class network():
                 self.has_buffer[uid] = True
                 self.buff_len[uid]  = len(u.buffer)
                 self.init_idx[uid] = self.ts_buff_size - len(u.buffer)
+                # TODO: obtain buffer dimensionality (buff_dim array)
             else: # initialize init_idx for source units
+                # To get past values of source units we no longer call their get_act
+                # function, but instead we rely on the values stored in acts
                 self.init_idx[uid] = self.ts_buff_size - (int(round(u.delay/self.min_delay))
                                                           * self.min_buff_size)
         # get a delays list where the time unit is the number of buffer intervals
@@ -768,7 +771,7 @@ class network():
         # n_plant_vars counts the total number of state variables from all plants.
         n_plant_vars = 0
         if self.n_plants > 0:   # if there are plants
-            index = self.n_units
+            index = self.n_units # TODO: will fail if using multidim units
             self.st_var_idx = [[] for _ in range(self.n_plants)] 
             for pid, plant in enumerate(self.plants):
                 n_plant_vars += plant.dim
@@ -776,6 +779,7 @@ class network():
                     self.st_var_idx[pid].append(index)
                     index += 1
         # For each unit obtain a vector with the index of input units or plants in acts
+        # TODO: will fail for multidim units
         self.inp_src = [ [syn.preID for syn in l] for l in self.syns ]
         # The initialization of inp_src above will fail if there are plants. Modifying it.
         if self.n_plants > 0:
@@ -787,31 +791,29 @@ class network():
         # Creating the acts array
         self.acts = np.zeros((self.n_units+n_plant_vars, len(self.ts)), dtype=self.bf_type)
         #======================================================================
-        # The indices to extract the array of step inputs for units
+        # acts_idx[u] is a complex index that allows unit u to extract from acts all
+        # the inputs it receives at each substep of the current timestep.
         self.acts_idx = [[] for _ in range(self.n_units)]
         for uid, u in enumerate(self.units):
             if hasattr(u, 'buffer'):
-                self.acts[uid,self.init_idx[uid]:] = u.init_val  # initializing acts
+                self.acts[uid,self.init_idx[uid]:] = u.init_val  # initializing acts TODO: test multidim
+                # TODO: I think if you get inp_src right this should work as is, but test
                 idx1 = [ [src]*self.min_buff_size for src in self.inp_src[uid] ]
                 idx2 = [list(range(self.ts_buff_size - self.step_dels[uid][inp] - 1, 
                         self.ts_buff_size - self.step_dels[uid][inp] - 1 + self.min_buff_size))
                         for inp in range(len(self.inp_src[uid]))]
                 self.acts_idx[uid] = (idx1, idx2)
-            #else:
-            #    self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
-            #                                         t in self.ts[self.init_idx[uid]:] ])
-            #"""
             else:  # for source units, also initialize their rows in acts
-                row = np.array([u.get_act(t) for t in self.ts[:] ])
+                row = np.array([u.get_act(t) for t in self.ts[:]])
                 # sometimes the source units have not been initialized, 
                 # and return 'None' types. Thus this check:
                 if not any([v is None for v in row]):
                     if not (np.isnan(row)).any():
                         self.acts[uid,:] = row 
-            #"""
         # Reinitializing the unit buffers as views of act, and times as views of ts
         self.link_unit_buffers()
         # specify the integration function for all units
+        # TODO: if unit is multidim, specify multidim integration function.
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
                 if u.type in [unit_types.noisy_linear, unit_types.noisy_sigmoidal]:
@@ -887,6 +889,7 @@ class network():
         """
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
+                # TODO: update for multidim
                 u.buffer = np.ndarray(shape=(self.buff_len[uid]), 
                                       buffer=self.acts[uid,self.init_idx[uid]:],
                                       dtype=self.bf_type)
@@ -928,6 +931,8 @@ class network():
             t should be within the range of values in the unit's buffer.
             This method is only valid for flat networks.
         """
+        # TODO: modify for multidim. There should be an index to replace uid
+        # in self.acts[uid]
         return cython_get_act3(t, self.ts[self.init_idx[uid]], self.ts_bit, self.buff_len[uid],
                                self.acts[uid][self.init_idx[uid]:])
 
@@ -941,6 +946,7 @@ class network():
 
             This method is to be used with the second type of flat networks.
         """
+        # TODO: modify for multidim, same as get_act
         return self.acts[uid][-1 - s]
     
 
