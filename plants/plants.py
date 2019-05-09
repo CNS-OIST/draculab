@@ -1083,7 +1083,7 @@ class planar_arm(plant):
         self.q1_max = np.pi/12.
         # create the muscles
         mus_pars = {'l0': 1., # resting length
-                's' : 5., # spring constant
+                's' : 0.5, # spring constant (original value: 5.)
                 'g1': self.m_gain,  # contraction input gain
                 'g2': 1., # length afferent gain
                 'g3': 1., # velocity afferent gain

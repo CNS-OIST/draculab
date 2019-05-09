@@ -511,7 +511,7 @@ class presyn_inh_sig(unit):
         self.OD = params['OD'] # maximum overdrive
         assert self.type is unit_types.presyn_inh_sig, ['Unit ' + str(self.ID) + 
                                                             ' instantiated with the wrong type']
-
+        self.needs_mp_inp_sum = True # if flat, use upd_flat_mp_inp_sum
         self.syn_needs.update([syn_reqs.norm_factor])
         
     def f(self, arg):
@@ -523,11 +523,23 @@ class presyn_inh_sig(unit):
         """ This function returns the derivative of the activity given its current values. """
         return ( self.get_mp_input_sum(t) - y[0] ) * self.rtau
 
-    def get_mp_input_sum(self, t):
-        """ The input function of the presynaptic inhibition sigmoidal unit. """
+    def dt_fun(self, y, s):
+        """ The derivative function used by flat networks. """
+        return ( self.get_mp_input_sum(s) - y ) * self.rtau
 
+    def get_mp_input_sum(self, st):
+        """ The input function of the presynaptic inhibition sigmoidal unit. 
+            
+            st may be a time or an index, depending on whether the network is flat.
+        """
+        if self.net.flat:
+            #print(self.mp_step_inps)
+            inp = [arr[:,st] if arr.size > 0 else [] for arr in self.mp_step_inps]
+            t = self.net.ts[st-self.min_buff_size] 
+        else:
+            t = st
+            inp = self.get_mp_inputs(t)
         w = self.get_mp_weights(t)
-        inp = self.get_mp_inputs(t)
 
         exc_input = 0
         inh_input = 0
