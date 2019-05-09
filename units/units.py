@@ -1078,6 +1078,18 @@ class unit():
                                     self.dt_fun(self.buffer[base+idx-1], idx) )
 
 
+    def flat_euler_update_md(self, time):
+        """ The forward Euler method for multidimensional units in flat networks. """
+        # This will fail if you haven't called upd_flat_inp_sum in the current step,
+        # because dt_fun uses self.inp_sum to obtain the derivative.
+        # dt_fun should return an array
+        base = self.buffer.size - self.min_buff_size
+        # put new values in buffer
+        for idx in range(self.min_buff_size):
+            self.buffer[:,base+idx] = self.buffer[:,base+idx-1] + ( self.time_bit *
+                                    self.dt_fun(self.buffer[:,base+idx-1], idx) )
+
+
     def flat_euler_maru_update(self, time):
         """ The Euler-Maruyama integration used with network.flat_update3. """
         base = self.buffer.size - self.min_buff_size
@@ -1275,6 +1287,7 @@ class noisy_sigmoidal(unit):
         # if lambd > 0 we'll use the exponential Euler integration method
         if self.lambd > 0.:
             self.update = self.exp_euler_update
+            self.integ_meth = "exp_euler"
             self.diff = lambda y, t: self.f(self.get_input_sum(t)) * self.rtau
             dt = self.times[1] - self.times[0] # same as self.time_bit
             A = -self.lambd*self.rtau
@@ -1284,6 +1297,7 @@ class noisy_sigmoidal(unit):
             self.sc3 = self.sigma * self.c3
         else:
             self.update = self.euler_maru_update
+            self.integ_meth = "euler_maru"
             self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
 
     def f(self, arg):
@@ -1381,6 +1395,7 @@ class noisy_linear(unit):
         # if lambd > 0 we'll use the exponential Euler integration method
         if self.lambd > 0.:
             self.update = self.exp_euler_update
+            self.integ_meth = "exp_euler"
             self.diff = lambda y, t: self.get_input_sum(t) * self.rtau
             dt = self.times[1] - self.times[0] # same as self.time_bit
             A = -self.lambd*self.rtau
@@ -1390,6 +1405,7 @@ class noisy_linear(unit):
             self.sc3 = self.sigma * self.c3 # used by flat_exp_euler_update
         else:
             self.update = self.euler_maru_update
+            self.integ_meth = "euler_maru"
             self.sqrdt = np.sqrt(self.time_bit) # used by flat_euler_maru_update
 
     def derivatives(self, y, t):
