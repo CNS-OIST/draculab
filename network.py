@@ -953,8 +953,6 @@ class network():
             t should be within the range of values in the unit's buffer.
             This method is only valid for flat networks.
         """
-        # TODO: modify for multidim. There should be an index to replace uid
-        # in self.acts[uid]
         return cython_get_act3(t, self.ts[self.init_ts_idx[uid]], self.ts_bit, self.buff_len[uid],
                                self.acts[self.first_idx[uid]][self.init_ts_idx[uid]:])
 
@@ -968,7 +966,6 @@ class network():
 
             This method is to be used with the second type of flat networks.
         """
-        # TODO: modify for multidim, same as get_act
         return self.acts[self.first_idx[uid]][-1 - s]
     
 
@@ -997,8 +994,7 @@ class network():
         # update activities of source units and handle requirements
         for uid, u in enumerate(self.units):
             if not self.has_buffer[uid]:
-                self.acts[uid,base:] = np.array([u.get_act(t) for
-                                        t in self.ts[base:] ])
+                self.acts[uid,base:] = [u.get_act(t) for t in self.ts[base:]]
             # handle requirements
             u.pre_syn_update(time)
             u.last_time = time # important to have it after pre_syn_update

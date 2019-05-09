@@ -703,7 +703,7 @@ class unit():
         self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_fast ) )
         # update the buffer
-        self.lpf_fast_buff = np.roll(self.lpf_fast_buff, -1)
+        self.lpf_fast_buff[:-1] = self.lpf_fast_buff[1:]
         self.lpf_fast_buff[-1] = self.lpf_fast
     
 
@@ -722,7 +722,7 @@ class unit():
         self.lpf_mid = cur_act + ( (self.lpf_mid - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_mid) )
         # update the buffer
-        self.lpf_mid_buff = np.roll(self.lpf_mid_buff, -1)
+        self.lpf_mid_buff[:-1] = self.lpf_mid_buff[1:]
         self.lpf_mid_buff[-1] = self.lpf_mid
  
 
@@ -740,7 +740,7 @@ class unit():
         self.lpf_slow = cur_act + ( (self.lpf_slow - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_slow) )
         # update the buffer
-        self.lpf_slow_buff = np.roll(self.lpf_slow_buff, -1)
+        self.lpf_slow_buff[:-1] = self.lpf_slow_buff[1:]
         self.lpf_slow_buff[-1] = self.lpf_slow
  
 
@@ -831,7 +831,7 @@ class unit():
         self.lpf_mid_inp_sum = cur_inp_sum + ( (self.lpf_mid_inp_sum - cur_inp_sum) * 
                                    np.exp( (self.last_time-time)/self.tau_mid) )
         # update the buffer
-        self.lpf_mid_inp_sum_buff = np.roll(self.lpf_mid_inp_sum_buff, -1)
+        self.lpf_mid_inp_sum_buff[:-1] = self.lpf_mid_inp_sum_buff[1:]
         self.lpf_mid_inp_sum_buff[-1] = self.lpf_mid_inp_sum
 
 
