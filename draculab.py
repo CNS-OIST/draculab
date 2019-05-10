@@ -62,6 +62,8 @@ class unit_types(Enum):
 
     binary = 101 # from tutorial 5
 
+    test_oscillator = 102 # from spinal units
+
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
 
@@ -173,6 +175,9 @@ class unit_types(Enum):
         elif self == unit_types.binary:
             from units.custom_units import binary_unit
             unit_class = binary_unit
+        elif self == unit_types.test_oscillator:
+            from units.spinal_units import test_oscillator
+            unit_class = test_oscillator
         else:
             raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
             # NameError instead?

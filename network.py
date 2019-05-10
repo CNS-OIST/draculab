@@ -191,14 +191,14 @@ class network():
             # this presents a possible ambiguity when it is a list, because it could either be
             # the initial state of an n-dimensional model, or it could be the n scalar
             # initial values of a scalar model. Thus we rely on unit.multidim .
-                if params[par][0] in [list, np.ndarray]:
+                if type(params[par][0]) in [list, np.ndarray]:
                 # We have a list of lists (or ndarray of ndarrays, etc.)
                     if len(params[par]) == n:
                         listed.append(par)
                     else:
                         raise ValueError('list of multidimensional init_val ' +
                                          'entries has incorrect number of elements')
-                elif not params[par][0] in [float, int, np.float_, np.int_]:
+                elif not type(params[par][0]) in [float, int, np.float_, np.int_]:
                     raise TypeError('Incorrect type used in multidimensional init_val')
             elif (type(params[par]) is list) or (type(params[par]) is np.ndarray):
                 if len(params[par]) == n:
@@ -757,8 +757,8 @@ class network():
         for uid, u in enumerate(self.units):
             if hasattr(u, 'buffer'):
                 self.has_buffer[uid] = True
-                self.buff_len[uid]  = len(u.buffer)
-                self.init_ts_idx[uid] = self.ts_buff_size - len(u.buffer)
+                self.buff_len[uid]  = u.buffer.shape[-1]
+                self.init_ts_idx[uid] = self.ts_buff_size - self.buff_len[uid]
                 self.first_idx[uid] = n_u_vars
                 n_u_vars += u.dim
             else: # initialize init_ts_idx and first_idx for source units
@@ -800,7 +800,7 @@ class network():
                         self.inp_src[idx1][idx2] = self.p_st_var_idx[syn.plant_id][syn.plant_out]
         #======================================================================
         # Creating the acts array
-        self.acts = np.zeros((self.n_units+n_plant_vars, len(self.ts)), dtype=self.bf_type)
+        self.acts = np.zeros((n_u_vars+n_plant_vars, len(self.ts)), dtype=self.bf_type)
         #======================================================================
         # acts_idx[u] is a complex index that allows unit u to extract from acts all
         # the inputs it receives at each substep of the current timestep.
@@ -810,8 +810,7 @@ class network():
             if hasattr(u, 'buffer'):
                 # initializing acts
                 self.acts[fix:fix+u.dim, self.init_ts_idx[uid]:] = \
-                     np.array([u.init_val] * self.buff_len[uid]).transpose() 
-                # TODO: I think if you get inp_src right this should work as is, but test
+                          np.array([u.init_val] * self.buff_len[uid]).transpose() 
                 idx1 = [ [src]*self.min_buff_size for src in self.inp_src[uid] ]
                 idx2 = [list(range(self.ts_buff_size - self.step_dels[uid][inp] - 1, 
                         self.ts_buff_size - self.step_dels[uid][inp] - 1 + self.min_buff_size))
@@ -827,7 +826,6 @@ class network():
         # Reinitializing the unit buffers as views of act, and times as views of ts
         self.link_unit_buffers()
         # specify the integration function for all units
-        # TODO: if unit is multidim, specify multidim integration function.
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
                 if u.integ_meth in ["odeint", "solve_ivp", "euler"]:
@@ -896,7 +894,6 @@ class network():
         """
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
-                # TODO: update for multidim. Don't forget act_buff
                 fix = self.first_idx[uid]
                 if u.multidim:
                     """

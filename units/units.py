@@ -210,9 +210,7 @@ class unit():
         if self.multidim:
             self.act_buff = self.buffer[0,:] # this should create a view
         else:
-            #self.act_buff = self.buffer.view()
-            self.act_buff = np.ndarray(shape=self.buffer.shape,
-                            buffer=self.buffer)
+            self.act_buff = self.buffer.view()
         self.time_bit = min_del / min_buff # time interval used by get_act
         self.times = np.linspace(-self.delay+self.time_bit, 0., self.buff_size, dtype=self.bf_type) # the 
                                                                #corresponding times for the buffer values
@@ -360,9 +358,10 @@ class unit():
         # odeint also returns the initial condition, so to produce min_buff_size new 
         # values we need to provide min_buff_size+1 desired times, starting with 
         # the one for the initial condition
-        new_buff = odeint(self.derivatives, [self.buffer[:,-1]], new_times,
+        new_buff = odeint(self.derivatives, self.buffer[:,-1], new_times,
                           rtol=self.rtol, atol=self.atol)
-        self.buffer = np.roll(self.buffer, -self.min_buff_size, axis=1)
+        base = self.buff_size - self.min_buff_size
+        self.buffer[:,:base] = self.buffer[:,self.min_buff_size:]
         self.buffer[:,self.offset:] = new_buff[1:,:].transpose()
         self.upd_reqs_n_syns(time)
 
@@ -406,7 +405,8 @@ class unit():
         solution = solve_ivp(self.solve_ivp_diff, (new_times[0], new_times[-1]),
                              self.buffer[:,-1], method='LSODA', t_eval=new_times,
                              rtol=self.rtol, atol=self.atol)
-        self.buffer = np.roll(self.buffer, -self.min_buff_size, axis=1)
+        base = self.buff_size - self.min_buff_size
+        self.buffer[:,:base] = self.buffer[:,self.min_buff_size:]
         self.buffer[:,self.offset:] = solution.y[:,1:]
         self.upd_reqs_n_syns(time)
 
@@ -552,14 +552,14 @@ class unit():
         ## Takes advantage of the regularly spaced times using divmod.
         ## Values outside the buffer range will fall between buffer[-1] and buffer[-2].
         ## self.using_interp1d should be set to False
-        """
+        #"""
         base, rem = divmod(time-self.times[0], self.time_bit)
         # because time_bit is slightly larger than times[1]-times[0], we can limit
         # base to buff_size-2, even if time = times[-1]
         base =  max( 0, min(int(base), self.buff_size-2) ) 
         frac2 = rem/self.time_bit
         return self.act_buff[base] + frac2 * ( self.act_buff[base+1] - self.act_buff[base] )
-        """
+        #"""
         ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         ## This is the second implementation, written in Cython
         ## self.using_interp1d should be set to False
@@ -568,7 +568,7 @@ class unit():
         ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         ## This is the third implementation, written in Cython
         ## self.using_interp1d should be set to False
-        return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.act_buff)
+        #return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.act_buff)
         ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
@@ -1083,7 +1083,7 @@ class unit():
         # This will fail if you haven't called upd_flat_inp_sum in the current step,
         # because dt_fun uses self.inp_sum to obtain the derivative.
         # dt_fun should return an array
-        base = self.buffer.size - self.min_buff_size
+        base = self.buffer.shape[-1] - self.min_buff_size
         # put new values in buffer
         for idx in range(self.min_buff_size):
             self.buffer[:,base+idx] = self.buffer[:,base+idx-1] + ( self.time_bit *
