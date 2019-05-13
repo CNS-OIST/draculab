@@ -330,8 +330,7 @@ class unit():
         # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
         #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size)
-        self.times[self.offset:] = new_times[1:]
+        self.times += self.net.min_delay
         # odeint also returns the initial condition, so to produce min_buff_size new values
         # we need to provide min_buff_size+1 desired times, starting with 
         # the one for the initial condition
@@ -353,8 +352,7 @@ class unit():
         In addition, all the synapses of the unit are updated.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size)
-        self.times[self.offset:] = new_times[1:]
+        self.times += self.net.min_delay
         # odeint also returns the initial condition, so to produce min_buff_size new 
         # values we need to provide min_buff_size+1 desired times, starting with 
         # the one for the initial condition
@@ -378,8 +376,7 @@ class unit():
         """
         #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size)
-        self.times[self.offset:] = new_times[1:]
+        self.times += self.net.min_delay
         solution = solve_ivp(self.solve_ivp_diff, (new_times[0], new_times[-1]), 
                              [self.buffer[-1]], method='LSODA', t_eval=new_times, 
                              rtol=self.rtol, atol=self.atol)
@@ -400,8 +397,7 @@ class unit():
         In addition, all the synapses of the unit are updated.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size)
-        self.times[self.offset:] = new_times[1:]
+        self.times += self.net.min_delay
         solution = solve_ivp(self.solve_ivp_diff, (new_times[0], new_times[-1]),
                              self.buffer[:,-1], method='LSODA', t_eval=new_times,
                              rtol=self.rtol, atol=self.atol)
@@ -435,8 +431,7 @@ class unit():
             Precision is controlled by the step size, which is min_delay/min_buff_size.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size)
-        self.times[self.offset:] = new_times[1:]
+        self.times += self.net.min_delay
         dt = new_times[1] - new_times[0]
         # euler_int is defined in cython_utils.pyx
         new_buff = euler_int(self.derivatives, self.buffer[-1], time, len(new_times), dt)
@@ -459,8 +454,7 @@ class unit():
             self.sigma = 0.0 # standard deviation of Wiener process.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size)
-        self.times[self.offset:] = new_times[1:]
+        self.times += self.net.min_delay
         # euler_maruyama_ is defined in cython_utils.pyx
         euler_maruyama(self.derivatives, self.buffer, time,
                         self.buff_size-self.min_buff_size, self.time_bit, self.mu, self.sigma)
@@ -477,8 +471,7 @@ class unit():
             The current version is rectifying ouputs by default.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size) 
-        self.times[self.offset:] = new_times[1:] 
+        self.times += self.net.min_delay
         new_buff = exp_euler(self.diff, self.buffer[-1], time, len(new_times),
                              self.time_bit, self.mu, self.sigma, self.eAt, self.c2, self.c3)
         new_buff = np.maximum(new_buff, 0.) # THIS IS RECTIFYING BY DEFAULT!!!

@@ -179,7 +179,8 @@ class unit_types(Enum):
             from units.spinal_units import test_oscillator
             unit_class = test_oscillator
         else:
-            raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
+            raise NotImplementedError('Attempting to retrieve the class of an ' + 
+                                      'unknown unit model')
             # NameError instead?
         return unit_class
 
