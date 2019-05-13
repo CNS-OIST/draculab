@@ -26,16 +26,24 @@ class unit():
             params: A dictionary with parameters to initialize the unit.
                 REQUIRED PARAMETERS
                 'type' : A unit type from the unit_types enum.
-                'init_val' : initial value for the activation
+                'init_val' : initial value for the activation. Multidimensional models
+                             use a 1D list or numpy array, where the activity has
+                             the index 0. When using a multidimensional model the
+                             'multidim' parameter must also be included, and be True.
                 OPTIONAL PARAMETERS
                 'delay': maximum delay among the projections sent by the unit.
-                         This should only be set by network.connect
+                         This is automatically set by network.connect; if included here
+                         the largest value between the one chosen by network.connect and
+                         the one specified here will be used.
                 'coordinates' : a numpy array specifying the spatial location of the unit.
                 'tau_fast' : time constant for the fast low-pass filter.
                 'tau_mid' : time constant for the medium-speed low-pass filter.
                 'tau_slow' : time constant for the slow low-pass filter.
                 'n_ports' : number of inputs ports. Defaults to 1.
                 'integ_meth' : a string specifying an integration method for the unit.
+                'multidim' : a Boolean value indicating whether the unit is modeled by an
+                             ODE with more than one equation. Defaults to False, and is set
+                             to False whenever 'init_val' has only one scalar value.
             network: the network where the unit lives.
 
         Raises:
@@ -47,7 +55,6 @@ class unit():
         self.net = network # the network where the unit lives
         self.rtol = self.net.rtol # local copies of the rtol and atol tolerances
         self.atol = self.net.atol
-        self.init_val = params['init_val'] # initial value for the activation (for units that use buffers)
         self.min_buff_size = network.min_buff_size # a local copy just to avoid the extra reference
         # The delay of a unit is the maximum delay among the projections it sends.
         # The final value of 'delay' should be set by network.connect(), after the unit is created;
@@ -59,6 +66,27 @@ class unit():
                                                        ': delay is not a multiple of min_delay']
         else:  # giving a temporary value
             self.delay = 2 * self.net.min_delay
+        if type(params['init_val']) in [float, int, np.float_, np.int_]:
+            self.init_val = params['init_val'] # initial value for the activation 
+            self.multidim = False
+            self.dim = 1 # dimension of the unit's ODE
+        elif type(params['init_val']) in [list, np.ndarray]:
+            self.dim = len(params['init_val'])
+            if len(params['init_val']) > 1:
+                self.init_val = params['init_val']
+                if 'multidim' in params and params['multidim'] is True:
+                    # We must have params['multidim']==True when init_val is not a scalar
+                    # to avoid ambiguity in network.create units.
+                    self.multidim = True
+                else:
+                    raise ValueError('When init_val is an array multidim must be set to True')
+            else:
+                self.init_val = params['init_val'][0] 
+                self.multidim = False
+        else:
+            stype = str(type(params['init_val']))
+            raise ValueError('Wrong type ' + stype + ' for the init_val ' +
+                             'parameter in the unit constructor')
         # These are the optional parameters.
         # Default values are sometimes omitted so an error can arise if the parameter was needed.
         if 'coordinates' in params: self.coordinates = params['coordinates']
@@ -80,13 +108,22 @@ class unit():
                 raise AssertionError('Specifying an integration method for ' + 
                                      'source units can result in errors')
             if params['integ_meth'] == "euler":
+                if self.multidim:
+                    raise NotImplementedError("Euler method unavailable " +
+                                              "for multidim units.")
                 self.update = self.euler_update
             elif params['integ_meth'] == "euler_maru":
+                if self.multidim:
+                    raise NotImplementedError("Euler Maru method unavailable " +
+                                              "for multidim units.")
                 if not 'mu' in params or not 'sigma' in params:
                     raise AssertionError('Euler-Maruyama integration ' +
                                          'requires mu and sigma parameters')
                 self.update = self.euler_maru_update
             elif params['integ_meth'] == "exp_euler":
+                if self.multidim:
+                    raise NotImplementedError("Exp Euler method unavailable " +
+                                              "for multidim units.")
                 if not 'lambda' in params:
                     raise AssertionError('The exponential Euler method ' +
                                          'requires a lambda parameter')
@@ -95,17 +132,26 @@ class unit():
                                          'mu and sigma parameters')
                 self.update = self.exp_euler_update
             elif params['integ_meth'] == "odeint":
-                self.update = self.odeint_update
+                if self.multidim:
+                    self.update = self.odeint_update_md
+                else:
+                    self.update = self.odeint_update
             elif params['integ_meth'] == "solve_ivp":
-                self.update = self.solve_ivp_update
+                if self.multidim:
+                    self.update = self.solve_ivp_update_md
+                else:
+                    self.update = self.solve_ivp_update
             elif params['integ_meth'] == 'custom':
                 pass
             else:
                 raise ValueError('integ_method was incorrectly specified.')
             self.integ_meth = params['integ_meth']
-        else:
+        else:  # will use a default solver
             if not self.type is unit_types.source:
-                self.update = self.odeint_update # default solver
+                if self.multidim:
+                    self.update = self.odeint_update_md
+                else:
+                    self.update = self.odeint_update 
                 self.integ_meth = "odeint"
         self.syn_needs = set() # the set of all variables required by synaptic dynamics
                                # It is initialized by the init_pre_syn_update function
@@ -134,14 +180,18 @@ class unit():
 
         # The following buffers are for synaptic requirements that can come from presynaptic units.
         # They store one value per update, in the requirement's update method.
+        if self.multidim:
+            init_val = self.init_val[0] # we just use the activity for these buffers
+        else:
+            init_val = self.init_val
         if syn_reqs.lpf_fast in self.syn_needs:
-            self.lpf_fast_buff = np.array( [self.init_val]*self.steps, dtype=self.bf_type)
+            self.lpf_fast_buff = np.array( [init_val]*self.steps, dtype=self.bf_type)
         if syn_reqs.lpf_mid in self.syn_needs:
-            self.lpf_mid_buff= np.array( [self.init_val]*self.steps, dtype=self.bf_type)
+            self.lpf_mid_buff= np.array( [init_val]*self.steps, dtype=self.bf_type)
         if syn_reqs.lpf_slow in self.syn_needs:
-            self.lpf_slow_buff = np.array( [self.init_val]*self.steps, dtype=self.bf_type)
+            self.lpf_slow_buff = np.array( [init_val]*self.steps, dtype=self.bf_type)
         if syn_reqs.lpf_mid_inp_sum in self.syn_needs:
-            self.lpf_mid_inp_sum_buff = np.array( [self.init_val]*self.steps, dtype=self.bf_type)
+            self.lpf_mid_inp_sum_buff = np.array( [init_val]*self.steps, dtype=self.bf_type)
 
         # 'source' units don't use activity buffers, so for them the method ends here
         if self.type == unit_types.source:
@@ -150,14 +200,17 @@ class unit():
         min_buff = self.min_buff_size
         self.offset = (self.steps-1)*min_buff # an index used in the update function of derived classes
         self.buff_size = int(round(self.steps*min_buff)) # number of activation values to store
-        # The 'buffer' contains previous activation values
-        # currently testing 3 ways of initializing the buffer (if not flattened):
-                    # 1) a numpy contiguous array 
-        self.buffer = np.ascontiguousarray( [self.init_val]*self.buff_size, dtype=self.bf_type) 
-                    # 2) a numpy array. Usually the same as above 
-        #self.buffer = np.array( [self.init_val]*self.buff_size, dtype=self.bf_type) 
-                    # 3) a python array 
-        #self.buffer = array('d', [self.init_val]*self.buff_size)
+        # The 'buffer' contains previous activation values for all state variables.
+        # By transposing, for multidim units each row is a different state variable
+        self.buffer = np.ascontiguousarray( [self.init_val]*self.buff_size, 
+                                            dtype=self.bf_type).transpose()
+        # 'act_buff' is a view of the row corresponsing to the activity variable in the
+        # buffer. For single dimensional units it is the same as the buffer.
+        # By convention, the first row of the buffer contains the activities.
+        if self.multidim:
+            self.act_buff = self.buffer[0,:] # this should create a view
+        else:
+            self.act_buff = self.buffer.view()
         self.time_bit = min_del / min_buff # time interval used by get_act
         self.times = np.linspace(-self.delay+self.time_bit, 0., self.buff_size, dtype=self.bf_type) # the 
                                                                #corresponding times for the buffer values
@@ -268,22 +321,46 @@ class unit():
         """ Advance the dynamics from time to time+min_delay.
 
         This update function will replace the values in the activation buffer
-        corresponding to the latest "min_delay" time units, introducing "min_buff_size" new values.
+        corresponding to the latest "min_delay" time units, introducing 
+        "min_buff_size" new values by using scipy.integrate.odeint .
         In addition, all the synapses of the unit are updated.
-        source and kwta units override this with shorter update functions.
+
+        Particular unit models like source and kwta may override this method.
         """
         # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
         #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size)
-        self.times[self.offset:] = new_times[1:]
+        self.times += self.net.min_delay
         # odeint also returns the initial condition, so to produce min_buff_size new values
         # we need to provide min_buff_size+1 desired times, starting with 
         # the one for the initial condition
         new_buff = odeint(self.derivatives, [self.buffer[-1]], new_times,
                           rtol=self.rtol, atol=self.atol)
-        self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        base = self.buff_size - self.min_buff_size
+        self.buffer[:base] = self.buffer[self.min_buff_size:]
         self.buffer[self.offset:] = new_buff[1:,0]
+        self.upd_reqs_n_syns(time)
+
+
+    def odeint_update_md(self, time):
+        """ Advance the dynamics from time to time+min_delay for multidim units.
+
+        This update function will replace the values in the activation buffer
+        corresponding to the latest "min_delay" time units, introducing 
+        "min_buff_size" new values at each row.
+        In addition, all the synapses of the unit are updated.
+        """
+        new_times = self.times[-1] + self.times_grid
+        self.times += self.net.min_delay
+        # odeint also returns the initial condition, so to produce min_buff_size new 
+        # values we need to provide min_buff_size+1 desired times, starting with 
+        # the one for the initial condition
+        new_buff = odeint(self.derivatives, self.buffer[:,-1], new_times,
+                          rtol=self.rtol, atol=self.atol)
+        base = self.buff_size - self.min_buff_size
+        self.buffer[:,:base] = self.buffer[:,self.min_buff_size:]
+        self.buffer[:,self.offset:] = new_buff[1:,:].transpose()
         self.upd_reqs_n_syns(time)
 
 
@@ -292,18 +369,41 @@ class unit():
         Advance the dynamics from time to time+min_delay.
 
         This update function will replace the values in the activation buffer
-        corresponding to the latest "min_delay" time units, introducing "min_buff_size" new 
-        values. In addition, all the synapses of the unit are updated.
+        corresponding to the latest "min_delay" time units, introducing "min_buff_size"
+        new values. The integration uses scipy.integrate.solve_ivp .
+        In addition, all the synapses of the unit are updated.
         source and kwta units override this with shorter update functions.
         """
         #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size)
-        self.times[self.offset:] = new_times[1:]
-        solution = solve_ivp(self.solve_ivp_diff, (new_times[0], new_times[-1]), [self.buffer[-1]],
-                             method='LSODA', t_eval=new_times, rtol=self.rtol, atol=self.atol)
-        self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        self.times += self.net.min_delay
+        solution = solve_ivp(self.solve_ivp_diff, (new_times[0], new_times[-1]), 
+                             [self.buffer[-1]], method='LSODA', t_eval=new_times, 
+                             rtol=self.rtol, atol=self.atol)
+        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        base = self.buff_size - self.min_buff_size
+        self.buffer[:base] = self.buffer[self.min_buff_size:]
         self.buffer[self.offset:] = solution.y[0,1:]
+        self.upd_reqs_n_syns(time)
+
+
+    def solve_ivp_update_md(self, time):
+        """
+        Advance the dynamics from time to time+min_delay for multidim units.
+
+        This update function will replace the values in the activation buffer
+        corresponding to the latest "min_delay" time units, introducing 
+        "min_buff_size" new values at each row. 
+        In addition, all the synapses of the unit are updated.
+        """
+        new_times = self.times[-1] + self.times_grid
+        self.times += self.net.min_delay
+        solution = solve_ivp(self.solve_ivp_diff, (new_times[0], new_times[-1]),
+                             self.buffer[:,-1], method='LSODA', t_eval=new_times,
+                             rtol=self.rtol, atol=self.atol)
+        base = self.buff_size - self.min_buff_size
+        self.buffer[:,:base] = self.buffer[:,self.min_buff_size:]
+        self.buffer[:,self.offset:] = solution.y[:,1:]
         self.upd_reqs_n_syns(time)
 
 
@@ -331,12 +431,13 @@ class unit():
             Precision is controlled by the step size, which is min_delay/min_buff_size.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size)
-        self.times[self.offset:] = new_times[1:]
+        self.times += self.net.min_delay
         dt = new_times[1] - new_times[0]
         # euler_int is defined in cython_utils.pyx
         new_buff = euler_int(self.derivatives, self.buffer[-1], time, len(new_times), dt)
-        self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        base = self.buff_size - self.min_buff_size
+        self.buffer[:base] = self.buffer[self.min_buff_size:]
         self.buffer[self.offset:] = new_buff[1:]
         self.upd_reqs_n_syns(time)
 
@@ -353,8 +454,7 @@ class unit():
             self.sigma = 0.0 # standard deviation of Wiener process.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size)
-        self.times[self.offset:] = new_times[1:]
+        self.times += self.net.min_delay
         # euler_maruyama_ is defined in cython_utils.pyx
         euler_maruyama(self.derivatives, self.buffer, time,
                         self.buff_size-self.min_buff_size, self.time_bit, self.mu, self.sigma)
@@ -371,12 +471,13 @@ class unit():
             The current version is rectifying ouputs by default.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.min_buff_size) 
-        self.times[self.offset:] = new_times[1:] 
+        self.times += self.net.min_delay
         new_buff = exp_euler(self.diff, self.buffer[-1], time, len(new_times),
                              self.time_bit, self.mu, self.sigma, self.eAt, self.c2, self.c3)
         new_buff = np.maximum(new_buff, 0.) # THIS IS RECTIFYING BY DEFAULT!!!
-        self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
+        base = self.buff_size - self.min_buff_size
+        self.buffer[:base] = self.buffer[self.min_buff_size:]
         self.buffer[self.offset:] = new_buff[1:] 
         self.upd_reqs_n_syns(time)
 
@@ -402,7 +503,7 @@ class unit():
         # if using interp1d for interpolation (e.g. self.using_interp1d = True), 
         # this method should be called by unit.upd_reqs_n_syns at each simulation step,
         # because self.times and self.buffer will have changed.
-        self.interpolator = interp1d(self.times, self.buffer, kind='cubic', 
+        self.interpolator = interp1d(self.times, self.act_buff, kind='cubic', 
                                      bounds_error=False, copy=False, assume_sorted=True,
                                      fill_value="extrapolate")
                                      #fill_value=(self.buffer[0],self.buffer[-1])) 
@@ -436,31 +537,31 @@ class unit():
         base = int(np.floor(frac*(self.buff_size-1))) # biggest index s.t. times[index] <= time
         frac2 = ( time-self.times[base] ) /  (
                   self.times[min(base+1,self.buff_size-1)] - self.times[base] + 1e-8 )
-        return self.buffer[base] + frac2 * ( self.buffer[min(base+1,self.buff_size-1)] -
-                                             self.buffer[base] )
+        return self.act_buff[base] + frac2 * ( self.act_buff[min(base+1,self.buff_size-1)] -
+                                             self.act_buff[base] )
         """
         ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         ## This is the third implementation. 
         ## Takes advantage of the regularly spaced times using divmod.
         ## Values outside the buffer range will fall between buffer[-1] and buffer[-2].
         ## self.using_interp1d should be set to False
-        """
+        #"""
         base, rem = divmod(time-self.times[0], self.time_bit)
         # because time_bit is slightly larger than times[1]-times[0], we can limit
         # base to buff_size-2, even if time = times[-1]
         base =  max( 0, min(int(base), self.buff_size-2) ) 
         frac2 = rem/self.time_bit
-        return self.buffer[base] + frac2 * ( self.buffer[base+1] - self.buffer[base] )
-        """
+        return self.act_buff[base] + frac2 * ( self.act_buff[base+1] - self.act_buff[base] )
+        #"""
         ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         ## This is the second implementation, written in Cython
         ## self.using_interp1d should be set to False
         #return cython_get_act2(time, self.times[0], self.times[-1], self.times,
-        #                       self.buff_size, self.buffer)
+        #                       self.buff_size, self.act_buff)
         ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         ## This is the third implementation, written in Cython
         ## self.using_interp1d should be set to False
-        return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.buffer)
+        #return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.act_buff)
         ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
@@ -595,7 +696,7 @@ class unit():
         self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_fast ) )
         # update the buffer
-        self.lpf_fast_buff = np.roll(self.lpf_fast_buff, -1)
+        self.lpf_fast_buff[:-1] = self.lpf_fast_buff[1:]
         self.lpf_fast_buff[-1] = self.lpf_fast
     
 
@@ -614,7 +715,7 @@ class unit():
         self.lpf_mid = cur_act + ( (self.lpf_mid - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_mid) )
         # update the buffer
-        self.lpf_mid_buff = np.roll(self.lpf_mid_buff, -1)
+        self.lpf_mid_buff[:-1] = self.lpf_mid_buff[1:]
         self.lpf_mid_buff[-1] = self.lpf_mid
  
 
@@ -632,7 +733,7 @@ class unit():
         self.lpf_slow = cur_act + ( (self.lpf_slow - cur_act) * 
                                    np.exp( (self.last_time-time)/self.tau_slow) )
         # update the buffer
-        self.lpf_slow_buff = np.roll(self.lpf_slow_buff, -1)
+        self.lpf_slow_buff[:-1] = self.lpf_slow_buff[1:]
         self.lpf_slow_buff[-1] = self.lpf_slow
  
 
@@ -723,7 +824,7 @@ class unit():
         self.lpf_mid_inp_sum = cur_inp_sum + ( (self.lpf_mid_inp_sum - cur_inp_sum) * 
                                    np.exp( (self.last_time-time)/self.tau_mid) )
         # update the buffer
-        self.lpf_mid_inp_sum_buff = np.roll(self.lpf_mid_inp_sum_buff, -1)
+        self.lpf_mid_inp_sum_buff[:-1] = self.lpf_mid_inp_sum_buff[1:]
         self.lpf_mid_inp_sum_buff[-1] = self.lpf_mid_inp_sum
 
 
@@ -970,6 +1071,18 @@ class unit():
                                     self.dt_fun(self.buffer[base+idx-1], idx) )
 
 
+    def flat_euler_update_md(self, time):
+        """ The forward Euler method for multidimensional units in flat networks. """
+        # This will fail if you haven't called upd_flat_inp_sum in the current step,
+        # because dt_fun uses self.inp_sum to obtain the derivative.
+        # dt_fun should return an array
+        base = self.buffer.shape[-1] - self.min_buff_size
+        # put new values in buffer
+        for idx in range(self.min_buff_size):
+            self.buffer[:,base+idx] = self.buffer[:,base+idx-1] + ( self.time_bit *
+                                    self.dt_fun(self.buffer[:,base+idx-1], idx) )
+
+
     def flat_euler_maru_update(self, time):
         """ The Euler-Maruyama integration used with network.flat_update3. """
         base = self.buffer.size - self.min_buff_size
@@ -1167,6 +1280,7 @@ class noisy_sigmoidal(unit):
         # if lambd > 0 we'll use the exponential Euler integration method
         if self.lambd > 0.:
             self.update = self.exp_euler_update
+            self.integ_meth = "exp_euler"
             self.diff = lambda y, t: self.f(self.get_input_sum(t)) * self.rtau
             dt = self.times[1] - self.times[0] # same as self.time_bit
             A = -self.lambd*self.rtau
@@ -1176,6 +1290,7 @@ class noisy_sigmoidal(unit):
             self.sc3 = self.sigma * self.c3
         else:
             self.update = self.euler_maru_update
+            self.integ_meth = "euler_maru"
             self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
 
     def f(self, arg):
@@ -1273,6 +1388,7 @@ class noisy_linear(unit):
         # if lambd > 0 we'll use the exponential Euler integration method
         if self.lambd > 0.:
             self.update = self.exp_euler_update
+            self.integ_meth = "exp_euler"
             self.diff = lambda y, t: self.get_input_sum(t) * self.rtau
             dt = self.times[1] - self.times[0] # same as self.time_bit
             A = -self.lambd*self.rtau
@@ -1282,6 +1398,7 @@ class noisy_linear(unit):
             self.sc3 = self.sigma * self.c3 # used by flat_exp_euler_update
         else:
             self.update = self.euler_maru_update
+            self.integ_meth = "euler_maru"
             self.sqrdt = np.sqrt(self.time_bit) # used by flat_euler_maru_update
 
     def derivatives(self, y, t):

@@ -6,7 +6,7 @@ The network class used in the draculab simulator.
 from draculab import unit_types, synapse_types, plant_models, syn_reqs  # names of models and requirements
 import numpy as np
 from cython_utils import * # interpolation and integration methods including cython_get_act*,
-from requirements import *
+#from requirements import *  # not sure this is necessary
 from array import array # optionally used for the unit's buffer
 #from numba import jit
 
@@ -147,9 +147,8 @@ class network():
         assert self.sim_time == 0., 'Units are being created when the simulation time is not zero'
 
         # Any entry in 'params' other than 'coordinates', 'type', 'function', 'branch_params',
-        # or 'integ_meth' should either be a scalar, a boolean, a list of length 'n', or a
-        # numpy array of length 'n'.  
-        # 'coordinates' should be either a list (with 'n' arrays) or a (1|2|3) array.
+        # 'integ_meth', or 'init_val'  should either be a scalar, a boolean, a list of length 'n', 
+        # or a numpy array of length 'n'.  
         listed = [] # the entries in 'params' specified with a list
         accepted_types = [float, int, bool, str] # accepted data types for parameters
         for par in params:
@@ -157,6 +156,7 @@ class network():
                 if not issubclass(type(params[par]), unit_types):
                     raise TypeError('Incorrect unit type')
             elif par == 'coordinates':
+            # 'coordinates' should be either a list (with 'n' arrays) or a (1|2|3) array.
                 if type(params[par]) is np.ndarray:
                     pass
                 elif type(params[par]) is list:
@@ -186,6 +186,20 @@ class network():
                         listed.append(par)
                 elif not type(params[par]) is str:
                     raise TypeError('Invalid type given for the integ_meth parameter')
+            elif par == 'init_val' and 'multidim' in params and params['multidim'] is True:
+            # 'init_val' can be a scalar, a list(array) or a list(array) of lists(arrays);
+            # this presents a possible ambiguity when it is a list, because it could either be
+            # the initial state of an n-dimensional model, or it could be the n scalar
+            # initial values of a scalar model. Thus we rely on unit.multidim .
+                if type(params[par][0]) in [list, np.ndarray]:
+                # We have a list of lists (or ndarray of ndarrays, etc.)
+                    if len(params[par]) == n:
+                        listed.append(par)
+                    else:
+                        raise ValueError('list of multidimensional init_val ' +
+                                         'entries has incorrect number of elements')
+                elif not type(params[par][0]) in [float, int, np.float_, np.int_]:
+                    raise TypeError('Incorrect type used in multidimensional init_val')
             elif (type(params[par]) is list) or (type(params[par]) is np.ndarray):
                 if len(params[par]) == n:
                     listed.append(par)
@@ -258,7 +272,7 @@ class network():
                         'uniform' : the delay dictionary must also include 'low' and 'high' values.
                         Example: {..., 'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.} }
                         'equal_norm' : the weight vectors for units in 'to_list' are uniformly sampled
-                                      from the space of vectors with a given norm. The delay
+                                      from the space of vectors with a given norm. The init_w 
                                       dictionary must also include the 'norm' parameter.
                         Example: {..., 'init_w':{'distribution':'equal_norm', 'norm':1.5} }
                         If using a list to specify the initial weights, the first entries in the
@@ -696,7 +710,7 @@ class network():
         
             The unit and plant buffers will be placed in a single 2D numpy array called
             'acts' in the network object, but each unit will retain a buffer that is a
-            view of part of a single row of 'acts'.
+            view of part of one or more rows in 'acts'.
 
             The 'times' array of all units is also replaced by a sngle 'ts' array.
 
@@ -729,105 +743,112 @@ class network():
         self.ts_bit = self.min_delay / self.min_buff_size # time interval between buffer values
         self.ts = np.linspace(-self.max_del+self.ts_bit, 0., self.ts_buff_size, dtype=self.bf_type) # the 
                                                              # corresponding times for the buffer values
-        self.ts_grid = np.linspace(0., self.min_delay, self.min_buff_size+1, dtype=self.bf_type) # used to
-                                                             # create values for 'times' (optionally)
+        self.ts_grid = np.linspace(0., self.min_delay, self.min_buff_size+1,
+                                   dtype=self.bf_type) # used to create values for 
+                                                       # 'times' (optionally)
         # copy info about the unit buffers into the network object
         self.has_buffer = [False] * self.n_units # does the unit have a buffer? (filled below)
-        self.init_idx = [0] * self.n_units # first index of ts to consider for each unit 
+        self.init_ts_idx = [0] * self.n_units # first index of ts to consider for each unit 
         self.buff_len = [0] * self.n_units # length of buffer for each unit
+        self.first_idx = [0] * self.n_units # first_idx[i] indicates the row of the acts
+                                            # array with the first state variable (by
+                                            # convention the activity) for the i-th unit
+        n_u_vars = 0 # auxiliary variable to fill self.first_idx
         for uid, u in enumerate(self.units):
             if hasattr(u, 'buffer'):
                 self.has_buffer[uid] = True
-                self.buff_len[uid]  = len(u.buffer)
-                self.init_idx[uid] = self.ts_buff_size - len(u.buffer)
-            else: # initialize init_idx for source units
-                self.init_idx[uid] = self.ts_buff_size - (int(round(u.delay/self.min_delay))
+                self.buff_len[uid]  = u.buffer.shape[-1]
+                self.init_ts_idx[uid] = self.ts_buff_size - self.buff_len[uid]
+                self.first_idx[uid] = n_u_vars
+                n_u_vars += u.dim
+            else: # initialize init_ts_idx and first_idx for source units
+                # To get past values of source units we no longer call their get_act
+                # function, but instead we rely on the values stored in acts
+                self.init_ts_idx[uid] = self.ts_buff_size - (int(round(u.delay/self.min_delay))
                                                           * self.min_buff_size)
-        # get a delays list where the time unit is the number of buffer intervals
-        self.step_dels = [ [ self.min_buff_size*int(round(d/self.min_delay)) for d in l] 
+                self.first_idx[uid] = n_u_vars
+                n_u_vars += 1
+        # get a version of self.delays where time units are number of buffer intervals
+        self.step_dels = [ [ self.min_buff_size*int(round(d/self.min_delay)) for d in l]
                                                                    for l in self.delays]
-        # If there are plants, you'll need to store past values for all their state variables.
-        # Since the indexes of units and plants are independent, you need to create an
-        # index for each state variable, in a way that won't collide with the unit indexes.
-        # st_var_idx[i][j] provides the index of the j-th state variable from the i-th plant
-        # in the acts array, and in the inp_src list (defined below).
-        # n_plant_vars counts the total number of state variables from all plants.
+        # If there are plants, you'll need to store past values for all their state 
+        # variables. Since the indexes of units and plants are independent, you need to
+        # create an index for each state variable, in a way that won't collide with the
+        # unit indexes. Plants are treated a bit differently from units due to the fact
+        # that units only transmit their activity (first state variable).
+        # p_st_var_idx[i][j] provides the index of the j-th state variable from the i-th 
+        # plant in the acts array, and in the inp_src list (defined below).
+        # n_plant_vars counts the total number of state variables from all plants,
+        # just as n_u_vars counted this for units.
         n_plant_vars = 0
         if self.n_plants > 0:   # if there are plants
-            index = self.n_units
-            self.st_var_idx = [[] for _ in range(self.n_plants)] 
+            index = n_u_vars # initial index (row in acts) for the plant
+            self.p_st_var_idx = [[] for _ in range(self.n_plants)] 
             for pid, plant in enumerate(self.plants):
                 n_plant_vars += plant.dim
                 for var in range(plant.dim):
-                    self.st_var_idx[pid].append(index)
+                    self.p_st_var_idx[pid].append(index)
                     index += 1
         # For each unit obtain a vector with the index of input units or plants in acts
-        self.inp_src = [ [syn.preID for syn in l] for l in self.syns ]
+        self.inp_src = [ [self.first_idx[syn.preID] for syn in l] for l in self.syns ]
+        # TODO: this may cause an index error when there are more plants than units
         # The initialization of inp_src above will fail if there are plants. Modifying it.
         if self.n_plants > 0:
             for idx1, l in enumerate(self.syns):
                 for idx2, syn in enumerate(l):
                     if hasattr(syn, 'plant_out'): # synapse comes from a plant
-                        self.inp_src[idx1][idx2] = self.st_var_idx[syn.plant_id][syn.plant_out]
+                        self.inp_src[idx1][idx2] = self.p_st_var_idx[syn.plant_id][syn.plant_out]
         #======================================================================
         # Creating the acts array
-        self.acts = np.zeros((self.n_units+n_plant_vars, len(self.ts)), dtype=self.bf_type)
+        self.acts = np.zeros((n_u_vars+n_plant_vars, len(self.ts)), dtype=self.bf_type)
         #======================================================================
-        # The indices to extract the array of step inputs for units
+        # acts_idx[u] is a complex index that allows unit u to extract from acts all
+        # the inputs it receives at each substep of the current timestep.
         self.acts_idx = [[] for _ in range(self.n_units)]
         for uid, u in enumerate(self.units):
+            fix = self.first_idx[uid]
             if hasattr(u, 'buffer'):
-                self.acts[uid,self.init_idx[uid]:] = u.init_val  # initializing acts
+                # initializing acts
+                self.acts[fix:fix+u.dim, self.init_ts_idx[uid]:] = \
+                          np.array([u.init_val] * self.buff_len[uid]).transpose() 
                 idx1 = [ [src]*self.min_buff_size for src in self.inp_src[uid] ]
                 idx2 = [list(range(self.ts_buff_size - self.step_dels[uid][inp] - 1, 
                         self.ts_buff_size - self.step_dels[uid][inp] - 1 + self.min_buff_size))
                         for inp in range(len(self.inp_src[uid]))]
                 self.acts_idx[uid] = (idx1, idx2)
-            #else:
-            #    self.acts[uid,self.init_idx[uid]:] = np.array([u.get_act(t) for
-            #                                         t in self.ts[self.init_idx[uid]:] ])
-            #"""
             else:  # for source units, also initialize their rows in acts
-                row = np.array([u.get_act(t) for t in self.ts[:] ])
+                row = np.array([u.get_act(t) for t in self.ts[:]])
                 # sometimes the source units have not been initialized, 
                 # and return 'None' types. Thus this check:
                 if not any([v is None for v in row]):
                     if not (np.isnan(row)).any():
-                        self.acts[uid,:] = row 
-            #"""
+                        self.acts[fix,:] = row 
         # Reinitializing the unit buffers as views of act, and times as views of ts
         self.link_unit_buffers()
         # specify the integration function for all units
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
-                if u.type in [unit_types.noisy_linear, unit_types.noisy_sigmoidal]:
-                    if u.lambd > 0.:
-                        u.flat_update = u.flat_exp_euler_update
-                        #u.flat_update = u.flat_euler_maru_update
-                        #u.sqrdt = np.sqrt(u.time_bit)
-                        u.integ_meth = "exp_euler"
-                    else:
-                        u.flat_update = u.flat_euler_maru_update
-                        u.integ_meth = "euler_maru"
-                    continue
                 if u.integ_meth in ["odeint", "solve_ivp", "euler"]:
-                    u.flat_update = u.flat_euler_update
+                    if u.multidim:
+                        u.flat_update = u.flat_euler_update_md
+                    else:
+                        u.flat_update = u.flat_euler_update
                     """
                     if u.integ_meth in ["odeint", "solve_ivp"]:
                         from warnings import warn
                         warn('Integration method ' + u.integ_meth + \
                              ' subsituted by Forward Euler in some units', UserWarning)
                     """
-                elif u.integ_meth == "euler_maru":
+                elif u.integ_meth == "euler_maru" and not u.multidim:
                     u.flat_update = u.flat_euler_maru_update
-                elif u.integ_meth == "exp_euler":
+                elif u.integ_meth == "exp_euler" and not u.multidim:
                     u.flat_update = u.flat_exp_euler_update
                 else:
                     raise NotImplementedError('The specified integration method is not \
                                                implemented for flat networks')
         # Reinitializing the buffers of plants as views of acts, times as views of ts
         for plant in self.plants:
-            svi = self.st_var_idx[plant.ID][0]
+            svi = self.p_st_var_idx[plant.ID][0]
             plant.buffer = np.ndarray(shape=(plant.dim, self.ts.size),
                            buffer=self.acts[svi:svi+plant.dim, :],
                            dtype=self.bf_type) 
@@ -873,11 +894,25 @@ class network():
         """
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
-                u.buffer = np.ndarray(shape=(self.buff_len[uid]), 
-                                      buffer=self.acts[uid,self.init_idx[uid]:],
-                                      dtype=self.bf_type)
-                u.times = np.ndarray(shape=(self.buff_len[uid]), 
-                                     buffer=self.ts[self.init_idx[uid]:], dtype=self.bf_type)
+                fix = self.first_idx[uid]
+                if u.multidim:
+                    """
+                    u.buffer = np.ndarray(shape=u.buffer.shape,
+                               buffer=self.acts[fix:fix+u.dim,self.init_ts_idx[uid]:],
+                               dtype=self.bf_type)
+                    """
+                    u.buffer = self.acts[fix:fix+u.dim, self.init_ts_idx[uid]:]
+                else:
+                    """
+                    u.buffer = np.ndarray(shape=(self.buff_len[uid]), 
+                                          buffer=self.acts[fix,self.init_ts_idx[uid]:],
+                                          dtype=self.bf_type)
+                    """
+                    u.buffer = self.acts[fix, self.init_ts_idx[uid]:]
+                    
+                #u.times = np.ndarray(shape=(self.buff_len[uid]), 
+                #                     buffer=self.ts[self.init_ts_idx[uid]:], dtype=self.bf_type)
+                u.times = self.ts[self.init_ts_idx[uid]:]
                 """
                 # Below is code used to create a version where the step_inps matrix is
                 # obtained using logical indexing. Somehow it is slower...
@@ -893,6 +928,7 @@ class network():
                 """
                 u.acts = self.acts.view()
                 u.acts_idx = self.acts_idx[uid]
+                u.act_buff = self.acts[fix, self.init_ts_idx[uid]:]
                 # step_inps is a 2D numpy array. step_inps[j,k] provides the activity
                 # of the j-th input to unit i in the k-th substep of the current timestep.
                 u.step_inps = self.acts[self.acts_idx[uid]]
@@ -914,8 +950,8 @@ class network():
             t should be within the range of values in the unit's buffer.
             This method is only valid for flat networks.
         """
-        return cython_get_act3(t, self.ts[self.init_idx[uid]], self.ts_bit, self.buff_len[uid],
-                               self.acts[uid][self.init_idx[uid]:])
+        return cython_get_act3(t, self.ts[self.init_ts_idx[uid]], self.ts_bit, self.buff_len[uid],
+                               self.acts[self.first_idx[uid]][self.init_ts_idx[uid]:])
 
 
     def get_act_by_step(self, uid, s):
@@ -927,7 +963,7 @@ class network():
 
             This method is to be used with the second type of flat networks.
         """
-        return self.acts[uid][-1 - s]
+        return self.acts[self.first_idx[uid]][-1 - s]
     
 
     def flat_update(self, time):
@@ -955,8 +991,7 @@ class network():
         # update activities of source units and handle requirements
         for uid, u in enumerate(self.units):
             if not self.has_buffer[uid]:
-                self.acts[uid,base:] = np.array([u.get_act(t) for
-                                        t in self.ts[base:] ])
+                self.acts[uid,base:] = [u.get_act(t) for t in self.ts[base:]]
             # handle requirements
             u.pre_syn_update(time)
             u.last_time = time # important to have it after pre_syn_update

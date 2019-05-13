@@ -62,6 +62,8 @@ class unit_types(Enum):
 
     binary = 101 # from tutorial 5
 
+    test_oscillator = 102 # from spinal units
+
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
 
@@ -173,8 +175,12 @@ class unit_types(Enum):
         elif self == unit_types.binary:
             from units.custom_units import binary_unit
             unit_class = binary_unit
+        elif self == unit_types.test_oscillator:
+            from units.spinal_units import test_oscillator
+            unit_class = test_oscillator
         else:
-            raise NotImplementedError('Attempting to retrieve the class of an unknown unit model')
+            raise NotImplementedError('Attempting to retrieve the class of an ' + 
+                                      'unknown unit model')
             # NameError instead?
         return unit_class
 
@@ -202,6 +208,8 @@ class synapse_types(Enum):
     delta = 15 # continuous version of the delta rule
 
     switcher = 101 # from tutorial 5
+
+    diff_hebbsnorm2 = 201 # a variation on diff_hebbsnorm
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -263,6 +271,10 @@ class synapse_types(Enum):
         elif self == synapse_types.switcher:
             from synapses.synapses import switcher
             syn_class = switcher
+        # Synapses for the spinal model
+        elif self == synapse_types.diff_hebbsnorm2:
+            from synapses.spinal_syns import diff_hebb_subsnorm_synapse2
+            syn_class = diff_hebb_subsnorm_synapse2
 
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')

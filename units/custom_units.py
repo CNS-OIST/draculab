@@ -5,7 +5,7 @@ Add your experimental models in here, and don't forget to also add their
 names and class names in the unit_types Enum of draculab.py .
 """
 from draculab import unit_types, synapse_types, syn_reqs  # names of models and requirements
-from units.units import *
+from units.units import unit
 import numpy as np
 from cython_utils import euler_int # the cythonized forward Euler integration
 from cython_utils import euler_maruyama # the cythonized Euler-Maruyama approximation
@@ -23,7 +23,6 @@ class custom_fi(unit):
     Because this unit operates in real time, it updates its value gradualy, with
     a 'tau' time constant.
     """
-
     def __init__(self, ID, params, network):
         """ The unit constructor.
 
