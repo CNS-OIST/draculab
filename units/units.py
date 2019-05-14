@@ -68,10 +68,12 @@ class unit():
             self.delay = 2 * self.net.min_delay
         if type(params['init_val']) in [float, int, np.float_, np.int_]:
             self.init_val = params['init_val'] # initial value for the activation 
+            self.init_act = self.init_val # also initial value for activation
             self.multidim = False
             self.dim = 1 # dimension of the unit's ODE
         elif type(params['init_val']) in [list, np.ndarray]:
             self.dim = len(params['init_val'])
+            self.init_act = params['init_val'][0]  # initial value for activation
             if len(params['init_val']) > 1:
                 self.init_val = params['init_val']
                 if 'multidim' in params and params['multidim'] is True:
@@ -97,10 +99,12 @@ class unit():
         if 'n_ports' in params: self.n_ports = params['n_ports']
         else: self.n_ports = 1
         if self.n_ports < 2:
-            self.multiport = False # If True, the port_idx list is created in init_pre_syn_update
-                                   # in order to support customized get_mp_input* functions
+            self.multiport = False 
         else:
-            self.multiport = True
+            self.multiport = True # If True, the port_idx list is updated in each
+                                  # call to init_pre_syn_update in order to support 
+                                  # customized get_mp_input* functions
+            self.port_idx = [ [] for _ in range(self.n_ports) ]
             self.needs_mp_inp_sum = False # by default, upd_flat_inp_sum is used 
                                           # instead of upd_flat_mp_inp_sum
         if 'integ_meth' in params: # a particular integration method is specified for the unit
@@ -176,22 +180,22 @@ class unit():
 
         min_del = self.net.min_delay  # just to have shorter lines below
         self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
-        self.bf_type = np.float64 # np.dtype('d') # data type of the buffer when it is a numpy array
+        self.bf_type = np.float64  # data type of the buffer when it is a numpy array
 
-        # The following buffers are for synaptic requirements that can come from presynaptic units.
-        # They store one value per update, in the requirement's update method.
-        if self.multidim:
-            init_val = self.init_val[0] # we just use the activity for these buffers
-        else:
-            init_val = self.init_val
+        # The following buffers are for synaptic requirements that can come from presynaptic
+        # units. They store one value per update, in the requirement's update method.
         if syn_reqs.lpf_fast in self.syn_needs:
-            self.lpf_fast_buff = np.array( [init_val]*self.steps, dtype=self.bf_type)
+            self.lpf_fast_buff = np.array( [self.init_act]*self.steps, 
+                                           dtype=self.bf_type)
         if syn_reqs.lpf_mid in self.syn_needs:
-            self.lpf_mid_buff= np.array( [init_val]*self.steps, dtype=self.bf_type)
+            self.lpf_mid_buff= np.array( [self.init_act]*self.steps,
+                                         dtype=self.bf_type)
         if syn_reqs.lpf_slow in self.syn_needs:
-            self.lpf_slow_buff = np.array( [init_val]*self.steps, dtype=self.bf_type)
+            self.lpf_slow_buff = np.array( [self.init_act]*self.steps,
+                                           dtype=self.bf_type)
         if syn_reqs.lpf_mid_inp_sum in self.syn_needs:
-            self.lpf_mid_inp_sum_buff = np.array( [init_val]*self.steps, dtype=self.bf_type)
+            self.lpf_mid_inp_sum_buff = np.array( [self.init_act]*self.steps,
+                                                  dtype=self.bf_type)
 
         # 'source' units don't use activity buffers, so for them the method ends here
         if self.type == unit_types.source:
@@ -212,10 +216,11 @@ class unit():
         else:
             self.act_buff = self.buffer.view()
         self.time_bit = min_del / min_buff # time interval used by get_act
-        self.times = np.linspace(-self.delay+self.time_bit, 0., self.buff_size, dtype=self.bf_type) # the 
-                                                               #corresponding times for the buffer values
-        self.times_grid = np.linspace(0, min_del, min_buff+1, dtype=self.bf_type) # used to create
-                                     # values for 'times'. Initially its interval differs with 'times'
+        self.times = np.linspace(-self.delay+self.time_bit, 0., self.buff_size, 
+                     dtype=self.bf_type) # the corresponding times for the buffer values
+        self.times_grid = np.linspace(0, min_del, min_buff+1,
+                    dtype=self.bf_type) # used to create values for 'times'. 
+                                        # Initially its interval differs with 'times'
         # The interpolator needs initialization 
         if self.using_interp1d:
             self.upd_interpolator()
@@ -259,8 +264,9 @@ class unit():
 
         This method is for units where multiport = True, and that have a port_idx attribute.
 
-        The i-th element of the returned list is a numpy array containing the raw (not multiplied
-        by the synaptic weight) inputs at port i. The inputs include transmision delays.
+        The i-th element of the returned list is a numpy array containing the raw
+        (not multiplied by the synaptic weight) inputs at port i. The inputs include 
+        transmision delays.
 
         The time argument should be within the range of values stored in the unit's buffer.
         """
@@ -592,8 +598,8 @@ class unit():
         An extra task done here is to prepare the 'port_idx' list used by units with multiple 
         input ports.
 
-        init_pre_syn_update is called for a unit everytime network.connect() connects the unit, 
-        which may be more than once.
+        init_pre_syn_update is called for a unit everytime network.connect() 
+        connects the unit, which may be more than once.
 
         Raises:
             NameError, NotImplementedError, ValueError.
@@ -636,9 +642,10 @@ class unit():
 
         # Each synapse should know the delay of its connection
         for syn, delay in zip(self.net.syns[self.ID], self.net.delays[self.ID]):
-            # The -1 below is because get_lpf_fast etc. return lpf_fast_buff[-1-steps], corresponding to
-            # the assumption that buff[-1] is the value zero steps back
-            syn.delay_steps = min(self.net.units[syn.preID].steps-1, int(round(delay/self.net.min_delay)))
+            # The -1 below is because get_lpf_fast etc. return lpf_fast_buff[-1-steps], 
+            # corresponding to the assumption that buff[-1] is the value zero steps back
+            syn.delay_steps = min(self.net.units[syn.preID].steps-1, 
+                                  int(round(delay/self.net.min_delay)))
 
         # For each synapse you receive, add its requirements
         for syn in self.net.syns[self.ID]:

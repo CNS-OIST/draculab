@@ -27,24 +27,24 @@ def add_lpf_fast(unit):
     """
     if not hasattr(unit,'tau_fast'): 
         raise NameError( 'Synaptic plasticity requires unit parameter tau_fast, not yet set' )
-    setattr(unit, 'lpf_fast', unit.init_val)
-    setattr(unit, 'lpf_fast_buff', np.array( [unit.init_val]*unit.steps, dtype=unit.bf_type) )
+    setattr(unit, 'lpf_fast', unit.init_act)
+    setattr(unit, 'lpf_fast_buff', np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type) )
 
 
 def add_lpf_mid(unit):
     """ See 'add_lpf_fast' above. """
     if not hasattr(unit,'tau_mid'): 
         raise NameError( 'The tau_mid requirement needs the parameter tau_mid, not yet set' )
-    setattr(unit, 'lpf_mid', unit.init_val)
-    setattr(unit, 'lpf_mid_buff', np.array( [unit.init_val]*unit.steps, dtype=unit.bf_type) )
+    setattr(unit, 'lpf_mid', unit.init_act)
+    setattr(unit, 'lpf_mid_buff', np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type) )
 
 
 def add_lpf_slow(unit):
     """ See 'add_lpf_fast' above. """
     if not hasattr(unit,'tau_slow'): 
         raise NameError( 'The tau_slow requirement needs the parameter tau_slow, not yet set' )
-    setattr(unit, 'lpf_slow', unit.init_val)
-    setattr(unit, 'lpf_slow_buff', np.array( [unit.init_val]*unit.steps, dtype=unit.bf_type) )
+    setattr(unit, 'lpf_slow', unit.init_act)
+    setattr(unit, 'lpf_slow_buff', np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type) )
 
 
 def add_sq_lpf_slow(unit):
@@ -57,7 +57,7 @@ def add_sq_lpf_slow(unit):
     """
     if not hasattr(unit,'tau_slow'): 
         raise NameError( 'sq_lpf_slow requires unit parameter tau_slow, not yet set' )
-    setattr(unit, 'sq_lpf_slow', unit.init_val)
+    setattr(unit, 'sq_lpf_slow', unit.init_act)
 
 
 def add_inp_vector(unit):
@@ -70,7 +70,7 @@ def add_inp_vector(unit):
         balance, and exp_scale. In this last requirement, it is used to obtain the 'mu'
         factor used by the exp_scale rule.
     """
-    setattr(unit, 'inp_vector', np.tile(unit.init_val, len(unit.net.syns[unit.ID])))
+    setattr(unit, 'inp_vector', np.tile(unit.init_act, len(unit.net.syns[unit.ID])))
 
 
 def add_mp_inputs(unit):
@@ -90,7 +90,7 @@ def add_mp_inputs(unit):
         raise NameError( 'the mp_inputs requirement is for multiport units with a port_idx list' )
     val = [] 
     for prt_lst in unit.port_idx:
-        val.append(np.array([unit.init_val for _ in range(len(prt_lst))]))
+        val.append(np.array([unit.init_act for _ in range(len(prt_lst))]))
     setattr(unit, 'mp_inputs', val)
 
 
@@ -232,9 +232,9 @@ def add_lpf_mid_inp_sum(unit):
         raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
     if not syn_reqs.inp_vector in unit.syn_needs:
         raise AssertionError('lpf_mid_inp_sum requires the inp_vector requirement to be set')
-    setattr(unit, 'lpf_mid_inp_sum', unit.init_val) # arbitrary initialization
+    setattr(unit, 'lpf_mid_inp_sum', unit.init_act) # arbitrary initialization
     setattr(unit, 'lpf_mid_inp_sum_buff', 
-            np.array( [unit.init_val]*unit.steps, dtype=unit.bf_type))
+            np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type))
 
 
 def add_lpf_slow_mp_inp_sum(unit):
@@ -566,7 +566,7 @@ class lpf_fast(requirement):
         """
         if not hasattr(unit,'tau_fast'): 
             raise NameError( 'Synaptic plasticity requires unit parameter tau_fast, not yet set' )
-        self.val = unit.init_val
+        self.val = unit.init_act
         self.unit = unit
         self.init_buff()
  
@@ -587,7 +587,7 @@ class lpf_fast(requirement):
 
     def init_buff(self):
         """ Initialize the buffer with past values of lpf_fast. """
-        self.lpf_fast_buff = np.array( [self.unit.init_val]*self.unit.steps, dtype=self.unit.bf_type)
+        self.lpf_fast_buff = np.array( [self.unit.init_act]*self.unit.steps, dtype=self.unit.bf_type)
 
     def get(self, steps):
         """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
@@ -618,7 +618,7 @@ class lpf_mid(requirement):
         """
         if not hasattr(unit,'tau_mid'): 
             raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
-        self.val = unit.init_val
+        self.val = unit.init_act
         self.unit = unit
         self.init_buff()
  
@@ -639,7 +639,7 @@ class lpf_mid(requirement):
 
     def init_buff(self):
         """ Initialize the buffer with past values of lpf_fast. """
-        self.lpf_mid_buff = np.array( [self.unit.init_val]*self.unit.steps, dtype=self.unit.bf_type)
+        self.lpf_mid_buff = np.array( [self.unit.init_act]*self.unit.steps, dtype=self.unit.bf_type)
 
     def get(self, steps):
         """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
@@ -670,7 +670,7 @@ class lpf_slow(requirement):
         """
         if not hasattr(unit,'tau_slow'): 
             raise NameError( 'Synaptic plasticity requires unit parameter tau_slow, not yet set' )
-        self.val = unit.init_val
+        self.val = unit.init_act
         self.unit = unit
         self.init_buff()
  
@@ -691,7 +691,7 @@ class lpf_slow(requirement):
 
     def init_buff(self):
         """ Initialize the buffer with past values of lpf_fast. """
-        self.lpf_slow_buff = np.array( [self.unit.init_val]*self.unit.steps, dtype=self.unit.bf_type)
+        self.lpf_slow_buff = np.array( [self.unit.init_act]*self.unit.steps, dtype=self.unit.bf_type)
 
     def get(self, steps):
         """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
@@ -702,7 +702,7 @@ class lpf(requirement):
     """ A low pass filter with a given time constant. """
     def __init__(self, unit):
         self.tau = unit.lpf_tau
-        self.val = unit.init_val
+        self.val = unit.init_act
         self.unit = unit
         self.init_buff()
  
@@ -723,7 +723,7 @@ class lpf(requirement):
 
     def init_buff(self):
         """ Initialize the buffer with past values. """
-        self.buff = np.array( [self.unit.init_val]*self.unit.steps, dtype=self.unit.bf_type)
+        self.buff = np.array( [self.unit.init_act]*self.unit.steps, dtype=self.unit.bf_type)
 
     def get(self, steps):
         """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
@@ -742,7 +742,7 @@ class sq_lpf_slow(requirement):
         if not hasattr(unit,'tau_slow'): 
             raise NameError( 'sq_lpf_slow requires unit parameter tau_slow, not yet set' )
         self.tau = unit.tau_slow
-        self.val = unit.init_val
+        self.val = unit.init_act
         self.unit = unit
 
     def update(self,time):
@@ -769,7 +769,7 @@ class inp_vector(requirement):
     """
     def __init__(self, unit):
         self.unit = unit
-        self.val = np.tile(unit.init_val, len(unit.net.syns[unit.ID]))
+        self.val = np.tile(unit.init_act, len(unit.net.syns[unit.ID]))
         self.uid = unit.ID
 
     def update(self, time):
@@ -795,7 +795,7 @@ class mp_inputs(requirement):
             raise NameError( 'the mp_inputs requirement is for multiport units with a port_idx list' )
         self.val = [] 
         for prt_lst in unit.port_idx:
-            self.val.append(np.array([unit.init_val for _ in range(len(prt_lst))]))
+            self.val.append(np.array([unit.init_act for _ in range(len(prt_lst))]))
         self.unit = unit
 
     def update(self, time):

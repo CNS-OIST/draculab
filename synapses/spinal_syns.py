@@ -93,3 +93,56 @@ class diff_hebb_subsnorm_synapse2(synapse):
         #if self.w < 0: self.w = 0
 
 
+class anti_covariance_inh_synapse(synapse):
+    """ Anticovariance rule for inhibitory synapses
+    
+        w' = - lrate * (post - theta) * pre,
+        where theta is a low-pass filtered version of post with a slow time constant.
+        This correspond to equation 8.8 in Dayan and Abbott's "Theoretical Neuroscience"
+        (MIT Press 2001), with the sign reversed.
+        The presynaptic activity includes its corresponding transmission delay.
+
+        This synapse type expects to be initialized with a negative weight, and will
+        implement soft weight bounding in order to ensure the sign of the weight does
+        not become positive, so the rule is actually:
+        w' = - lrate * w * (post - theta) * pre,
+    
+        Presynaptic units require the 'tau_fast' parameter.
+        Postsynaptic units require 'tau_fast' and 'tau_slow'.
+    """
+
+    def __init__(self, params, network):
+        """ The  class constructor.
+
+        Args: 
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+        Raises:
+            AssertionError, ValueError.
+
+        """
+        if params['init_w'] > 0:
+            raise ValueError('the anticov_inh synapse expects a negative ' +
+                             'initial weight')
+        synapse.__init__(self, params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        # The anti-covaraince rule requires the current pre- and post-synaptic activity
+        # For the postsynaptic activity, both fast and slow averages are used
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.lpf_slow])
+        assert self.type is synapse_types.anticov_inh, ['Synapse from ' + str(self.preID) + ' to ' +
+                                                     str(self.postID) + ' instantiated with the wrong type']
+    
+    def update(self, time):
+        """ Update the weight according to the anti-covariance learning rule."""
+        # If the network is correctly initialized, the pre-synaptic unit is updatig lpf_fast, and the 
+        # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
+        avg_post = self.net.units[self.postID].get_lpf_slow(0)
+        post = self.net.units[self.postID].get_lpf_fast(0)
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+        
+        # A forward Euler step with the anti-covariance learning rule 
+        self.w = self.w * (1. - self.alpha * (post - avg_post) * pre)
+
+
