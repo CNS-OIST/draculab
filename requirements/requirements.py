@@ -8,6 +8,29 @@ initialization and updating methods.
 from draculab import unit_types, synapse_types, syn_reqs
 import numpy as np
 
+def add_propagator(unit, speed):
+    """ Adds a propagator to update one of the LPF requirements.
+
+        The propagator is a factor that can be used to update the value
+        of an exponential function, which is the result of the equation
+        for the first-order low-pass filter.
+
+        This requirement can be added by any requirements that uses a LPF.
+
+        Args:
+            unit : the unit object where the propagator will be added.
+            speed : A string. Either "slow", "mid", or "fast".
+    """
+    tau_name = "tau_" + speed
+    prop_name = speed + "_prop"
+    if not hasattr(unit, tau_name):
+        raise NameError("A requirement needs the " + tau_name +
+                        " value, which was not specified. ")
+    min_del = unit.net.min_delay
+    tau = eval('unit.'+tau_name)
+    prop = np.exp(-min_del / tau)
+    setattr(unit, prop_name, prop)
+         
 
 def add_lpf_fast(unit):
     """ Adds 'lpf_fast', a low-pass filtered version of the unit's activity.
@@ -26,7 +49,8 @@ def add_lpf_fast(unit):
         in unit.init_bufers .
     """
     if not hasattr(unit,'tau_fast'): 
-        raise NameError( 'Synaptic plasticity requires unit parameter tau_fast, not yet set' )
+        raise NameError( 'lpf_fast requires unit parameter tau_fast, not yet set' )
+    add_propagator(unit, 'fast')
     setattr(unit, 'lpf_fast', unit.init_act)
     setattr(unit, 'lpf_fast_buff', np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type) )
 
@@ -34,7 +58,8 @@ def add_lpf_fast(unit):
 def add_lpf_mid(unit):
     """ See 'add_lpf_fast' above. """
     if not hasattr(unit,'tau_mid'): 
-        raise NameError( 'The tau_mid requirement needs the parameter tau_mid, not yet set' )
+        raise NameError( 'The lpf_mid requirement needs the parameter tau_mid, not yet set' )
+    add_propagator(unit, 'mid')
     setattr(unit, 'lpf_mid', unit.init_act)
     setattr(unit, 'lpf_mid_buff', np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type) )
 
@@ -42,7 +67,8 @@ def add_lpf_mid(unit):
 def add_lpf_slow(unit):
     """ See 'add_lpf_fast' above. """
     if not hasattr(unit,'tau_slow'): 
-        raise NameError( 'The tau_slow requirement needs the parameter tau_slow, not yet set' )
+        raise NameError( 'The lpf_slow requirement needs the parameter tau_slow, not yet set' )
+    add_propagator(unit, 'slow')
     setattr(unit, 'lpf_slow', unit.init_act)
     setattr(unit, 'lpf_slow_buff', np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type) )
 
@@ -57,6 +83,7 @@ def add_sq_lpf_slow(unit):
     """
     if not hasattr(unit,'tau_slow'): 
         raise NameError( 'sq_lpf_slow requires unit parameter tau_slow, not yet set' )
+    add_propagator(unit, 'slow')
     setattr(unit, 'sq_lpf_slow', unit.init_act)
 
 
@@ -232,6 +259,8 @@ def add_lpf_mid_inp_sum(unit):
         raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
     if not syn_reqs.inp_vector in unit.syn_needs:
         raise AssertionError('lpf_mid_inp_sum requires the inp_vector requirement to be set')
+    if not hasattr(unit, 'mid_prop')
+        add_propagator(unit, 'mid')
     setattr(unit, 'lpf_mid_inp_sum', unit.init_act) # arbitrary initialization
     setattr(unit, 'lpf_mid_inp_sum_buff', 
             np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type))
@@ -240,19 +269,43 @@ def add_lpf_mid_inp_sum(unit):
 def add_lpf_slow_mp_inp_sum(unit):
     """ Adds a slow LPF'd scaled sum of inputs for each input port.
 
-        lpf_slow_mp_inp_sum will be a list whose i-th element will be the sum of all
-        the inputs at the i-th port, low-pass filtered with the 'tau_slow' time
-        constant. The mp_inputs requirement is used for this.
+        lpf_slow_mp_inp_sum will be a list whose i-th element will be the scaled 
+        sum of all the inputs at the i-th port, low-pass filtered with the 
+        'tau_slow' time constant. The mp_inputs requirement is used for this.
 
         The lpf_slow_mp_inp_sum requirement is used by units of the 
         "double_sigma_normal" type in order to normalize their inputs according to
         the average of their sum.
+
+        Units of the am_pm_oscillator class have their own implementation.
     """
     if not hasattr(unit,'tau_slow'): 
         raise NameError( 'Requirement lpf_slow_mp_inp_sum requires parameter tau_slow, not yet set' )
     if not syn_reqs.mp_inputs in unit.syn_needs:
         raise AssertionError('lpf_slow_mp_inp_sum requires the mp_inputs requirement')
+    if not hasattr(unit, 'slow_prop')
+        add_propagator(unit, 'slow')
     setattr(unit, 'lpf_slow_mp_inp_sum', [ 0.4 for _ in range(unit.n_ports) ])
+
+
+def add_lpf_mid_mp_raw_inp_sum(unit):
+    """ Adds a medium LPF'd raw sum of inputs for each input port.
+
+        lpf_mid_mp_inp_sum will be a list whose i-th element is the sum of all
+        the inputs at the i-th port, low-pass filtered with the 'tau_mid' time
+        constant. The mp_inputs requirement is used for this.
+
+        The lpf_mid_mp_inp_sum requirement is used by units of the 
+        am_pm_oscillator class.
+    """
+    if not hasattr(unit,'tau_mid'): 
+        raise NameError( 'Requirement lpf_mid_mp_raw inp_sum requires ' +
+                         'parameter tau_mid, not yet set' )
+    if not syn_reqs.mp_inputs in unit.syn_needs:
+        raise AssertionError('lpf_mid_mp_raw_inp_sum requires the mp_inputs requirement')
+    if not hasattr(unit, 'mid_prop')
+        add_propagator(unit, 'mid')
+    setattr(unit, 'lpf_mid_mp_raw_inp_sum', [ 0.4 for _ in range(unit.n_ports) ])
 
 
 def add_balance(unit):

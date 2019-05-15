@@ -81,15 +81,13 @@ class am_pm_oscillator(unit):
                       Options: 'zero', 'kuramoto', 'input_sum'.
                       The 'input_sum' option requires an extra parameter: 
                       'alpha' : strength of phase interactions
-                If 'input_sum' is the interaction function also include:
-                'tau_mid' : time constant for the medium low-pass filter.
-                'tau_slow' :time constant for the slow low-pass filter.
+                If 'input_sum' is the interaction function we also require:
+                'tau_slow' : time constant for the slow low-pass filter.
                 OPTIONAL PARAMETERS
                 'n_ports' : number of input ports. Must equal 2, defaults to 2.
         Raises:
             ValueError
 
-        This unit requires 
         """
         params['multidim'] = True
         if len(params['init_val']) != 4:
@@ -110,7 +108,8 @@ class am_pm_oscillator(unit):
             self.f = lambda x : 0.
         elif params['F'] == 'input_sum':
             self.f = self.input_sum_f
-            self.syn_needs.update([syn_reqs.lpf_mid, mp_inputs])
+            self.syn_needs.update([syn_reqs.lpf_slow, syn_reqs.mp_inputs, 
+                                   syn_reqs.lpf_slow_mp_inp_sum])
         elif params['F'] == 'kuramoto':
             self.f = self.kuramoto_f
         else:
@@ -138,21 +137,23 @@ class am_pm_oscillator(unit):
         Dth = (self.omega + self.f(I)) / self.tau_t
         DI0 = (I[0] - y[3]) / self.tau_s
         #DIs = self.D_factor * (I[0] - y[3])
-        Du = (Dc + I[0]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])) / self.tau_u
+        #Du = (Dc + I[0]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])) / self.tau_u
+        Du = ((1.-y[0]) * y[0] * 
+              (Dc + y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2]))) / self.tau_u
         return np.array([Du, Dc, Dth, DI0])
 
-    def inp_sum_f(self, I):
+    def input_sum_f(self, I):
         """ Interaction function based on port 1 input sum. """
-        raise NotImplementedError('inp_sum_f not yet implemented')
+        return np.sin(2.*np.pi*self.lpf_slow_mp_inp_sum[1] - self.lpf_slow)
+        
 
     def kuramoto_f(self, I):
         """ Interaction function inspired by the Kuramoto model. """
         raise NotImplementedError('kuramoto_f not yet implemented')
 
-        
-
     def upd_lpf_slow_mp_inp_sum(self, time):
-        """ Update the slow LPF'd scaled sum of inputs at individual ports, returning them in a list. """
+        """ Update the list with slow LPF'd scaled sums of inputs at individual ports.
+        """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' lpf_slow_mp_inp_sum updated backwards in time']
         inputs = self.mp_inputs    # updated because mp_inputs is a requirement variable
@@ -162,6 +163,14 @@ class am_pm_oscillator(unit):
         self.lpf_slow_mp_inp_sum = [dots[i] + (self.lpf_slow_mp_inp_sum[i] - dots[i]) * 
                                    np.exp( (self.last_time-time)/self.tau_slow ) 
                                    for i in range(self.n_ports)]
+
+    def upd_lpf_mid_mp_raw_inp_sum(self, time):
+        """ Update the list with medium LPF'd sums of inputs at individual ports. """
+        sums = [sum(inps) for inps in self.mp_inputs]
+        # same update rule from other upd_lpf_X methods above, put in a list comprehension
+        self.lpf_mid_mp_raw_inp_sum = [sums[i] + (self.lpf_mid_mp_raw_inp_sum[i] - sums[i])
+                                       * self.mid_prop for i in range(self.n_ports)]
+
 
 
 class test_oscillator(unit):

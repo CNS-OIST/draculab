@@ -700,8 +700,9 @@ class unit():
         # lpf_x' = ( x - lpf_x ) / tau
         # and assuming x didn't change much between self.last_time and time.
         # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
-        self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
-                                   np.exp( (self.last_time-time)/self.tau_fast ) )
+        self.lpf_fast = cur_act + (self.lpf_fast - cur_act) * self.fast_prop
+        #self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
+        #                           np.exp( (self.last_time-time)/self.tau_fast ) )
         # update the buffer
         self.lpf_fast_buff[:-1] = self.lpf_fast_buff[1:]
         self.lpf_fast_buff[-1] = self.lpf_fast
@@ -719,8 +720,9 @@ class unit():
         #                                ' lpf_mid updated backwards in time']
         cur_act = self.get_act(time)
         # Same update method as in upd_lpf_fast
-        self.lpf_mid = cur_act + ( (self.lpf_mid - cur_act) * 
-                                   np.exp( (self.last_time-time)/self.tau_mid) )
+        self.lpf_mid = cur_act + (self.lpf_mid - cur_act) * self.mid_prop
+        #self.lpf_mid = cur_act + ( (self.lpf_mid - cur_act) * 
+        #                           np.exp( (self.last_time-time)/self.tau_mid) )
         # update the buffer
         self.lpf_mid_buff[:-1] = self.lpf_mid_buff[1:]
         self.lpf_mid_buff[-1] = self.lpf_mid
@@ -737,8 +739,9 @@ class unit():
         #                                ' lpf_slow updated backwards in time']
         cur_act = self.get_act(time)
         # Same update method as in upd_lpf_fast
-        self.lpf_slow = cur_act + ( (self.lpf_slow - cur_act) * 
-                                   np.exp( (self.last_time-time)/self.tau_slow) )
+        self.lpf_slow = cur_act + (self.lpf_slow - cur_act) * self.slow_prop
+        #self.lpf_slow = cur_act + ( (self.lpf_slow - cur_act) * 
+        #                           np.exp( (self.last_time-time)/self.tau_slow) )
         # update the buffer
         self.lpf_slow_buff[:-1] = self.lpf_slow_buff[1:]
         self.lpf_slow_buff[-1] = self.lpf_slow
@@ -755,8 +758,7 @@ class unit():
         #                                ' sq_lpf_slow updated backwards in time']
         cur_sq_act = self.get_act(time)**2.  
         # Same update method as in upd_lpf_fast
-        self.sq_lpf_slow = cur_sq_act + ( (self.sq_lpf_slow - cur_sq_act) * 
-                                  np.exp( (self.last_time-time)/self.tau_slow ) )
+        self.sq_lpf_slow = cur_sq_act + (self.sq_lpf_slow - cur_sq_act) * self.slow_prop
 
     
     def upd_inp_vector(self, time):
@@ -829,7 +831,8 @@ class unit():
         # and assuming x didn't change much between self.last_time and time.
         # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
         self.lpf_mid_inp_sum = cur_inp_sum + ( (self.lpf_mid_inp_sum - cur_inp_sum) * 
-                                   np.exp( (self.last_time-time)/self.tau_mid) )
+                                               self.mid_prop )
+                                  # np.exp( (self.last_time-time)/self.tau_mid) )
         # update the buffer
         self.lpf_mid_inp_sum_buff[:-1] = self.lpf_mid_inp_sum_buff[1:]
         self.lpf_mid_inp_sum_buff[-1] = self.lpf_mid_inp_sum
@@ -849,7 +852,8 @@ class unit():
         dots = [ np.dot(i, w) for i, w in zip(inputs, weights) ]
         # same update rule from other upd_lpf_X methods above, put in a list comprehension
         self.lpf_slow_mp_inp_sum = [dots[i] + (self.lpf_slow_mp_inp_sum[i] - dots[i]) * 
-                                   np.exp( (self.last_time-time)/self.tau_slow ) for i in range(self.n_ports)]
+                                   self.slow_prop for i in range(self.n_ports)]
+                                   #np.exp( (self.last_time-time)/self.tau_slow ) for i in range(self.n_ports)]
 
 
     def upd_balance(self, time):
