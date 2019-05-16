@@ -83,8 +83,14 @@ class am_pm_oscillator(unit):
                       'alpha' : strength of phase interactions
                 If 'input_sum' is the interaction function we also require:
                 'tau_slow' : time constant for the slow low-pass filter.
+                Using rga synapses brings an extra required parameter:
+                'custom_inp_del' : an integer indicating the delay that the rga
+                                  learning rule uses for the lateral port inputs. 
+                                  The delay is in units of min_delay steps. It is 
+                                  recommended to use the 'post_delay' value of the 
+                                  rga synapses. 
                 OPTIONAL PARAMETERS
-                'n_ports' : number of input ports. Must equal 2, defaults to 2.
+                'n_ports' : number of input ports. Must equal 2. Defaults to 2.
         Raises:
             ValueError
 
@@ -114,6 +120,8 @@ class am_pm_oscillator(unit):
             self.f = self.kuramoto_f
         else:
             raise ValueError('Wrong specification of the interaction function F')
+        if 'custom_inp_del' in params:
+            self.custom_inp_del = params['custom_inp_del']
         #self.D_factor = np.exp(self.net.min_delay / self.tau_s) / (3.*self.tau_s)
 
     def derivatives(self, y, t):
@@ -171,6 +179,31 @@ class am_pm_oscillator(unit):
         self.lpf_mid_mp_raw_inp_sum = [sums[i] + (self.lpf_mid_mp_raw_inp_sum[i] - sums[i])
                                        * self.mid_prop for i in range(self.n_ports)]
 
+    def upd_inp_deriv_mp(self, time):
+        """ Update the list with input derivatives for each port.  """
+        u = self.net.units
+        self.inp_deriv_mp = [[u[uid].get_lpf_fast(dely) - u[uid].get_lpf_mid(dely) 
+                              for uid, dely in uid_dely] 
+                              for uid_dely in self.pre_list_del_mp)]
+
+    def upd_avg_inp_deriv_mp(self, time):
+        """ DEPRECATED along with upd_inp_deriv_mp.
+            Update the list with the average of input derivatives for each port. """
+        self.avg_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
+                                 for l in self.inp_deriv_mp]
+        
+    def upd_del_inp_deriv_mp(self, time):
+        """ Update the list with custom delayed input derivatives for each port. """
+        u = self.net.units
+        self.del_inp_deriv_mp = [[u[uid].get_lpf_fast(self.custom_inp_del) - 
+                                  u[uid].get_lpf_mid(self.custom_inp_del) 
+                                  for uid in lst] for lst in self.pre_list_mp]
+
+    def upd_del_avg_inp_deriv_mp(self, time):
+        """ Update the list with delayed averages of input derivatives for each port. """
+        self.del_avg_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
+                                     for l in self.del_inp_deriv_mp]
+ 
 
 
 class test_oscillator(unit):

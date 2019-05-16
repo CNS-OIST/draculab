@@ -170,7 +170,8 @@ class unit():
         """
         This method (re)initializes the buffer variables according to the current parameters.
 
-        It is useful because new connections may increase self.delay, and thus the size of the buffers.
+        It is useful because new connections may increase self.delay, and thus the 
+        size of the buffers.
 
         Raises:
             AssertionError.

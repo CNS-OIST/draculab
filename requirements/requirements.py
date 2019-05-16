@@ -259,7 +259,7 @@ def add_lpf_mid_inp_sum(unit):
         raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
     if not syn_reqs.inp_vector in unit.syn_needs:
         raise AssertionError('lpf_mid_inp_sum requires the inp_vector requirement to be set')
-    if not hasattr(unit, 'mid_prop')
+    if not hasattr(unit, 'mid_prop'):
         add_propagator(unit, 'mid')
     setattr(unit, 'lpf_mid_inp_sum', unit.init_act) # arbitrary initialization
     setattr(unit, 'lpf_mid_inp_sum_buff', 
@@ -283,7 +283,7 @@ def add_lpf_slow_mp_inp_sum(unit):
         raise NameError( 'Requirement lpf_slow_mp_inp_sum requires parameter tau_slow, not yet set' )
     if not syn_reqs.mp_inputs in unit.syn_needs:
         raise AssertionError('lpf_slow_mp_inp_sum requires the mp_inputs requirement')
-    if not hasattr(unit, 'slow_prop')
+    if not hasattr(unit, 'slow_prop'):
         add_propagator(unit, 'slow')
     setattr(unit, 'lpf_slow_mp_inp_sum', [ 0.4 for _ in range(unit.n_ports) ])
 
@@ -295,7 +295,7 @@ def add_lpf_mid_mp_raw_inp_sum(unit):
         the inputs at the i-th port, low-pass filtered with the 'tau_mid' time
         constant. The mp_inputs requirement is used for this.
 
-        The lpf_mid_mp_inp_sum requirement is used by units of the 
+        The lpf_mid_mp_raw_inp_sum requirement is used by units of the 
         am_pm_oscillator class.
     """
     if not hasattr(unit,'tau_mid'): 
@@ -303,7 +303,7 @@ def add_lpf_mid_mp_raw_inp_sum(unit):
                          'parameter tau_mid, not yet set' )
     if not syn_reqs.mp_inputs in unit.syn_needs:
         raise AssertionError('lpf_mid_mp_raw_inp_sum requires the mp_inputs requirement')
-    if not hasattr(unit, 'mid_prop')
+    if not hasattr(unit, 'mid_prop'):
         add_propagator(unit, 'mid')
     setattr(unit, 'lpf_mid_mp_raw_inp_sum', [ 0.4 for _ in range(unit.n_ports) ])
 
@@ -570,6 +570,109 @@ def add_norm_factor(unit):
         n_exc = 1
     setattr(unit, 's_inh', -unit.HYP/n_inh)
     setattr(unit, 's_exc', (1.+unit.OD)/n_exc)
+
+
+def add_inp_deriv_mp(unit):
+    """ Adds the input derivatives listed by port.
+
+        This is tantamount to a differential version of mp_inputs, so it works only
+        for multiport units.
+
+        inp_deriv_mp[i,j] will contain the derivative of the j-th input at the i-th
+        port, following the order in the port_idx list.
+
+        This requirement was created for the rga synapse, and was implemented in the
+        am_pm_oscillator class.
+    """
+    if not unit.multiport:
+        raise AssertionError('The inp_deriv_mp requirement is for multiport units.')
+    # In order to calculate the derivative of each input, the fast and mid LPF'd
+    # outputs of the presynaptic units are required. These should be calculated by
+    # the presynaptic units in order to avoid possible duplicate calculations.
+    # Thus, all presynaptic units should have the lpf_fast and lpf_mid requirements. 
+    if (not syn_reqs.pre_lpf_fast in unit.syn_needs or
+        not syn_reqs.pre_lpf_mid in unit.syn_needs):
+        raise AssertionError('A unit with the inp_deriv_mp requierement needs its ' +
+                             'presynaptic units to include lpf_fast and lpf_mid.')
+    # So that the unit can access the LPF'd activities of its presynaptic units
+    # it needs a list with the ID's of the presynaptic units, arranged by port.
+    # pre_list_mp[i,j] will contain the ID of the j-th input at the i-th port.
+    # In addition, we need to know how many delay steps there are for each input.
+    # pre_del_mp[i,j] will contain the delay steps of the j-th input at the i-th
+    # port.
+    syns = unit.net.syns[unit.ID]
+    pre_list_mp = []
+    pre_del_mp = []
+    for lst in unit.port_idx:
+        pre_list_mp.append([syns[uid].preID for uid in lst])
+        pre_del_mp.append([syns[uid].delay_steps for uid in lst])
+    pre_list_del_mp = list(zip(pre_list_mp, pre_del_mp)) # prezipping for speed
+    # initializing all derivatives with zeros
+    inp_deriv_mp = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
+    #setattr(unit, 'pre_list_mp', pre_list_mp)
+    #setattr(unit, 'pre_del_mp', pre_del_mp)
+    setattr(unit, 'pre_list_del_mp', pre_list_del_mp)
+    setattr(unit, 'inp_deriv_mp', inp_deriv_mp)
+
+
+def add_avg_inp_deriv_mp(unit):
+    """ Adds the average of the derivatives of all inputs at each port. 
+        
+        This requirement was created for the rga synapse, and implemented in the
+        am_pm_oscillator class.
+    """
+    if not syn_reqs.inp_deriv_mp in unit.syn_needs:
+        raise AssertionError('The avg_inp_deriv_mp requirement needs inp_deriv_mp')
+    avg_inp_deriv_mp = [ 0. for _ in unit.port_idx]
+    setattr(unit, 'avg_inp_deriv_mp', avg_inp_deriv_mp)
+
+
+def add_del_inp_deriv_mp(unit):
+    """ Adds input derivatives listed by port with custom delays.
+
+        This is a version of inp_deriv_mp where the inputs have a custom delay.
+
+        del_inp_deriv_mp[i,j] will contain the delayed derivative of the j-th 
+        input at the i-th port, following the order in the port_idx list.
+
+        This requirement was created for the rga synapse, and was implemented in the
+        am_pm_oscillator class.
+    """
+    if not unit.multiport:
+        raise AssertionError('The del_inp_deriv_mp requirement is ' + 
+                             'for multiport units.')
+    if (not syn_reqs.pre_lpf_fast in unit.syn_needs or
+        not syn_reqs.pre_lpf_mid in unit.syn_needs):
+        raise AssertionError('A unit with the del_inp_deriv_mp requierement needs its ' +
+                             'presynaptic units to include lpf_fast and lpf_mid.')
+    # The delay is an attribute of the unit. Checking if it's there.
+    if not hasattr(unit, 'custom_inp_del'):
+        raise AssertionError('The del_inp_deriv_mp requirement needs units to have ' + 
+                              'the attribute custom_inp_del.')
+    # inp_deriv_mp may also use pre_list_mp[i,j] 
+    if not hasattr(unit, 'pre_list_mp'):
+        syns = unit.net.syns[unit.ID]
+        pre_list_mp = []
+        for lst in unit.port_idx:
+            pre_list_mp.append([syns[uid].preID for uid in lst])
+        setattr(unit, 'pre_list_mp', pre_list_mp)
+    # initializing all derivatives with zeros
+    del_inp_deriv_mp = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
+    setattr(unit, 'del_inp_deriv_mp', inp_deriv_mp)
+
+
+def add_del_avg_inp_deriv_mp(unit):
+    """ Adds the delayed average of the derivatives of all inputs at each port. 
+
+        This is a version of avg_inp_deriv_mp where the inputs have a custom
+        delay. It was created for the rga synapse, and implemented in the
+        am_pm_oscillator class.
+    """
+    if not syn_reqs.del_inp_deriv_mp in unit.syn_needs:
+        raise AssertionError('The del_avg_inp_deriv_mp requirement ' + 
+                             'needs del_inp_deriv_mp')
+    del_avg_inp_deriv_mp = [ 0. for _ in unit.port_idx]
+    setattr(unit, 'del_avg_inp_deriv_mp', avg_inp_deriv_mp)
 
 
 #-------------------------------------------------------------------------------------

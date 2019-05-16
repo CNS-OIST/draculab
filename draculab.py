@@ -385,7 +385,12 @@ class syn_reqs(Enum):
     exp_scale_sort_mp = 30 # A single scale factor to produce exp rate distro in some mp ssrdc units
     exp_scale_sort_shrp = 31 # A scale factor to produce exp rate distro in some ssrdc_sharp units
     norm_factor = 32 # A scale factor to normalize the influence of each input on the model cell
-    lpf_mid_mp_raw_inp_sum = 33 # mid LPF'd multiport list of raw input sums
+    
+    # requirements used for the spinal model
+    lpf_mid_mp_raw_inp_sum = 101 # mid LPF'd multiport list of raw input sums
+    inp_deriv_mp =102 # derivatives of inputs listed by port (as in mp_inputs)
+    avg_inp_deriv_mp = 103 # average of input derivatives at each port
+    lpf
 
     def list_names():
         """ Return a list with the name of all defined synaptic requirements. """

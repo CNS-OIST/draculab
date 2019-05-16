@@ -62,15 +62,16 @@ class diff_hebb_subsnorm_synapse2(synapse):
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.po_de = params['post_delay'] # delay in postsynaptic activity
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
-        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.lpf_fast,
-                                     syn_reqs.diff_avg]) # pos_diff_avg
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
+                           syn_reqs.lpf_fast, syn_reqs.diff_avg]) # pos_diff_avg
 
-        assert self.type is synapse_types.diff_hebbsnorm2, ['Synapse from ' + str(self.preID) + ' to ' +
-                                                       str(self.postID) + ' instantiated with the wrong type']
+        assert self.type is synapse_types.diff_hebbsnorm2, ['Synapse from ' + 
+                                str(self.preID) + ' to ' + str(self.postID) + 
+                                ' instantiated with the wrong type']
 
 
     def update(self, time):
-        """ Update the weight using the differential Hebbian rule with substractive normalization. 
+        """ Update using the differential Hebbian rule with substractive normalization. 
         
             If the network is correctly initialized, the pre-synaptic unit updates lpf_fast, 
             and lpf_mid, whereas the post-synaptic unit updates lpf_fast, lpf_mid and the 
@@ -99,13 +100,21 @@ class rga_synapse(synapse):
         The particulars are in the 4/11/19 scrap sheet.
 
         Presynaptic units have the lpf_fast and lpf_mid requirements.
-        Postsynaptic units have the lpf_fast, lpf_mid, lpf_slow_mp_inp_sum, 
-        lpf_mid_mp_raw_inp_sum. The am_pm_oscillator includes the 
-        lpf_mid_mp_raw_inp_sum implementation.
+        Postsynaptic units have the lpf_fast, lpf_mid, inp_deriv_mp, 
+        avg_inp_deriv_mp requirements. The am_pm_oscillator includes the 
+        implementation of these last two.
+
+        In addition, units using this type of synapse need to have a
+        'custom_inp_del' attribute to indicate the extra delay steps in the 
+        'lateral' inputs. Normally it should match the 'post_delay' value below.
     """
     def __init__(self, params, network):
         """ The class constructor.
 
+        In its current implementation, the rga synapse assumes that the lateral
+        connections are in port 1 of the unit, wheras the error inputs are in port 0.
+        This is set in the lat_port and err_port variables.
+        
         Args:
             params: same as the parent class, with two additions.
             REQUIRED PARAMETERS
@@ -118,20 +127,26 @@ class rga_synapse(synapse):
         synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.po_de = params['post_delay'] # delay in postsynaptic activity
-        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
-        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.lpf_fast,
-                                     syn_reqs.lpf_mid, syn_reqs.diff_avg]) # pos_diff_avg
-
-        assert self.type is synapse_types.diff_hebbsnorm, ['Synapse from ' + str(self.preID) + ' to ' +
-                                                       str(self.postID) + ' instantiated with the wrong type']
-
+        self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
+        # most of the heavy lifting is done by requirements
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
+                             syn_reqs.lpf_fast, syn_reqs.lpf_mid, 
+                             syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
+                             syn_reqs.del_inp_deriv_mp, syn_reqs.del_avg_inp_deriv_mp])
+        assert self.type is synapse_types.rga, ['Synapse from ' + str(self.preID) + 
+                   ' to ' + str(self.postID) + ' instantiated with the wrong type']
+        if not hasattr(self.net.units[self.postID], 'custom_inp_delay'):
+            raise AssertionError('An rga synapse has a postsynaptic unit without ' +
+                                 'the custom_inp_delay attribute')
+        self.lat_port = 1  # port for "lateral" inputs in postsynaptic unit
+        self.err_port = 0  # port for "error" inputs in postsynaptic unit
 
     def update(self, time):
         """ Update the weight using the RGA-inpsired learning rule.
         
             If the network is correctly initialized, the pre-synaptic unit updates lpf_fast, 
             and lpf_mid, whereas the post-synaptic unit updates lpf_fast, lpf_mid and the 
-            average of approximate input derivatives.
+            average of approximate input derivatives for each port.
 
             Notice the average of input derivatives can come form upd_pos_diff_avg, which 
             considers only the inputs whose synapses have positive values. To allow synapses
@@ -139,16 +154,15 @@ class rga_synapse(synapse):
             from pos_diff_avg to diff_avg, and the pos_diff_avg value used below to diff_avg.
             Also, remove the line "if self.w < 0: self.w = 0"
         """
-        diff_avg = self.net.units[self.postID].diff_avg
-        # pos_diff_avg = self.net.units[self.postID].pos_diff_avg
-        Dpost = (self.net.units[self.postID].get_lpf_fast(self.po_de) - 
-                 self.net.units[self.postID].get_lpf_mid(self.po_de) )
-        Dpre = ( self.net.units[self.preID].get_lpf_fast(self.delay_steps) -
-                 self.net.units[self.preID].get_lpf_mid(self.delay_steps) )
-        
-        # A forward Euler step with the normalized differential Hebbian learning rule 
-        self.w = self.w + self.alpha *  Dpost * (Dpre - diff_avg)
-        #if self.w < 0: self.w = 0
+        u = self.net.units[self.postID]
+        xp = u.del_avg_inp_deriv_mp[self.lat_port]
+        up = u.get_lpf_fast(self.po_de) - u.get_lpf_mid(self.po_de)
+        sp = u.avg_inp_deriv_mp[self.err_port]
+        #spj = u.inp_deriv_mp[self.port][?]
+        spj = (self.net.units[self.preID].get_lpf_fast(self.delay_steps) -
+               self.net.units[self.preID].get_lpf_mid(self.delay_steps) )
+
+        self.w += self.alpha * max(up - xp, 0.) * (sp - spj)
 
 
 class anti_covariance_inh_synapse(synapse):
