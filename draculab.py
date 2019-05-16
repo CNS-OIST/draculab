@@ -389,8 +389,10 @@ class syn_reqs(Enum):
     # requirements used for the spinal model
     lpf_mid_mp_raw_inp_sum = 101 # mid LPF'd multiport list of raw input sums
     inp_deriv_mp =102 # derivatives of inputs listed by port (as in mp_inputs)
-    avg_inp_deriv_mp = 103 # average of input derivatives at each port
-    lpf
+    avg_inp_deriv_mp = 103 # average of input derivatives for each port
+    del_inp_deriv_mp = 104 # version of inp_deriv_mp with custom input delays
+    del_avg_inp_deriv_mp = 105 # avg_inp_deriv_mp with custom input delays
+
 
     def list_names():
         """ Return a list with the name of all defined synaptic requirements. """

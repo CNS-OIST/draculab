@@ -184,11 +184,10 @@ class am_pm_oscillator(unit):
         u = self.net.units
         self.inp_deriv_mp = [[u[uid].get_lpf_fast(dely) - u[uid].get_lpf_mid(dely) 
                               for uid, dely in uid_dely] 
-                              for uid_dely in self.pre_list_del_mp)]
+                              for uid_dely in self.pre_list_del_mp]
 
     def upd_avg_inp_deriv_mp(self, time):
-        """ DEPRECATED along with upd_inp_deriv_mp.
-            Update the list with the average of input derivatives for each port. """
+        """ Update the list with the average of input derivatives for each port. """
         self.avg_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
                                  for l in self.inp_deriv_mp]
         
