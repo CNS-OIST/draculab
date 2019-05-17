@@ -135,9 +135,9 @@ class rga_synapse(synapse):
                              syn_reqs.del_inp_deriv_mp, syn_reqs.del_avg_inp_deriv_mp])
         assert self.type is synapse_types.rga, ['Synapse from ' + str(self.preID) + 
                    ' to ' + str(self.postID) + ' instantiated with the wrong type']
-        if not hasattr(self.net.units[self.postID], 'custom_inp_delay'):
+        if not hasattr(self.net.units[self.postID], 'custom_inp_del'):
             raise AssertionError('An rga synapse has a postsynaptic unit without ' +
-                                 'the custom_inp_delay attribute')
+                                 'the custom_inp_del attribute')
         self.lat_port = 1  # port for "lateral" inputs in postsynaptic unit
         self.err_port = 0  # port for "error" inputs in postsynaptic unit
 

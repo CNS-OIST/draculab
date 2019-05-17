@@ -1168,8 +1168,14 @@ class source(unit):
 
         Args:
             function: a reference to a Python function.
+        Raises:
+            ValueError
         """
-        self.get_act = function
+        if callable(function):
+            self.get_act = function
+        else:
+            raise ValueError('The function of a source unit was set with a ' +
+                             'non-callable value')
         # What if you're doing this after the connections have already been made?
         # Then net.act and syns_act_dels have links to functions other than this get_act.
         # Thus, we need to reset all those net.act entries...

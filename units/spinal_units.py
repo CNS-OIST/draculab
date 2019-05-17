@@ -182,9 +182,13 @@ class am_pm_oscillator(unit):
     def upd_inp_deriv_mp(self, time):
         """ Update the list with input derivatives for each port.  """
         u = self.net.units
-        self.inp_deriv_mp = [[u[uid].get_lpf_fast(dely) - u[uid].get_lpf_mid(dely) 
-                              for uid, dely in uid_dely] 
-                              for uid_dely in self.pre_list_del_mp]
+        self.inp_deriv_mp = [[u[uid[idx]].get_lpf_fast(dely[idx]) -
+                              u[uid[idx]].get_lpf_mid(dely[idx]) 
+                              for idx in range(len(uid))]
+                              for uid, dely in self.pre_list_del_mp]
+        #self.inp_deriv_mp = [[u[uid].get_lpf_fast(dely) - u[uid].get_lpf_mid(dely) 
+        #                      for uid, dely in uid_dely] 
+        #                      for uid_dely in self.pre_list_del_mp]
 
     def upd_avg_inp_deriv_mp(self, time):
         """ Update the list with the average of input derivatives for each port. """

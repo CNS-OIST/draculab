@@ -590,10 +590,10 @@ def add_inp_deriv_mp(unit):
     # outputs of the presynaptic units are required. These should be calculated by
     # the presynaptic units in order to avoid possible duplicate calculations.
     # Thus, all presynaptic units should have the lpf_fast and lpf_mid requirements. 
-    if (not syn_reqs.pre_lpf_fast in unit.syn_needs or
-        not syn_reqs.pre_lpf_mid in unit.syn_needs):
-        raise AssertionError('A unit with the inp_deriv_mp requierement needs its ' +
-                             'presynaptic units to include lpf_fast and lpf_mid.')
+    #if (not syn_reqs.pre_lpf_fast in unit.syn_needs or
+    #    not syn_reqs.pre_lpf_mid in unit.syn_needs):
+    #    raise AssertionError('A unit with the inp_deriv_mp requierement needs its ' +
+    #                         'presynaptic units to include lpf_fast and lpf_mid.')
     # So that the unit can access the LPF'd activities of its presynaptic units
     # it needs a list with the ID's of the presynaptic units, arranged by port.
     # pre_list_mp[i,j] will contain the ID of the j-th input at the i-th port.
@@ -641,24 +641,23 @@ def add_del_inp_deriv_mp(unit):
     if not unit.multiport:
         raise AssertionError('The del_inp_deriv_mp requirement is ' + 
                              'for multiport units.')
-    if (not syn_reqs.pre_lpf_fast in unit.syn_needs or
-        not syn_reqs.pre_lpf_mid in unit.syn_needs):
-        raise AssertionError('A unit with the del_inp_deriv_mp requierement needs its ' +
-                             'presynaptic units to include lpf_fast and lpf_mid.')
+    #if (not syn_reqs.pre_lpf_fast in unit.syn_needs or
+    #    not syn_reqs.pre_lpf_mid in unit.syn_needs):
+    #    raise AssertionError('A unit with the del_inp_deriv_mp requierement needs its ' +
+    #                         'presynaptic units to include lpf_fast and lpf_mid.')
     # The delay is an attribute of the unit. Checking if it's there.
     if not hasattr(unit, 'custom_inp_del'):
         raise AssertionError('The del_inp_deriv_mp requirement needs units to have ' + 
                               'the attribute custom_inp_del.')
-    # inp_deriv_mp may also use pre_list_mp[i,j] 
-    if not hasattr(unit, 'pre_list_mp'):
-        syns = unit.net.syns[unit.ID]
-        pre_list_mp = []
-        for lst in unit.port_idx:
-            pre_list_mp.append([syns[uid].preID for uid in lst])
-        setattr(unit, 'pre_list_mp', pre_list_mp)
+    syns = unit.net.syns[unit.ID]
+    # pre_list_mp[i,j] will contain the ID of the j-th input at the i-th port.
+    pre_list_mp = []
+    for lst in unit.port_idx:
+        pre_list_mp.append([syns[uid].preID for uid in lst])
+    setattr(unit, 'pre_list_mp', pre_list_mp)
     # initializing all derivatives with zeros
     del_inp_deriv_mp = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
-    setattr(unit, 'del_inp_deriv_mp', inp_deriv_mp)
+    setattr(unit, 'del_inp_deriv_mp', del_inp_deriv_mp)
 
 
 def add_del_avg_inp_deriv_mp(unit):
@@ -672,7 +671,7 @@ def add_del_avg_inp_deriv_mp(unit):
         raise AssertionError('The del_avg_inp_deriv_mp requirement ' + 
                              'needs del_inp_deriv_mp')
     del_avg_inp_deriv_mp = [ 0. for _ in unit.port_idx]
-    setattr(unit, 'del_avg_inp_deriv_mp', avg_inp_deriv_mp)
+    setattr(unit, 'del_avg_inp_deriv_mp', del_avg_inp_deriv_mp)
 
 
 #-------------------------------------------------------------------------------------
