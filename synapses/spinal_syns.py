@@ -120,6 +120,11 @@ class rga_synapse(synapse):
             REQUIRED PARAMETERS
             'lrate' : A scalar value that will multiply the derivative of the weight.
             'post_delay': delay steps in the post-synaptic activity.
+            OPTIONAL PARAMETERS
+            'err_port' : port for "error" inputs. Default is 0.
+            'lat_port' : port for "lateral" inputs. Default is 1.
+            'max_w' : maximum synaptic weight. Default is 3.
+            'min_w' : minimum synaptic weight. Default is -3.
 
         Raises:
             AssertionError.
@@ -138,8 +143,14 @@ class rga_synapse(synapse):
         if not hasattr(self.net.units[self.postID], 'custom_inp_del'):
             raise AssertionError('An rga synapse has a postsynaptic unit without ' +
                                  'the custom_inp_del attribute')
-        self.lat_port = 1  # port for "lateral" inputs in postsynaptic unit
-        self.err_port = 0  # port for "error" inputs in postsynaptic unit
+        if 'lat_port' in params: self.lat_port = params['lat_port']
+        else: self.lat_port = 1 
+        if 'err_port' in params: self.err_port = params['err_port']
+        else: self.err_port = 0 
+        if 'max_w' in params: self.max_w = params['max_w']
+        else: self.max_w = 3.
+        if 'min_w' in params: self.min_w = params['min_w']
+        else: self.min_w = -3.
 
     def update(self, time):
         """ Update the weight using the RGA-inpsired learning rule.
@@ -162,7 +173,11 @@ class rga_synapse(synapse):
         spj = (self.net.units[self.preID].get_lpf_fast(self.delay_steps) -
                self.net.units[self.preID].get_lpf_mid(self.delay_steps) )
 
-        self.w += self.alpha * max(up - xp, 0.) * (sp - spj)
+        #self.w += self.alpha * max(up - xp, 0.) * (sp - spj)
+        #self.w += self.alpha * (up - xp) * (sp - spj)
+        self.w += self.alpha * ((up - xp) * (sp - spj) * 
+                  (self.max_w - self.w) * (self.w - self.min_w))
+        #self.w += self.alpha * up * (sp - spj)
 
 
 class anti_covariance_inh_synapse(synapse):

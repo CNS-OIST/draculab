@@ -110,6 +110,8 @@ class am_pm_oscillator(unit):
         self.tau_t = params['tau_t']
         self.tau_s = params['tau_s']
         self.omega = params['omega']
+        # you need these by default depending on the Dc update rule
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.lpf_slow_mp_inp_sum])
         if params['F'] == 'zero':
             self.f = lambda x : 0.
         elif params['F'] == 'input_sum':
@@ -141,9 +143,13 @@ class am_pm_oscillator(unit):
         I = [ np.dot(i, w) for i, w in 
               zip(self.get_mp_inputs(t), self.get_mp_weights(t)) ]
         # Obtain the derivatives
-        Dc = (I[0] * (1. - y[1]) + I[1]*y[1]) / self.tau_c
+        #Dc = (I[0] * (1. - y[1]) + I[1]*y[1]) / self.tau_c
+        slow_I0 = self.lpf_slow_mp_inp_sum[0]
+        #Dc = ( I[0]*(1. - y[1]) + (I[1] - slow_I0)*y[1] ) / self.tau_c
+        Dc = ( I[0]*(1. - y[1]) - slow_I0*y[1] ) / self.tau_c
         Dth = (self.omega + self.f(I)) / self.tau_t
         DI0 = (I[0] - y[3]) / self.tau_s
+        #DI0 = (sum(self.get_mp_inputs(t)[0]) - y[3]) / self.tau_s
         #DIs = self.D_factor * (I[0] - y[3])
         #Du = (Dc + I[0]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])) / self.tau_u
         Du = ((1.-y[0]) * y[0] * 

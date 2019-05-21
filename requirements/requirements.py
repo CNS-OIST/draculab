@@ -583,17 +583,12 @@ def add_inp_deriv_mp(unit):
 
         This requirement was created for the rga synapse, and was implemented in the
         am_pm_oscillator class.
+
+        Any synapse using this requirement should have the pre_lpf_fast and
+        pre_lpf_mid requirements.
     """
     if not unit.multiport:
         raise AssertionError('The inp_deriv_mp requirement is for multiport units.')
-    # In order to calculate the derivative of each input, the fast and mid LPF'd
-    # outputs of the presynaptic units are required. These should be calculated by
-    # the presynaptic units in order to avoid possible duplicate calculations.
-    # Thus, all presynaptic units should have the lpf_fast and lpf_mid requirements. 
-    #if (not syn_reqs.pre_lpf_fast in unit.syn_needs or
-    #    not syn_reqs.pre_lpf_mid in unit.syn_needs):
-    #    raise AssertionError('A unit with the inp_deriv_mp requierement needs its ' +
-    #                         'presynaptic units to include lpf_fast and lpf_mid.')
     # So that the unit can access the LPF'd activities of its presynaptic units
     # it needs a list with the ID's of the presynaptic units, arranged by port.
     # pre_list_mp[i,j] will contain the ID of the j-th input at the i-th port.
