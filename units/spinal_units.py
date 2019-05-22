@@ -373,7 +373,6 @@ class am_pm_oscillator(unit):
               self.get_lpf_mid(self.custom_inp_del))
         sp = self.avg_inp_deriv_mp[0]
         Dc = (y[1]+0.1)*(1. - y[1])*(up - xp)*sp / self.tau_c
-        """
         #Dc = ((y[1]+0.1)*(1. - y[1])*(up - xp)*
         #      (y[4] - slow_I0))/ self.tau_c
         xp = self.del_avg_inp_deriv_mp[1]
@@ -382,9 +381,11 @@ class am_pm_oscillator(unit):
         sp = self.avg_inp_deriv_mp[0]
         Dc = (y[1]+0.1)*(1. - y[1])*(up - xp)*(sp - 0.1*(y[2]-0.1)*
               slow_I0 + I[1]*y[1]) / self.tau_c
+        """
 
         Dth = (self.omega + self.f(I)) / self.tau_t
         DI0 = (I[0] - y[4]) / self.tau_s
+        Dc = (y[4] - slow_I0) / self.tau_c
         #DI0 = (sum(self.get_mp_inputs(t)[0]) - y[3]) / self.tau_s
         #Du = (Dc + I[0]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])) / self.tau_u
         Du = ((1. - y[0]) * y[0] * 
