@@ -150,7 +150,7 @@ class rga_synapse(synapse):
         if 'max_w' in params: self.max_w = params['max_w']
         else: self.max_w = 3.
         if 'min_w' in params: self.min_w = params['min_w']
-        else: self.min_w = -3.
+        else: self.min_w = 0.
 
     def update(self, time):
         """ Update the weight using the RGA-inpsired learning rule.
