@@ -119,7 +119,7 @@ class rga_synapse(synapse):
             params: same as the parent class, with two additions.
             REQUIRED PARAMETERS
             'lrate' : A scalar value that will multiply the derivative of the weight.
-            'post_delay': delay steps in the post-synaptic activity.
+            'post_delay': NOT USING. delay steps in the post-synaptic activity.
             OPTIONAL PARAMETERS
             'err_port' : port for "error" inputs. Default is 0.
             'lat_port' : port for "lateral" inputs. Default is 1.
@@ -131,8 +131,9 @@ class rga_synapse(synapse):
         """
         synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
-        self.po_de = params['post_delay'] # delay in postsynaptic activity
         self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
+        #self.po_de = params['post_delay'] # delay in postsynaptic activity
+        self.po_de = self.net.units[self.postID].custom_inp_del
         # most of the heavy lifting is done by requirements
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
                              syn_reqs.lpf_fast, syn_reqs.lpf_mid, 

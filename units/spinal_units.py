@@ -6,7 +6,7 @@ from draculab import unit_types, synapse_types, syn_reqs  # names of models and 
 from units.units import unit
 import numpy as np
 
-class am_pm_oscillator_old(unit):
+class am_pm_oscillator(unit):
     """
     An oscillator with amplitude and phase modulated by inputs.
 
@@ -143,22 +143,25 @@ class am_pm_oscillator_old(unit):
         I = [ np.dot(i, w) for i, w in 
               zip(self.get_mp_inputs(t), self.get_mp_weights(t)) ]
         # Obtain the derivatives
-        #Dc = (I[0] * (1. - y[1]) + I[1]*y[1]) / self.tau_c
+        Dc = (I[0] * (1. - y[1]) + I[1]*y[1]) / self.tau_c
         slow_I0 = self.lpf_slow_mp_inp_sum[0]
         #Dc = ( I[0]*(1. - y[1]) + (I[1] - slow_I0)*y[1] ) / self.tau_c
-        Dc = ( I[0]*(1. - y[1]) - slow_I0*y[1] ) / self.tau_c
+        #Dc = ( I[0]*(1. - y[1]) - slow_I0*y[1] ) / self.tau_c
         Dth = (self.omega + self.f(I)) / self.tau_t
         DI0 = (I[0] - y[3]) / self.tau_s
         #DI0 = (sum(self.get_mp_inputs(t)[0]) - y[3]) / self.tau_s
         #DIs = self.D_factor * (I[0] - y[3])
         #Du = (Dc + I[0]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])) / self.tau_u
-        Du = ((1.-y[0]) * y[0] * 
-              (Dc + y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2]))) / self.tau_u
+        ex = np.exp(-y[3]*np.sin(y[2]))
+        prime = 0.5*ex/(1.+ex)
+        Du = ((1.-y[0]) * y[0] * (Dc + (y[1] - y[0]) + 
+               prime*(y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])))) / self.tau_u
         return np.array([Du, Dc, Dth, DI0])
 
     def input_sum_f(self, I):
         """ Interaction function based on port 1 input sum. """
-        return np.sin(2.*np.pi*self.lpf_slow_mp_inp_sum[1] - self.lpf_slow)
+        # TODO: I changed the sign here
+        return -np.sin(2.*np.pi*self.lpf_slow_mp_inp_sum[1] - self.lpf_slow)
         
 
     def kuramoto_f(self, I):
@@ -214,7 +217,7 @@ class am_pm_oscillator_old(unit):
                                      for l in self.del_inp_deriv_mp]
  
 
-class am_pm_oscillator(unit):
+class am_pm_oscillator_exp(unit):
     """
     An oscillator with amplitude and phase modulated by inputs.
 
