@@ -572,6 +572,28 @@ def add_norm_factor(unit):
     setattr(unit, 's_exc', (1.+unit.OD)/n_exc)
 
 
+def add_l0_norm_factor_mp(unit):
+    """ Factors to normalize the L0 norm of weight vectors for each port.
+
+        This requirement is used by the rga_synapse, and the implementation is
+        in the am_pm_oscillator. The requirement, however, is general enough to
+        be used in any multiport model where the sum of absolute values for the
+        weights should be 1.
+
+        l0_norm_factor_mp is a list whose length is the number of ports.
+        By multiplying all the weights from incoming connections at port i
+        by l0_norm_fact0r_mp[i], the sum of their absolute values will be 1 if 
+        the weight vector is not zero, and zero otherwise.
+    """
+    if not unit.multiport:
+        raise AssertionError('The l0_norm_factor_mp requirement is for multiport '+
+                             'units only.')
+    l0_norm_factor_mp = list(np.ones(unit.n_ports))
+    setattr(unit, 'l0_norm_factor_mp', l0_norm_factor_mp)
+
+
+
+
 def add_inp_deriv_mp(unit):
     """ Adds the input derivatives listed by port.
 

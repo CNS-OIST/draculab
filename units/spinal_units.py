@@ -153,16 +153,15 @@ class am_pm_oscillator(unit):
         #DIs = self.D_factor * (I[0] - y[3])
         #Du = (Dc + I[0]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])) / self.tau_u
         ex = np.exp(-y[3]*np.sin(y[2]))
-        prime = 0.5*ex/(1.+ex)
+        prime = 0.2*ex/(1.+ex)
         Du = ((1.-y[0]) * y[0] * (Dc + (y[1] - y[0]) + 
                prime*(y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])))) / self.tau_u
         return np.array([Du, Dc, Dth, DI0])
 
     def input_sum_f(self, I):
         """ Interaction function based on port 1 input sum. """
-        # TODO: I changed the sign here
+        # TODO: I changed the sign here, should revert later
         return -np.sin(2.*np.pi*self.lpf_slow_mp_inp_sum[1] - self.lpf_slow)
-        
 
     def kuramoto_f(self, I):
         """ Interaction function inspired by the Kuramoto model. """
@@ -215,6 +214,11 @@ class am_pm_oscillator(unit):
         """ Update the list with delayed averages of input derivatives for each port. """
         self.del_avg_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
                                      for l in self.del_inp_deriv_mp]
+
+    def upd_l0_norm_factor_mp(self, time):
+        """ Update the factors to normalize the L0 norms for weight vectors. """
+        self.l0_norm_factor_mp = [ 1. / (np.absolute(ws).sum() + 1e-32) 
+                                      for ws in self.get_mp_weights(time)]
  
 
 class am_pm_oscillator_exp(unit):

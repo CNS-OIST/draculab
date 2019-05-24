@@ -101,12 +101,15 @@ class rga_synapse(synapse):
 
         Presynaptic units have the lpf_fast and lpf_mid requirements.
         Postsynaptic units have the lpf_fast, lpf_mid, inp_deriv_mp, 
-        avg_inp_deriv_mp requirements. The am_pm_oscillator includes the 
-        implementation of these last two.
+        avg_inp_deriv_mp, l0_norm_factor_mp requirements. The am_pm_oscillator
+        includes the implementation of these last three.
 
         In addition, units using this type of synapse need to have a
         'custom_inp_del' attribute to indicate the extra delay steps in the 
         'lateral' inputs. Normally it should match the 'post_delay' value below.
+
+        The current implementation normalizes the sum of the absolute values for
+        the weights at the 'error' port, making them add to 1.
     """
     def __init__(self, params, network):
         """ The class constructor.
@@ -123,8 +126,8 @@ class rga_synapse(synapse):
             OPTIONAL PARAMETERS
             'err_port' : port for "error" inputs. Default is 0.
             'lat_port' : port for "lateral" inputs. Default is 1.
-            'max_w' : maximum synaptic weight. Default is 3.
-            'min_w' : minimum synaptic weight. Default is -3.
+            'max_w' : maximum synaptic weight. Default is 3. DEPRECATED
+            'min_w' : minimum synaptic weight. Default is -3. DEPRECATED
 
         Raises:
             AssertionError.
@@ -138,7 +141,9 @@ class rga_synapse(synapse):
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
                              syn_reqs.lpf_fast, syn_reqs.lpf_mid, 
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
-                             syn_reqs.del_inp_deriv_mp, syn_reqs.del_avg_inp_deriv_mp])
+                             syn_reqs.del_inp_deriv_mp,
+                             syn_reqs.del_avg_inp_deriv_mp,
+                             syn_reqs.l0_norm_factor_mp ])
         assert self.type is synapse_types.rga, ['Synapse from ' + str(self.preID) + 
                    ' to ' + str(self.postID) + ' instantiated with the wrong type']
         if not hasattr(self.net.units[self.postID], 'custom_inp_del'):
@@ -148,10 +153,11 @@ class rga_synapse(synapse):
         else: self.lat_port = 1 
         if 'err_port' in params: self.err_port = params['err_port']
         else: self.err_port = 0 
+        # TODO: erase this
         if 'max_w' in params: self.max_w = params['max_w']
-        else: self.max_w = 3.
+        else: self.max_w = 1.
         if 'min_w' in params: self.min_w = params['min_w']
-        else: self.min_w = 0.
+        else: self.min_w = -1.
 
     def update(self, time):
         """ Update the weight using the RGA-inpsired learning rule.
@@ -174,10 +180,11 @@ class rga_synapse(synapse):
         spj = (self.net.units[self.preID].get_lpf_fast(self.delay_steps) -
                self.net.units[self.preID].get_lpf_mid(self.delay_steps) )
 
+        self.w *= u.l0_norm_factor_mp[self.err_port]
         #self.w += self.alpha * max(up - xp, 0.) * (sp - spj)
-        #self.w += self.alpha * (up - xp) * (sp - spj)
-        self.w += self.alpha * ((up - xp) * (sp - spj) * 
-                  (self.max_w - self.w) * (self.w - self.min_w))
+        self.w += self.alpha * (up - xp) * (sp - spj)
+        #self.w += self.alpha * ((up - xp) * (sp - spj) * 
+        #          (self.max_w - self.w) * (self.w - self.min_w))
         #self.w += self.alpha * up * (sp - spj)
 
 
