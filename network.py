@@ -745,9 +745,17 @@ class network():
         for p in self.plants:
             max_p_del = max(max_p_del, max0([max0(dl) for dl in p.inp_dels]))
         self.max_del = max(max_u_del, max_p_del) + self.min_delay #  min_delay added (see 'connect')
+        # Obtain the largest buffer size among all units.
+        # This will be needed because units can have buffers that are larger
+        # than strictly needed by their transmission delays
+        max_buff_len = 0
+        for u in self.units:
+            if hasattr(u, 'buffer') and u.buffer.shape[-1] > max_buff_len:
+                max_buff_len = u.buffer.shape[-1]
         # initialize the ts array (called 'times' in units)
         self.bf_type = np.float64  # data type of the buffers when using numpy arrays
         max_steps = int(round(self.max_del/self.min_delay)) # max number of min_del steps in all delays
+        max_steps = max(max_steps, max_buff_len)
         self.ts_buff_size = int(round(max_steps*self.min_buff_size)) # number of activation values to store
         self.ts_bit = self.min_delay / self.min_buff_size # time interval between buffer values
         self.ts = np.linspace(-self.max_del+self.ts_bit, 0., self.ts_buff_size, dtype=self.bf_type) # the 
@@ -848,9 +856,22 @@ class network():
                         warn('Integration method ' + u.integ_meth + \
                              ' subsituted by Forward Euler in some units', UserWarning)
                     """
-                elif u.integ_meth == "euler_maru" and not u.multidim:
-                    u.flat_update = u.flat_euler_maru_update
+                elif u.integ_meth == "euler_maru":
+                    if u.multidim:
+                        u.flat_update = u.flat_euler_maru_update_md
+                        if not hasattr(u, 'mudt_vec') or not hasattr(u, 'sqrdt'):
+                            raise AssertionError('A unit without both the mudt_vec and '+
+                              'sqrdt attributes requested the flat euler maru ' +
+                              'integration method.')
+                    else:
+                        if not hasattr(u, 'mudt') or not hasattr(u, 'sqrdt'):
+                            raise AssertionError('A unit without both the mudt and sqrdt '+
+                              'attributes requested the flat euler_maru integration method.')
+                        u.flat_update = u.flat_euler_maru_update
                 elif u.integ_meth == "exp_euler" and not u.multidim:
+                    if not hasattr(u, 'mudt') or not hasattr(u, 'sqrdt'):
+                        raise AssertionError('A unit without both the mudt and sqrdt '+
+                            'attributes requested the flat euler_maru integration method.')
                     u.flat_update = u.flat_exp_euler_update
                 else:
                     raise NotImplementedError('The specified integration method is not \

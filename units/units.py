@@ -117,13 +117,13 @@ class unit():
                                               "for multidim units.")
                 self.update = self.euler_update
             elif params['integ_meth'] == "euler_maru":
-                if self.multidim:
-                    raise NotImplementedError("Euler Maru method unavailable " +
-                                              "for multidim units.")
                 if not 'mu' in params or not 'sigma' in params:
                     raise AssertionError('Euler-Maruyama integration ' +
                                          'requires mu and sigma parameters')
-                self.update = self.euler_maru_update
+                if self.multidim:
+                    self.update = self.euler_maru_update_md 
+                else:
+                    self.update = self.euler_maru_update
             elif params['integ_meth'] == "exp_euler":
                 if self.multidim:
                     raise NotImplementedError("Exp Euler method unavailable " +
@@ -466,6 +466,27 @@ class unit():
         euler_maruyama(self.derivatives, self.buffer, time,
                         self.buff_size-self.min_buff_size, self.time_bit, self.mu, self.sigma)
         self.upd_reqs_n_syns(time)
+    
+
+    def euler_maru_update_md(self, time):
+        """ Advance state from time to time+min_delay with the Euler-Maruyama method.
+
+            This is a version of euler_maru_update for multidimensional units.
+            The atol and rtol values are meaningless in this case.
+
+            This solver does the buuffer's "rolling" by itself.
+            The unit needs to have 'mu' and 'sigma' attributes.
+            self.mu = 0. # Mean of the white noise
+            self.sigma = 0.0 # standard deviation of Wiener process.
+        """
+        new_times = self.times[-1] + self.times_grid
+        self.times += self.net.min_delay
+        # euler_maruyama_md is defined in cython_utils.pyx
+        euler_maruyama_md(self.derivatives, self.buffer, time,
+                        self.buff_size-self.min_buff_size, self.time_bit, 
+                        self.mu, self.sigma)
+        self.upd_reqs_n_syns(time)
+
 
 
     def exp_euler_update(self, time):
@@ -1096,7 +1117,7 @@ class unit():
 
 
     def flat_euler_maru_update(self, time):
-        """ The Euler-Maruyama integration used with network.flat_update3. """
+        """ The flat Euler-Maruyama integration used with one-dimensional units."""
         base = self.buffer.size - self.min_buff_size
         noise = self.sigma * np.random.normal(loc=0., scale=self.sqrdt,
                                               size=self.min_buff_size)
@@ -1104,6 +1125,19 @@ class unit():
             self.buffer[base+idx] = self.buffer[base+idx-1] + ( self.time_bit *
                                     self.dt_fun(self.buffer[base+idx-1], idx) +
                                     self.mudt + noise[idx] )
+
+
+    def flat_euler_maru_update_md(self, time):
+        """ The Euler-Maruyama integration for flat multidimensional units"""
+        base = self.buffer.shape[1] - self.min_buff_size
+        noise = self.sigma * np.random.normal(loc=0., scale=self.sqrdt,
+                                              size=self.min_buff_size)
+        nvec = np.zeros((self.dim, self.min_buff_size))
+        nvec[1,:] = noise
+        for idx in range(self.min_buff_size):
+            self.buffer[:,base+idx] = self.buffer[:,base+idx-1] + ( self.time_bit *
+                                    self.dt_fun(self.buffer[:,base+idx-1], idx) +
+                                    self.mudt_vec + nvec[:,idx] )
 
 
     def flat_exp_euler_update(self, time):
