@@ -50,7 +50,8 @@ class synapse():
             self.plant_id = params['plant_id']
         # Some unit models call the method get_sc_input_sum, which requires the gain parameter
         if 'gain' in params: self.gain = params['gain'] 
-        self.delay_steps = None # Delay, in simulation steps units. Initialized in unit.init_pre_syn_update.
+        self.delay_steps = None # Delay, in simulation steps units.
+                                # Initialized in unit.init_pre_syn_update.
         # TODO: these tests assume unit-to-unit connections, and if there are more plants than units, 
         # the tests may fail. There should be something to indicate whether the synapse is on a plant
         assert self.net.n_units >= self.preID, 'Synapse connected from non existing unit ' + str(self.preID)  
@@ -90,8 +91,8 @@ class static_synapse(synapse):
         Raises: AssertionError.
         """
         synapse.__init__(self, params, network)
-        assert self.type is synapse_types.static, ['Synapse from ' + str(self.preID) + ' to ' +
-                                                    str(self.postID) + ' instantiated with the wrong type']
+        assert self.type is synapse_types.static, ['Synapse from ' + str(self.preID) + 
+                      ' to ' + str(self.postID) + ' instantiated with the wrong type']
 
     def update(self,time):
         # Static synapses don't do anything when updated.

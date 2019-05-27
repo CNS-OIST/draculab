@@ -206,7 +206,8 @@ class unit():
         self.offset = (self.steps-1)*min_buff # an index used in the update function of derived classes
         self.buff_size = int(round(self.steps*min_buff)) # number of activation values to store
         # The 'buffer' contains previous activation values for all state variables.
-        # By transposing, for multidim units each row is a different state variable
+        # By transposing, for multidim units each row is a different state vector.
+        # If flattened, each column will be a state vector.
         self.buffer = np.ascontiguousarray( [self.init_val]*self.buff_size, 
                                             dtype=self.bf_type).transpose()
         # 'act_buff' is a view of the row corresponsing to the activity variable in the
@@ -457,8 +458,8 @@ class unit():
 
             This solver does the buuffer's "rolling" by itself.
             The unit needs to have 'mu' and 'sigma' attributes.
-            self.mu = 0. # Mean of the white noise
-            self.sigma = 0.0 # standard deviation of Wiener process.
+            self.mu = mean of the white noise
+            self.sigma = standard deviation of Wiener process.
         """
         new_times = self.times[-1] + self.times_grid
         self.times += self.net.min_delay
@@ -476,8 +477,8 @@ class unit():
 
             This solver does the buuffer's "rolling" by itself.
             The unit needs to have 'mu' and 'sigma' attributes.
-            self.mu = 0. # Mean of the white noise
-            self.sigma = 0.0 # standard deviation of Wiener process.
+            self.mu = mean of the white noise
+            self.sigma = standard deviation of Wiener process.
         """
         new_times = self.times[-1] + self.times_grid
         self.times += self.net.min_delay
@@ -503,7 +504,6 @@ class unit():
         new_buff = exp_euler(self.diff, self.buffer[-1], time, len(new_times),
                              self.time_bit, self.mu, self.sigma, self.eAt, self.c2, self.c3)
         new_buff = np.maximum(new_buff, 0.) # THIS IS RECTIFYING BY DEFAULT!!!
-        #self.buffer = np.roll(self.buffer, -self.min_buff_size)
         base = self.buff_size - self.min_buff_size
         self.buffer[:base] = self.buffer[self.min_buff_size:]
         self.buffer[self.offset:] = new_buff[1:] 
@@ -1090,14 +1090,11 @@ class unit():
 
 
     def flat_euler_update(self, time):
-        """ The forward Euler integration method used with network.flat_update3. """
-        # This will fail if you haven't called upd_flat_inp_sum in the current step,
+        """ The forward Euler integration method used with network.flat_update. """
+        # This may fail if you haven't called upd_flat_inp_sum in the current step,
         # because dt_fun uses self.inp_sum to obtain the derivative
-        # Roll the buffer
         base = self.buffer.size - self.min_buff_size
-        # rolling is not being done in network.flat_update3
-        #self.buffer[0:base] = self.buffer[self.min_buff_size:] # one way to roll
-        #np.copyto(self.buffer, np.roll(self.buffer, -self.min_buff_size)) # a different roll
+        # rolling the buffer is done by network.flat_update
         # put new values in buffer
         for idx in range(self.min_buff_size):
             self.buffer[base+idx] = self.buffer[base+idx-1] + ( self.time_bit *
@@ -1130,10 +1127,9 @@ class unit():
     def flat_euler_maru_update_md(self, time):
         """ The Euler-Maruyama integration for flat multidimensional units"""
         base = self.buffer.shape[1] - self.min_buff_size
-        noise = self.sigma * np.random.normal(loc=0., scale=self.sqrdt,
-                                              size=self.min_buff_size)
         nvec = np.zeros((self.dim, self.min_buff_size))
-        nvec[1,:] = noise
+        nvec[0,:] = self.sigma * np.random.normal(loc=0., scale=self.sqrdt,
+                                                  size=self.min_buff_size)
         for idx in range(self.min_buff_size):
             self.buffer[:,base+idx] = self.buffer[:,base+idx-1] + ( self.time_bit *
                                     self.dt_fun(self.buffer[:,base+idx-1], idx) +
@@ -1141,7 +1137,7 @@ class unit():
 
 
     def flat_exp_euler_update(self, time):
-        """ The exponential Euler integration used with network.flat_update3. """
+        """ The exponential Euler integration used with network.flat_update. """
         base = self.buffer.size - self.min_buff_size
         noise = self.sc3 * np.random.normal(loc=0., scale=1.,
                                             size=self.min_buff_size)
@@ -1329,6 +1325,7 @@ class noisy_sigmoidal(unit):
         self.mu = params['mu'] # mean of the white noise
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         self.mudt = self.mu * self.time_bit # used by flat updater
+        self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
         # if lambd > 0 we'll use the exponential Euler integration method
         if self.lambd > 0.:
             self.update = self.exp_euler_update
@@ -1343,7 +1340,6 @@ class noisy_sigmoidal(unit):
         else:
             self.update = self.euler_maru_update
             self.integ_meth = "euler_maru"
-            self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
 
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
@@ -1437,6 +1433,7 @@ class noisy_linear(unit):
         self.sigma = params['sigma']
         self.rtau = 1./self.tau   # because you always use 1/tau instead of tau
         self.mudt = self.mu * self.time_bit # used by flat updaters
+        self.sqrdt = np.sqrt(self.time_bit) # used by flat_euler_maru_update
         # if lambd > 0 we'll use the exponential Euler integration method
         if self.lambd > 0.:
             self.update = self.exp_euler_update
@@ -1451,7 +1448,6 @@ class noisy_linear(unit):
         else:
             self.update = self.euler_maru_update
             self.integ_meth = "euler_maru"
-            self.sqrdt = np.sqrt(self.time_bit) # used by flat_euler_maru_update
 
     def derivatives(self, y, t):
         """ This function returns the derivative of the activity at a given point in time. 

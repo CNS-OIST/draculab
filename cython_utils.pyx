@@ -159,7 +159,6 @@ def euler_maruyama(derivatives, double[::1] buff, double t0, Py_ssize_t offset,
             derivatives: The function derivatives(y, t) returns 
                          the derivative of the firing rate at time t given that
                          the current rate is y.
-            x0: initial state
             buff: the unit's activation buffer
             t0: initial time
             offset: index of last value of previous integration
@@ -203,7 +202,6 @@ def euler_maruyama_md(derivatives,  np.ndarray[np.float64_t, ndim=2] buff, float
             derivatives: The function derivatives(y, t) returns a Numpy array with
                          the derivative of the state vector at time t given that
                          the current rate is y. 
-            x0: initial state
             buff: the unit's activation buffer, in this case a 2D numpy array
             t0: initial time
             offset: index of last value of previous integration
@@ -211,23 +209,22 @@ def euler_maruyama_md(derivatives,  np.ndarray[np.float64_t, ndim=2] buff, float
             mu: mean of the white noise
             sigma: the standard deviation associated to the Wiener process
     """
-    #"""
     cdef Py_ssize_t mbs = buff.shape[1] - offset # minimal buffer size
     cdef Py_ssize_t i, step
     for i in range(offset):
         buff[:,i] = buff[:,i+mbs]
     cdef float t = t0
-    cdef float factor = sigma*np.sqrt(dt)
+    cdef float sqrdt = np.sqrt(dt)
     vec = np.zeros(buff.shape[0])
     vec[0] = 1.
-    vmu = mu*vec
+    vmu = mu * vec
+    vsigma = sigma * vec
     #cdef float[:] noise = np.random.normal(loc=0., scale=1., size=buff.shape[0]-offset)
-    #sqrdt = np.sqrt(dt)
     for step in range(offset, buff.shape[1]):
         #buff[step] = buff[step-1] + ( dt * derivatives([buff[step-1]], t) + mudt
         buff[:,step] = buff[:,step-1] + ( dt * (derivatives(buff[:,step-1], t) + vmu)
-                                  + vec * np.random.normal(loc=0., scale=factor) )
-        #buff[0,step] = max(buff[0,step], 0.) # RECTIFIES BY DEFAULT!!!!
+                                  + vsigma * np.random.normal(loc=0., scale=sqrdt) )
+        #buff[0,step] = max(buff[0,step], 0.) # RECTIFICATION
         t = t + dt
 
 

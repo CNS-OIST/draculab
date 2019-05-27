@@ -672,6 +672,8 @@ class ei_network():
         # Thus this is needed:
         if flat: 
             self.net.link_unit_buffers()
+            # TODO: Shouldn't this be: if not self.net.flat:
+            # self.net.flatten()...?
 
         if not hasattr(self, 'all_times') or not hasattr(self, 'all_activs'): # if it's the first call to run()
             self.all_times = np.array([])  # a times vector that persists through multiple runs
