@@ -390,6 +390,7 @@ class syn_reqs(Enum):
                              # ssrdc_sharp units
     norm_factor = 32 # A scale factor to normalize the influence of each input on 
                      # presyn_inh_sig units
+    exp_euler_vars = 33 # several variables used for the exponential Euler integrator
     
     # requirements used for the spinal model
     lpf_mid_mp_raw_inp_sum = 101 # mid LPF'd multiport list of raw input sums

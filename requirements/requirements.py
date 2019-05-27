@@ -691,6 +691,24 @@ def add_del_avg_inp_deriv_mp(unit):
     setattr(unit, 'del_avg_inp_deriv_mp', del_avg_inp_deriv_mp)
 
 
+def add_exp_euler_vars(unit):
+    """ Adds several variables used by the exp_euler integratio method. """
+    diff = lambda y, t: unit.get_input_sum(t) * unit.rtau
+    dt = unit.times[1] - unit.times[0] # same as unit.time_bit
+    A = -unit.lambd*unit.rtau
+    eAt = np.exp(A*dt)
+    c2 = (eAt-1.)/A
+    c3 = np.sqrt( (eAt**2. - 1.) / (2.*A) )
+    sc3 = unit.sigma * c3 # used by flat_exp_euler_update
+    upd_exp_euler_vars = lambda t: None
+    setattr(unit, 'diff', diff)
+    setattr(unit, 'eAt', eAt)
+    setattr(unit, 'c2', c2)
+    setattr(unit, 'c3', c3)
+    setattr(unit, 'sc3', sc3)
+    setattr(unit, 'upd_exp_euler_vars', upd_exp_euler_vars)
+
+
 #-------------------------------------------------------------------------------------
 # Use of the following classes has been deprecated because they slow down execution
 #-------------------------------------------------------------------------------------

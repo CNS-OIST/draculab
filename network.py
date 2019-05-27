@@ -118,8 +118,9 @@ class network():
         create 'n' units of type 'params['type']' and parameters from 'params'.
 
         The method returns a list with the ID's of the created units.
-        If you want one of the parameters to have different values for each unit, you can have a list
-        (or numpy array) of length 'n' in the corresponding 'params' entry
+        If you want one of the parameters to have different values for each unit, 
+        you can have a list (or numpy array) of length 'n' in the corresponding 
+        'params' entry
 
         In addition, this function can give a particular spatial arrangement to the 
         created units by appropriately setting their 'coordinates' attribute.
@@ -132,13 +133,12 @@ class network():
                 init_val: initial activation value (also required for source units).
                 OPTIONAL PARAMETERS
                 coordinates: The spatial location of the units can be specified in 2 ways:
-                                * One numpy array (a single point). All units will have this location.
+                                * One numpy array (a single point). 
+                                  All units will have this location.
                                 * A list of n arrays. Each unit will be assigned one array.
                                           
                 For other required and optional parameters, consult the specific unit models.
-
         Returns: a list with the ID's of the created units.
-            
         Raises:
             ValueError, TypeError, NotImplementedError
                 
@@ -231,6 +231,10 @@ class network():
         self.act += [[] for i in range(n)]
         self.syns += [[] for i in range(n)]
         # note:  [[]]*n causes all empty lists to be the same object 
+        # running init_pre_syn_update for the new units
+        for unit in [self.units[idx] for idx in unit_list]:
+            unit.init_pre_syn_update()
+
         return unit_list
 
 
@@ -995,7 +999,7 @@ class network():
             This method is only valid for flat networks.
         """
         return cython_get_act3(t, self.ts[self.init_ts_idx[uid]], 
-                               self.ts_bit, self.buff_len[uid], 
+                               self.ts_bit, self.ts_buff_size - self.init_ts_idx[uid], 
                                self.acts[self.first_idx[uid]][self.init_ts_idx[uid]:])
 
 
@@ -1036,7 +1040,7 @@ class network():
         # update activities of source units and handle requirements
         for uid, u in enumerate(self.units):
             if not self.has_buffer[uid]:
-                self.acts[uid,base:] = [u.get_act(t) for t in self.ts[base:]]
+                self.acts[self.first_idx[uid],base:] = [u.get_act(t) for t in self.ts[base:]]
             # handle requirements
             u.pre_syn_update(time)
             u.last_time = time # important to have it after pre_syn_update

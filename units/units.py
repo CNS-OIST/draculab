@@ -107,6 +107,8 @@ class unit():
             self.port_idx = [ [] for _ in range(self.n_ports) ]
             self.needs_mp_inp_sum = False # by default, upd_flat_inp_sum is used 
                                           # instead of upd_flat_mp_inp_sum
+        self.syn_needs = set() # the set of all variables required by synaptic dynamics
+                               # It is initialized by the init_pre_syn_update function
         if 'integ_meth' in params: # a particular integration method is specified for the unit
             if self.type is unit_types.source:
                 raise AssertionError('Specifying an integration method for ' + 
@@ -134,6 +136,7 @@ class unit():
                 if not 'mu' in params or not 'sigma' in params:
                     raise AssertionError('Exponential Euler integration requires ' +
                                          'mu and sigma parameters')
+                self.syn_needs.update([syn_reqs.exp_euler_vars])
                 self.update = self.exp_euler_update
             elif params['integ_meth'] == "odeint":
                 if self.multidim:
@@ -157,8 +160,6 @@ class unit():
                 else:
                     self.update = self.odeint_update 
                 self.integ_meth = "odeint"
-        self.syn_needs = set() # the set of all variables required by synaptic dynamics
-                               # It is initialized by the init_pre_syn_update function
         self.last_time = 0.  # time of last call to the update function
                             # Used by the upd_lpf_X functions
         self.using_interp1d = False # True when interp1d is used for interpolation in get_act
@@ -620,8 +621,8 @@ class unit():
         An extra task done here is to prepare the 'port_idx' list used by units with multiple 
         input ports.
 
-        init_pre_syn_update is called for a unit everytime network.connect() 
-        connects the unit, which may be more than once.
+        init_pre_syn_update is called after the unit is created, and everytime 
+        network.connect() connects the unit, which may be more than once.
 
         Raises:
             NameError, NotImplementedError, ValueError.
@@ -1299,8 +1300,9 @@ class noisy_sigmoidal(unit):
         where 'inp' is the sum of inputs, 'u' is the firing rate, and lambda is a decay rate.
 
         The update function of this unit uses a stochastic solver that adds Gaussian
-        white noise to the unit's derivative. When lambda>0, the solver used is
-        exponential Euler. When lambda=0, the solver is Euler-Maruyama.
+        white noise to the unit's derivative. If a solver is not explicitly specified,
+        when lambda>0, the solver used is exponential Euler, and when lambda=0, the 
+        solver is Euler-Maruyama.
     """
     def __init__(self, ID, params, network):
         """ The unit constructor.
@@ -1315,7 +1317,14 @@ class noisy_sigmoidal(unit):
                 'lambda': decay factor
                 'mu': mean of the white noise
                 'sigma': standard deviation of the white noise process
+                OPTIONAL PARAMETERS
+                'integ_meth' : A string with the name of the solver to be used.
         """
+        if not 'integ_meth' in params:
+            if params['lambda'] > 0:
+                params['integ_meth'] = "exp_euler"
+            else:
+                params['integ_meth'] = "euler_maru"
         unit.__init__(self, ID, params, network)
         self.slope = params['slope']    # slope of the sigmoidal function
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
@@ -1326,20 +1335,6 @@ class noisy_sigmoidal(unit):
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         self.mudt = self.mu * self.time_bit # used by flat updater
         self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
-        # if lambd > 0 we'll use the exponential Euler integration method
-        if self.lambd > 0.:
-            self.update = self.exp_euler_update
-            self.integ_meth = "exp_euler"
-            self.diff = lambda y, t: self.f(self.get_input_sum(t)) * self.rtau
-            dt = self.times[1] - self.times[0] # same as self.time_bit
-            A = -self.lambd*self.rtau
-            self.eAt = np.exp(A*dt)
-            self.c2 = (self.eAt-1.)/A
-            self.c3 = np.sqrt( (self.eAt**2. - 1.) / (2.*A) )
-            self.sc3 = self.sigma * self.c3
-        else:
-            self.update = self.euler_maru_update
-            self.integ_meth = "euler_maru"
 
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
@@ -1424,8 +1419,15 @@ class noisy_linear(unit):
                 'lambda': passive decay rate 
                 'mu': mean of the white noise
                 'sigma': standard deviation for the white noise process
+                OPTIONAL PARAMETERS
+                'integ_meth' : A string with the name of the solver to be used.
 
         """
+        if not 'integ_meth' in params:
+            if params['lambda'] > 0:
+                params['integ_meth'] = "exp_euler"
+            else:
+                params['integ_meth'] = "euler_maru"
         unit.__init__(self, ID, params, network)
         self.tau = params['tau']  # the time constant of the dynamics
         self.lambd = params['lambda']  # controls the rate of decay
@@ -1434,21 +1436,7 @@ class noisy_linear(unit):
         self.rtau = 1./self.tau   # because you always use 1/tau instead of tau
         self.mudt = self.mu * self.time_bit # used by flat updaters
         self.sqrdt = np.sqrt(self.time_bit) # used by flat_euler_maru_update
-        # if lambd > 0 we'll use the exponential Euler integration method
-        if self.lambd > 0.:
-            self.update = self.exp_euler_update
-            self.integ_meth = "exp_euler"
-            self.diff = lambda y, t: self.get_input_sum(t) * self.rtau
-            dt = self.times[1] - self.times[0] # same as self.time_bit
-            A = -self.lambd*self.rtau
-            self.eAt = np.exp(A*dt)
-            self.c2 = (self.eAt-1.)/A
-            self.c3 = np.sqrt( (self.eAt**2. - 1.) / (2.*A) )
-            self.sc3 = self.sigma * self.c3 # used by flat_exp_euler_update
-        else:
-            self.update = self.euler_maru_update
-            self.integ_meth = "euler_maru"
-
+        
     def derivatives(self, y, t):
         """ This function returns the derivative of the activity at a given point in time. 
         
