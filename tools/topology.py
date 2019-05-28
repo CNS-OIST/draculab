@@ -197,7 +197,9 @@ class topology():
                 OPTIONAL ENTRIES
                 'allow_autapses' : Can units connect to themselves? Default is True.
                 'allow_multapses' : Can a unit have more than one connection to the same target?
-                                    Default is False.
+                                    Default is False. This setting refers only to the connections
+                                    created on this call to topo_connect. A connection might still 
+                                    get duplicated if it existed before the call.
                 'number_of_connections' : Fixes how many connections each neuron will send (divergent
                                           connections) or receive (convergent connections), ensuring
                                           fixed outdegree or indegree respectively.

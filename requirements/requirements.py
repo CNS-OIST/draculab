@@ -691,6 +691,44 @@ def add_del_avg_inp_deriv_mp(unit):
     setattr(unit, 'del_avg_inp_deriv_mp', del_avg_inp_deriv_mp)
 
 
+def add_exp_euler_vars(unit):
+    """ Adds several variables used by the exp_euler integration method. """
+    dt = unit.times[1] - unit.times[0] # same as unit.time_bit
+    A = -unit.lambd*unit.rtau
+    eAt = np.exp(A*dt)
+    c2 = (eAt-1.)/A
+    c3 = np.sqrt( (eAt**2. - 1.) / (2.*A) )
+    sc3 = unit.sigma * c3 # used by flat_exp_euler_update
+    upd_exp_euler_vars = lambda t: None
+    setattr(unit, 'eAt', eAt)
+    setattr(unit, 'c2', c2)
+    setattr(unit, 'c3', c3)
+    setattr(unit, 'sc3', sc3)
+    setattr(unit, 'upd_exp_euler_vars', upd_exp_euler_vars)
+
+
+def add_out_w_abs_sum(unit):
+    """ Add the sum of synaptic weights for all outgoing connections.
+    
+        A unit having this requirement will, on each update, calculate the sum
+        of the absolute value of the weights for all the projections it sends.
+        This can be used by the synapses in order to perform weight
+        normalization based on the weights of its presynaptic unit.
+
+        The update function implementation is currently in the unit class.
+    """
+    # Obtain indexes to all of the unit's connections in net.syns
+    out_syns_idx = []
+    out_w_abs_sum = 0.
+    for list_idx, syn_list in enumerate(unit.net.syns):
+        for syn_idx, syn in enumerate(syn_list):
+            if syn.preID == unit.ID:
+                out_syns_idx.append((list_idx, syn_idx))
+                out_w_abs_sum += abs(syn.w)
+    setattr(unit, 'out_syns_idx', out_syns_idx)
+    setattr(unit, 'out_w_abs_sum', out_w_abs_sum)
+
+
 #-------------------------------------------------------------------------------------
 # Use of the following classes has been deprecated because they slow down execution
 #-------------------------------------------------------------------------------------

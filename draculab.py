@@ -390,6 +390,7 @@ class syn_reqs(Enum):
                              # ssrdc_sharp units
     norm_factor = 32 # A scale factor to normalize the influence of each input on 
                      # presyn_inh_sig units
+    exp_euler_vars = 33 # several variables used for the exponential Euler integrator
     
     # requirements used for the spinal model
     lpf_mid_mp_raw_inp_sum = 101 # mid LPF'd multiport list of raw input sums
@@ -398,6 +399,8 @@ class syn_reqs(Enum):
     del_inp_deriv_mp = 104 # version of inp_deriv_mp with custom input delays
     del_avg_inp_deriv_mp = 105 # avg_inp_deriv_mp with custom input delays
     l0_norm_factor_mp = 106 # Factors to normalize the absolute sum of weight values
+    out_w_abs_sum = 107 # factor to normalize the absolute sum of outgoing weights
+    pre_out_w_abs_sum 108 # indicates that the presynaptic unit needs out_w_abs_sum
 
 
     def list_names():
