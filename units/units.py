@@ -136,6 +136,9 @@ class unit():
                 if not 'mu' in params or not 'sigma' in params:
                     raise AssertionError('Exponential Euler integration requires ' +
                                          'mu and sigma parameters')
+                if not (hasattr(self, 'deriv_eu') and callable(self.deriv_eu)):
+                    raise AssertionError('Exponential Euler integration requires ' +
+                                         'a "deriv_eu" derivatives function.')
                 self.syn_needs.update([syn_reqs.exp_euler_vars])
                 self.update = self.exp_euler_update
             elif params['integ_meth'] == "odeint":
@@ -502,7 +505,7 @@ class unit():
         """
         new_times = self.times[-1] + self.times_grid
         self.times += self.net.min_delay
-        new_buff = exp_euler(self.diff, self.buffer[-1], time, len(new_times),
+        new_buff = exp_euler(self.deriv_eu, self.buffer[-1], time, len(new_times),
                              self.time_bit, self.mu, self.sigma, self.eAt, self.c2, self.c3)
         new_buff = np.maximum(new_buff, 0.) # THIS IS RECTIFYING BY DEFAULT!!!
         base = self.buff_size - self.min_buff_size
@@ -1354,6 +1357,10 @@ class noisy_sigmoidal(unit):
         """ The derivatives function for flat_exp_euler_update. """
         return  self.f(self.inp_sum[s]) * self.rtau
 
+    def deriv_eu(self, y, t):
+        """ The derivatives function for exp_euler_update. """
+        return self.f(self.get_input_sum(t)) * self.rtau
+
 
 class linear(unit): 
     """ An implementation of a linear unit.
@@ -1453,3 +1460,7 @@ class noisy_linear(unit):
     def dt_fun_eu(self, y, s):
         """ The derivatives function for flat_exp_euler_update. """
         return  self.inp_sum[s] * self.rtau
+
+    def deriv_eu(self, y, t):
+        """ The derivatives function for exp_euler_update. """
+        return self.get_input_sum(t) * self.rtau

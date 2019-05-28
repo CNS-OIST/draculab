@@ -890,6 +890,9 @@ class network():
                     if not hasattr(u, 'mudt') or not hasattr(u, 'sqrdt'):
                         raise AssertionError('A unit without both the mudt and sqrdt '+
                             'attributes requested the flat euler_maru integration method.')
+                    if not (hasattr(u, 'dt_fun_eu') and callable(u.dt_fun_eu)):
+                        raise AssertionError('flat exponential Euler integration requires '
+                                           + 'a "dt_fun_eu" derivatives function.')
                     u.flat_update = u.flat_exp_euler_update
                 else:
                     raise NotImplementedError('The specified integration method is not \
