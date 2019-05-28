@@ -55,15 +55,18 @@ class unit():
         self.net = network # the network where the unit lives
         self.rtol = self.net.rtol # local copies of the rtol and atol tolerances
         self.atol = self.net.atol
-        self.min_buff_size = network.min_buff_size # a local copy just to avoid the extra reference
-        # The delay of a unit is the maximum delay among the projections it sends.
-        # The final value of 'delay' should be set by network.connect(), after the unit is created;
-        # it will have an extra net.min_delay added to the actual delay.
+        self.min_buff_size = network.min_buff_size # a local copy just to avoid
+                                                   # the extra reference
+        # The delay of a unit is usually the maximum delay among the projections
+        # it sends, although a larger value can be set using params['delay'].
+        # The largest delay among the projections is found by network.connect();
+        # this value becomes the unit's delay, unless params['delay'] is bigger. 
+        # The final delay value will have an extra net.min_delay added.
         if 'delay' in params:
             self.delay = params['delay']
             # delay must be a multiple of net.min_delay. Next line checks that.
             assert (self.delay+1e-6)%self.net.min_delay < 2e-6, ['unit' + str(self.ID) +
-                                                       ': delay is not a multiple of min_delay']
+                                               ': delay is not a multiple of min_delay']
         else:  # giving a temporary value
             self.delay = 2 * self.net.min_delay
         if type(params['init_val']) in [float, int, np.float_, np.int_]:
@@ -90,7 +93,8 @@ class unit():
             raise ValueError('Wrong type ' + stype + ' for the init_val ' +
                              'parameter in the unit constructor')
         # These are the optional parameters.
-        # Default values are sometimes omitted so an error can arise if the parameter was needed.
+        # Default values are sometimes omitted so an error can arise if the 
+        # parameter was needed.
         if 'coordinates' in params: self.coordinates = params['coordinates']
         # These are the time constants for the low-pass filters (used for plasticity).
         if 'tau_fast' in params: self.tau_fast = params['tau_fast']
@@ -164,7 +168,7 @@ class unit():
                     self.update = self.odeint_update 
                 self.integ_meth = "odeint"
         self.last_time = 0.  # time of last call to the update function
-                            # Used by the upd_lpf_X functions
+                            # Used by the upd_lpf_X functions (DEPRECATED)
         self.using_interp1d = False # True when interp1d is used for interpolation in get_act
         self.init_buffers() # This will create the buffers that store states and times
         self.functions = set() # will contain all the functions that update requirements
@@ -207,7 +211,8 @@ class unit():
             return
         
         min_buff = self.min_buff_size
-        self.offset = (self.steps-1)*min_buff # an index used in the update function of derived classes
+        self.offset = (self.steps-1)*min_buff # an index used in the update 
+                                              # function of derived classes
         self.buff_size = int(round(self.steps*min_buff)) # number of activation values to store
         # The 'buffer' contains previous activation values for all state variables.
         # By transposing, for multidim units each row is a different state vector.
@@ -231,12 +236,12 @@ class unit():
         if self.using_interp1d:
             self.upd_interpolator()
         
-        
     def get_inputs(self, time):
         """
-        Returns a list with the inputs received by the unit from all other units at time 'time'.
+        Returns a list with the inputs received by the unit at the given time.
 
-        The time argument should be within the range of values stored in the unit's buffer.
+        The time argument should be within the range of values stored in the 
+        unit's buffer.
 
         The returned inputs already account for the transmission delays.
         To do this: in the network's act list the entry corresponding to the unit's ID
@@ -251,17 +256,19 @@ class unit():
 
 
     def get_input_sum(self,time):
-        """ Returns the sum of all inputs at the given time, each scaled by its synaptic weight.
-        
-        The time argument should be within the range of values stored in the unit's buffer.
+        """ Returns the sum  inputs times their synaptic weights.
+
+        The time argument should be within the range of values stored in the
+        unit's buffer.
         The sum accounts for transmission delays. Input ports are ignored.
         """
         # original implementation is below
         return sum([ syn.w * fun(time-dely) for syn,fun,dely in zip(self.net.syns[self.ID],
                         self.net.act[self.ID], self.net.delays[self.ID]) ])
         # second implementation is below
-        #return sum( map( lambda x: (x[0].w) * (x[1](time-x[2])),
-        #            zip(self.net.syns[self.ID], self.net.act[self.ID], self.net.delays[self.ID]) ) )
+        #return sum( map(lambda x: (x[0].w) * (x[1](time-x[2])),
+        #                zip(self.net.syns[self.ID], self.net.act[self.ID], 
+        #                    self.net.delays[self.ID]) ) )
 
 
     def get_mp_inputs(self, time):
@@ -640,9 +647,9 @@ class unit():
            These functions, defined in requirements.py, add the necessary attributes
            and initialize them.
         2) Update: a method with the name upd_<req name>  that is added to the
-           'functions' list of the unit. This method usually belongs to the 'unit' 
-           class and is written somewhere after init_pre_syn_update, but in
-           some cases it is defined only for one of the descendants of 'unit'.
+           'functions' list of the unit. This method oftentimes belongs to the 'unit' 
+           class and is written somewhere after init_pre_syn_update, but it 
+           can also be defined only for one of the descendants of 'unit'.
            
            The name of the requirement, as it appears in the syn_reqs Enum, must
            also be used in the 'add_' and 'upd_' methods. Failing to use this
@@ -676,7 +683,8 @@ class unit():
         # For each synapse you receive, add its requirements
         for syn in self.net.syns[self.ID]:
             self.syn_needs.update(syn.upd_requirements)
-        pre_reqs = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.pre_lpf_slow])
+        pre_reqs = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
+                        syn_reqs.pre_lpf_slow, syn_reqs.pre_out_w_abs_sum])
         self.syn_needs.difference_update(pre_reqs) # the "pre_" requirements are handled below
 
         # For each projection you send, check if its synapse needs the lpf presynaptic activity
@@ -727,6 +735,7 @@ class unit():
         # and assuming x didn't change much between self.last_time and time.
         # It seems more accurate than an Euler step lpf_x = lpf_x + (dt/tau)*(x - lpf_x)
         self.lpf_fast = cur_act + (self.lpf_fast - cur_act) * self.fast_prop
+        # Same as:
         #self.lpf_fast = cur_act + ( (self.lpf_fast - cur_act) * 
         #                           np.exp( (self.last_time-time)/self.tau_fast ) )
         # update the buffer
@@ -1039,13 +1048,20 @@ class unit():
         pass
         
 
+    def upd_out_w_abs_sum(self, time):
+        """ Update the sum of absolute values for outgoing weights. """
+        self.out_w_abs_sum = sum([abs(self.net.syns[uid][sid].w)
+                             for uid, sid in self.out_syns_idx])
+
+
     ##########################################
     # END OF UPDATE METHODS FOR REQUIREMENTS #
     ##########################################
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # METHODS FOR FLAT NETWORKS ~~~~~~~~~~~~~
+    #~~~~~~ METHODS FOR FLAT NETWORKS ~~~~~~~
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
     def upd_flat_inp_sum(self, time):
         """ Updates the vector with input sums for each substep of the current step. """
         # Obtain the input vector 'step_inps'
@@ -1161,6 +1177,14 @@ def ufis_4_numba(acts, flat_acts_idx, w_vec, n_inps, mbf):
         step_inps[row,:] = w_vec[row] * step_inps[row,:]
     return np.sum(step_inps, axis=0)
 
+
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    #~~~ END OF METHODS FOR FLAT NETWORKS ~~~
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+    #++++++++++++++++++++++++++++++++++++++++
+    #+++++++++ BASIC UNIT CLASSES +++++++++++
+    #++++++++++++++++++++++++++++++++++++++++
 
 class source(unit):
     """ The class of units whose activity comes from some Python function.
@@ -1279,7 +1303,7 @@ class sigmoidal(unit):
         #return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
-        """ This function returns the derivatives of the state variables at a given point in time. """
+        """ Return the derivative of the activity at time t. """
         # there is only one state variable (the activity)
         return ( self.f(self.get_input_sum(t)) - y[0] ) * self.rtau
 
@@ -1345,8 +1369,7 @@ class noisy_sigmoidal(unit):
         #return cython_sig(self.thresh, self.slope, arg)
     
     def derivatives(self, y, t):
-        """ This function returns the derivatives of the state variables at a given point in time. """
-        # there is only one state variable (the activity)
+        """ Return the derivative of the activity at time t. """
         return ( self.f(self.get_input_sum(t)) - self.lambd*y[0] ) * self.rtau
 
     def dt_fun(self, y, s):
