@@ -189,6 +189,49 @@ def euler_maruyama(derivatives, double[::1] buff, double t0, Py_ssize_t offset,
     euler_maruyama_impl(derivatives, buff, t0, offset, dt, mudt, sigma, noise, factor)
     """
 
+#def euler_maruyama(derivatives, double[::1] buff, double t0, Py_ssize_t offset, 
+#                       double dt, double mu, double sigma):
+def euler_maruyama_md(derivatives,  np.ndarray[np.float64_t, ndim=2] buff, float t0, 
+                      Py_ssize_t offset, float dt, float mu, float sigma):
+    """ The Euler-Maruyama method for stochastic differential equations.
+
+        This is a modified version of euler_maruyama for multidimensional units.        
+        Only the unit's activity (the state variable with index 0) is provided
+        with noise during the integration.
+
+        Args:
+            derivatives: The function derivatives(y, t) returns a Numpy array with
+                         the derivative of the state vector at time t given that
+                         the current rate is y. 
+            x0: initial state
+            buff: the unit's activation buffer, in this case a 2D numpy array
+            t0: initial time
+            offset: index of last value of previous integration
+            dt: integration step size
+            mu: mean of the white noise
+            sigma: the standard deviation associated to the Wiener process
+    """
+    #"""
+    cdef Py_ssize_t mbs = buff.shape[1] - offset # minimal buffer size
+    cdef Py_ssize_t i, step
+    for i in range(offset):
+        buff[:,i] = buff[:,i+mbs]
+    cdef float t = t0
+    cdef float factor = sigma*np.sqrt(dt)
+    vec = np.zeros(buff.shape[0])
+    vec[0] = 1.
+    vmu = mu*vec
+    #cdef float[:] noise = np.random.normal(loc=0., scale=1., size=buff.shape[0]-offset)
+    #sqrdt = np.sqrt(dt)
+    for step in range(offset, buff.shape[1]):
+        #buff[step] = buff[step-1] + ( dt * derivatives([buff[step-1]], t) + mudt
+        buff[:,step] = buff[:,step-1] + ( dt * (derivatives(buff[:,step-1], t) + vmu)
+                                  + vec * np.random.normal(loc=0., scale=factor) )
+        #buff[0,step] = max(buff[0,step], 0.) # RECTIFIES BY DEFAULT!!!!
+        t = t + dt
+
+
+
 #cpdef float[:] exp_euler(derivatives, float x0, float t0, int n_steps, 
 #                       float dt, float mu, float sigma, float eAt, float c2, float c3):
 def exp_euler(derivatives, double x0, double t0, int n_steps, 

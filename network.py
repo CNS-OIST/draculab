@@ -292,7 +292,8 @@ class network():
         """
         
         # A quick test first (all unit ID's are in the right range)
-        if (np.amax(from_list + to_list) > self.n_units-1) or (np.amin(from_list + to_list) < 0):
+        if ((np.amax(from_list + to_list) > self.n_units-1) or 
+            (np.amin(from_list + to_list) < 0)):
             raise ValueError('Attempting to connect units with an ID out of range')
         # Ensuring the network hasn't been flattened
         if self.flat:
@@ -317,30 +318,36 @@ class network():
             rep = False
 
         if conn_spec['rule'] == 'fixed_outdegree':  #<----------------------
-            assert len(to_list) >= conn_spec['outdegree'] or rep, ['Outdegree larger than number of targets']
+            assert len(to_list) >= conn_spec['outdegree'] or rep, ['Outdegree larger ' +
+                                             'than number of targets']
             for u in from_list:
                 if conn_spec['allow_autapses']:
                     #targets = random.sample(to_list, conn_spec['outdegree'])
-                    targets = np.random.choice(to_list, size=conn_spec['outdegree'], replace=rep)
+                    targets = np.random.choice(to_list, size=conn_spec['outdegree'], 
+                                               replace=rep)
                 else:
                     to_copy = to_list.copy()
                     while u in to_copy:
                         to_copy.remove(u)
                     #targets = random.sample(to_copy, conn_spec['outdegree'])
-                    targets = np.random.choice(to_copy, size=conn_spec['outdegree'], replace=rep)
+                    targets = np.random.choice(to_copy, size=conn_spec['outdegree'], 
+                                               replace=rep)
                 connections += [(u,y) for y in targets]
         elif conn_spec['rule'] == 'fixed_indegree':   #<----------------------
-            assert len(from_list) >= conn_spec['indegree'] or rep, ['Indegree larger than number of sources']
+            assert len(from_list) >= conn_spec['indegree'] or rep, ['Indegree larger ' +
+                                                              'than number of sources']
             for u in to_list:
                 if conn_spec['allow_autapses']:
                     #sources = random.sample(from_list, conn_spec['indegree'])
-                    sources = np.random.choice(from_list, size=conn_spec['indegree'], replace=rep)
+                    sources = np.random.choice(from_list, size=conn_spec['indegree'],
+                                               replace=rep)
                 else:
                     from_copy = from_list.copy()
                     while u in from_copy:
                         from_copy.remove(u)
                     #sources = random.sample(from_copy, conn_spec['indegree'])
-                    sources = np.random.choice(from_copy, size=conn_spec['indegree'], replace=rep)
+                    sources = np.random.choice(from_copy, size=conn_spec['indegree'],
+                                               replace=rep)
                 connections += [(x,u) for x in sources]
         elif conn_spec['rule'] == 'all_to_all':    #<----------------------
             targets = to_list
@@ -351,7 +358,8 @@ class network():
                 connections = [(x,y) for x in sources for y in targets if x != y]
         elif conn_spec['rule'] == 'one_to_one':   #<----------------------
             if len(to_list) != len(from_list):
-                raise ValueError('one_to_one connectivity requires equal number of sources and targets')
+                raise ValueError('one_to_one connectivity requires equal number ' +
+                                 'of sources and targets')
             connections = list(zip(from_list, to_list))
             if conn_spec['allow_autapses'] == False:
                 connections = [(x,y) for x,y in connections if x != y]
@@ -367,16 +375,17 @@ class network():
             if w_dict['distribution'] == 'uniform':  #<----------------------
                 weights = np.random.uniform(w_dict['low'], w_dict['high'], n_conns)
             elif w_dict['distribution'] == 'equal_norm':  #<----------------------
-                # For each unit in 'to_list', get the indexes where it appears in 'connections',
-                # create a vector with the given norm, and distribute it with those indexes in 
-                # the 'weights' vector
+                # For each unit in 'to_list', get the indexes where it appears 
+                # in 'connections', create a vector with the given norm, and 
+                # distribute it with those indexes in the 'weights' vector
                 weights = np.zeros(len(connections)) # initializing 
                 for unit in to_list:  # For each unit in 'to_list'
                     idx_list = []
-                    for idx,conn in enumerate(connections): # get the indexes where unit appears
+                    for idx,conn in enumerate(connections): # get indexes where unit appears
                         if conn[1] == unit:
                             idx_list.append(idx)
-                    if len(idx_list) > 0:  # create the vector, set it in 'weights' using the indexes
+                    if len(idx_list) > 0:  # create the vector, 
+                                           # set it in 'weights' using the indexes
                         norm_vec = np.random.uniform(0.,1.,len(idx_list))
                         norm_vec = (w_dict['norm'] / np.linalg.norm(norm_vec)) * norm_vec
                         for id_u, id_w in enumerate(idx_list):
@@ -736,9 +745,17 @@ class network():
         for p in self.plants:
             max_p_del = max(max_p_del, max0([max0(dl) for dl in p.inp_dels]))
         self.max_del = max(max_u_del, max_p_del) + self.min_delay #  min_delay added (see 'connect')
+        # Obtain the largest buffer size among all units.
+        # This will be needed because units can have buffers that are larger
+        # than strictly needed by their transmission delays
+        max_buff_len = 0
+        for u in self.units:
+            if hasattr(u, 'buffer') and u.buffer.shape[-1] > max_buff_len:
+                max_buff_len = u.buffer.shape[-1]
         # initialize the ts array (called 'times' in units)
         self.bf_type = np.float64  # data type of the buffers when using numpy arrays
         max_steps = int(round(self.max_del/self.min_delay)) # max number of min_del steps in all delays
+        max_steps = max(max_steps, max_buff_len)
         self.ts_buff_size = int(round(max_steps*self.min_buff_size)) # number of activation values to store
         self.ts_bit = self.min_delay / self.min_buff_size # time interval between buffer values
         self.ts = np.linspace(-self.max_del+self.ts_bit, 0., self.ts_buff_size, dtype=self.bf_type) # the 
@@ -839,9 +856,22 @@ class network():
                         warn('Integration method ' + u.integ_meth + \
                              ' subsituted by Forward Euler in some units', UserWarning)
                     """
-                elif u.integ_meth == "euler_maru" and not u.multidim:
-                    u.flat_update = u.flat_euler_maru_update
+                elif u.integ_meth == "euler_maru":
+                    if u.multidim:
+                        u.flat_update = u.flat_euler_maru_update_md
+                        if not hasattr(u, 'mudt_vec') or not hasattr(u, 'sqrdt'):
+                            raise AssertionError('A unit without both the mudt_vec and '+
+                              'sqrdt attributes requested the flat euler maru ' +
+                              'integration method.')
+                    else:
+                        if not hasattr(u, 'mudt') or not hasattr(u, 'sqrdt'):
+                            raise AssertionError('A unit without both the mudt and sqrdt '+
+                              'attributes requested the flat euler_maru integration method.')
+                        u.flat_update = u.flat_euler_maru_update
                 elif u.integ_meth == "exp_euler" and not u.multidim:
+                    if not hasattr(u, 'mudt') or not hasattr(u, 'sqrdt'):
+                        raise AssertionError('A unit without both the mudt and sqrdt '+
+                            'attributes requested the flat euler_maru integration method.')
                     u.flat_update = u.flat_exp_euler_update
                 else:
                     raise NotImplementedError('The specified integration method is not \

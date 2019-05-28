@@ -8,6 +8,29 @@ initialization and updating methods.
 from draculab import unit_types, synapse_types, syn_reqs
 import numpy as np
 
+def add_propagator(unit, speed):
+    """ Adds a propagator to update one of the LPF requirements.
+
+        The propagator is a factor that can be used to update the value
+        of an exponential function, which is the result of the equation
+        for the first-order low-pass filter.
+
+        This requirement can be added by any requirements that uses a LPF.
+
+        Args:
+            unit : the unit object where the propagator will be added.
+            speed : A string. Either "slow", "mid", or "fast".
+    """
+    tau_name = "tau_" + speed
+    prop_name = speed + "_prop"
+    if not hasattr(unit, tau_name):
+        raise NameError("A requirement needs the " + tau_name +
+                        " value, which was not specified. ")
+    min_del = unit.net.min_delay
+    tau = eval('unit.'+tau_name)
+    prop = np.exp(-min_del / tau)
+    setattr(unit, prop_name, prop)
+         
 
 def add_lpf_fast(unit):
     """ Adds 'lpf_fast', a low-pass filtered version of the unit's activity.
@@ -26,25 +49,28 @@ def add_lpf_fast(unit):
         in unit.init_bufers .
     """
     if not hasattr(unit,'tau_fast'): 
-        raise NameError( 'Synaptic plasticity requires unit parameter tau_fast, not yet set' )
-    setattr(unit, 'lpf_fast', unit.init_val)
-    setattr(unit, 'lpf_fast_buff', np.array( [unit.init_val]*unit.steps, dtype=unit.bf_type) )
+        raise NameError( 'lpf_fast requires unit parameter tau_fast, not yet set' )
+    add_propagator(unit, 'fast')
+    setattr(unit, 'lpf_fast', unit.init_act)
+    setattr(unit, 'lpf_fast_buff', np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type) )
 
 
 def add_lpf_mid(unit):
     """ See 'add_lpf_fast' above. """
     if not hasattr(unit,'tau_mid'): 
-        raise NameError( 'The tau_mid requirement needs the parameter tau_mid, not yet set' )
-    setattr(unit, 'lpf_mid', unit.init_val)
-    setattr(unit, 'lpf_mid_buff', np.array( [unit.init_val]*unit.steps, dtype=unit.bf_type) )
+        raise NameError( 'The lpf_mid requirement needs the parameter tau_mid, not yet set' )
+    add_propagator(unit, 'mid')
+    setattr(unit, 'lpf_mid', unit.init_act)
+    setattr(unit, 'lpf_mid_buff', np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type) )
 
 
 def add_lpf_slow(unit):
     """ See 'add_lpf_fast' above. """
     if not hasattr(unit,'tau_slow'): 
-        raise NameError( 'The tau_slow requirement needs the parameter tau_slow, not yet set' )
-    setattr(unit, 'lpf_slow', unit.init_val)
-    setattr(unit, 'lpf_slow_buff', np.array( [unit.init_val]*unit.steps, dtype=unit.bf_type) )
+        raise NameError( 'The lpf_slow requirement needs the parameter tau_slow, not yet set' )
+    add_propagator(unit, 'slow')
+    setattr(unit, 'lpf_slow', unit.init_act)
+    setattr(unit, 'lpf_slow_buff', np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type) )
 
 
 def add_sq_lpf_slow(unit):
@@ -57,7 +83,8 @@ def add_sq_lpf_slow(unit):
     """
     if not hasattr(unit,'tau_slow'): 
         raise NameError( 'sq_lpf_slow requires unit parameter tau_slow, not yet set' )
-    setattr(unit, 'sq_lpf_slow', unit.init_val)
+    add_propagator(unit, 'slow')
+    setattr(unit, 'sq_lpf_slow', unit.init_act)
 
 
 def add_inp_vector(unit):
@@ -70,7 +97,7 @@ def add_inp_vector(unit):
         balance, and exp_scale. In this last requirement, it is used to obtain the 'mu'
         factor used by the exp_scale rule.
     """
-    setattr(unit, 'inp_vector', np.tile(unit.init_val, len(unit.net.syns[unit.ID])))
+    setattr(unit, 'inp_vector', np.tile(unit.init_act, len(unit.net.syns[unit.ID])))
 
 
 def add_mp_inputs(unit):
@@ -90,7 +117,7 @@ def add_mp_inputs(unit):
         raise NameError( 'the mp_inputs requirement is for multiport units with a port_idx list' )
     val = [] 
     for prt_lst in unit.port_idx:
-        val.append(np.array([unit.init_val for _ in range(len(prt_lst))]))
+        val.append(np.array([unit.init_act for _ in range(len(prt_lst))]))
     setattr(unit, 'mp_inputs', val)
 
 
@@ -232,27 +259,53 @@ def add_lpf_mid_inp_sum(unit):
         raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
     if not syn_reqs.inp_vector in unit.syn_needs:
         raise AssertionError('lpf_mid_inp_sum requires the inp_vector requirement to be set')
-    setattr(unit, 'lpf_mid_inp_sum', unit.init_val) # arbitrary initialization
+    if not hasattr(unit, 'mid_prop'):
+        add_propagator(unit, 'mid')
+    setattr(unit, 'lpf_mid_inp_sum', unit.init_act) # arbitrary initialization
     setattr(unit, 'lpf_mid_inp_sum_buff', 
-            np.array( [unit.init_val]*unit.steps, dtype=unit.bf_type))
+            np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type))
 
 
 def add_lpf_slow_mp_inp_sum(unit):
     """ Adds a slow LPF'd scaled sum of inputs for each input port.
 
-        lpf_slow_mp_inp_sum will be a list whose i-th element will be the sum of all
-        the inputs at the i-th port, low-pass filtered with the 'tau_slow' time
-        constant. The mp_inputs requirement is used for this.
+        lpf_slow_mp_inp_sum will be a list whose i-th element will be the scaled 
+        sum of all the inputs at the i-th port, low-pass filtered with the 
+        'tau_slow' time constant. The mp_inputs requirement is used for this.
 
         The lpf_slow_mp_inp_sum requirement is used by units of the 
         "double_sigma_normal" type in order to normalize their inputs according to
         the average of their sum.
+
+        Units of the am_pm_oscillator class have their own implementation.
     """
     if not hasattr(unit,'tau_slow'): 
         raise NameError( 'Requirement lpf_slow_mp_inp_sum requires parameter tau_slow, not yet set' )
     if not syn_reqs.mp_inputs in unit.syn_needs:
         raise AssertionError('lpf_slow_mp_inp_sum requires the mp_inputs requirement')
+    if not hasattr(unit, 'slow_prop'):
+        add_propagator(unit, 'slow')
     setattr(unit, 'lpf_slow_mp_inp_sum', [ 0.4 for _ in range(unit.n_ports) ])
+
+
+def add_lpf_mid_mp_raw_inp_sum(unit):
+    """ Adds a medium LPF'd raw sum of inputs for each input port.
+
+        lpf_mid_mp_inp_sum will be a list whose i-th element is the sum of all
+        the inputs at the i-th port, low-pass filtered with the 'tau_mid' time
+        constant. The mp_inputs requirement is used for this.
+
+        The lpf_mid_mp_raw_inp_sum requirement is used by units of the 
+        am_pm_oscillator class.
+    """
+    if not hasattr(unit,'tau_mid'): 
+        raise NameError( 'Requirement lpf_mid_mp_raw inp_sum requires ' +
+                         'parameter tau_mid, not yet set' )
+    if not syn_reqs.mp_inputs in unit.syn_needs:
+        raise AssertionError('lpf_mid_mp_raw_inp_sum requires the mp_inputs requirement')
+    if not hasattr(unit, 'mid_prop'):
+        add_propagator(unit, 'mid')
+    setattr(unit, 'lpf_mid_mp_raw_inp_sum', [ 0.4 for _ in range(unit.n_ports) ])
 
 
 def add_balance(unit):
@@ -519,6 +572,125 @@ def add_norm_factor(unit):
     setattr(unit, 's_exc', (1.+unit.OD)/n_exc)
 
 
+def add_l0_norm_factor_mp(unit):
+    """ Factors to normalize the L0 norm of weight vectors for each port.
+
+        This requirement is used by the rga_synapse, and the implementation is
+        in the am_pm_oscillator. The requirement, however, is general enough to
+        be used in any multiport model where the sum of absolute values for the
+        weights should be 1.
+
+        l0_norm_factor_mp is a list whose length is the number of ports.
+        By multiplying all the weights from incoming connections at port i
+        by l0_norm_fact0r_mp[i], the sum of their absolute values will be 1 if 
+        the weight vector is not zero, and zero otherwise.
+    """
+    if not unit.multiport:
+        raise AssertionError('The l0_norm_factor_mp requirement is for multiport '+
+                             'units only.')
+    l0_norm_factor_mp = list(np.ones(unit.n_ports))
+    setattr(unit, 'l0_norm_factor_mp', l0_norm_factor_mp)
+
+
+
+
+def add_inp_deriv_mp(unit):
+    """ Adds the input derivatives listed by port.
+
+        This is tantamount to a differential version of mp_inputs, so it works only
+        for multiport units.
+
+        inp_deriv_mp[i,j] will contain the derivative of the j-th input at the i-th
+        port, following the order in the port_idx list.
+
+        This requirement was created for the rga synapse, and was implemented in the
+        am_pm_oscillator class.
+
+        Any synapse using this requirement should have the pre_lpf_fast and
+        pre_lpf_mid requirements.
+    """
+    if not unit.multiport:
+        raise AssertionError('The inp_deriv_mp requirement is for multiport units.')
+    # So that the unit can access the LPF'd activities of its presynaptic units
+    # it needs a list with the ID's of the presynaptic units, arranged by port.
+    # pre_list_mp[i,j] will contain the ID of the j-th input at the i-th port.
+    # In addition, we need to know how many delay steps there are for each input.
+    # pre_del_mp[i,j] will contain the delay steps of the j-th input at the i-th
+    # port.
+    syns = unit.net.syns[unit.ID]
+    pre_list_mp = []
+    pre_del_mp = []
+    for lst in unit.port_idx:
+        pre_list_mp.append([syns[uid].preID for uid in lst])
+        pre_del_mp.append([syns[uid].delay_steps for uid in lst])
+    pre_list_del_mp = list(zip(pre_list_mp, pre_del_mp)) # prezipping for speed
+    # initializing all derivatives with zeros
+    inp_deriv_mp = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
+    #setattr(unit, 'pre_list_mp', pre_list_mp)
+    #setattr(unit, 'pre_del_mp', pre_del_mp)
+    setattr(unit, 'pre_list_del_mp', pre_list_del_mp)
+    setattr(unit, 'inp_deriv_mp', inp_deriv_mp)
+
+
+def add_avg_inp_deriv_mp(unit):
+    """ Adds the average of the derivatives of all inputs at each port. 
+        
+        This requirement was created for the rga synapse, and implemented in the
+        am_pm_oscillator class.
+    """
+    if not syn_reqs.inp_deriv_mp in unit.syn_needs:
+        raise AssertionError('The avg_inp_deriv_mp requirement needs inp_deriv_mp')
+    avg_inp_deriv_mp = [ 0. for _ in unit.port_idx]
+    setattr(unit, 'avg_inp_deriv_mp', avg_inp_deriv_mp)
+
+
+def add_del_inp_deriv_mp(unit):
+    """ Adds input derivatives listed by port with custom delays.
+
+        This is a version of inp_deriv_mp where the inputs have a custom delay.
+
+        del_inp_deriv_mp[i,j] will contain the delayed derivative of the j-th 
+        input at the i-th port, following the order in the port_idx list.
+
+        This requirement was created for the rga synapse, and was implemented in the
+        am_pm_oscillator class.
+    """
+    if not unit.multiport:
+        raise AssertionError('The del_inp_deriv_mp requirement is ' + 
+                             'for multiport units.')
+    #if (not syn_reqs.pre_lpf_fast in unit.syn_needs or
+    #    not syn_reqs.pre_lpf_mid in unit.syn_needs):
+    #    raise AssertionError('A unit with the del_inp_deriv_mp requierement needs its ' +
+    #                         'presynaptic units to include lpf_fast and lpf_mid.')
+    # The delay is an attribute of the unit. Checking if it's there.
+    if not hasattr(unit, 'custom_inp_del'):
+        raise AssertionError('The del_inp_deriv_mp requirement needs units to have ' + 
+                              'the attribute custom_inp_del.')
+    syns = unit.net.syns[unit.ID]
+    # pre_list_mp[i,j] will contain the ID of the j-th input at the i-th port.
+    pre_list_mp = []
+    for lst in unit.port_idx:
+        pre_list_mp.append([syns[uid].preID for uid in lst])
+    setattr(unit, 'pre_list_mp', pre_list_mp)
+    # initializing all derivatives with zeros
+    del_inp_deriv_mp = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
+    setattr(unit, 'del_inp_deriv_mp', del_inp_deriv_mp)
+
+
+def add_del_avg_inp_deriv_mp(unit):
+    """ Adds the delayed average of the derivatives of all inputs at each port. 
+
+        This is a version of avg_inp_deriv_mp where the inputs have a custom
+        delay. It was created for the rga synapse, and implemented in the
+        am_pm_oscillator class.
+    """
+    if not syn_reqs.del_inp_deriv_mp in unit.syn_needs:
+        raise AssertionError('The del_avg_inp_deriv_mp requirement ' + 
+                             'needs del_inp_deriv_mp')
+    del_avg_inp_deriv_mp = [ 0. for _ in unit.port_idx]
+    setattr(unit, 'del_avg_inp_deriv_mp', del_avg_inp_deriv_mp)
+
+
 #-------------------------------------------------------------------------------------
 # Use of the following classes has been deprecated because they slow down execution
 #-------------------------------------------------------------------------------------
@@ -566,7 +738,7 @@ class lpf_fast(requirement):
         """
         if not hasattr(unit,'tau_fast'): 
             raise NameError( 'Synaptic plasticity requires unit parameter tau_fast, not yet set' )
-        self.val = unit.init_val
+        self.val = unit.init_act
         self.unit = unit
         self.init_buff()
  
@@ -587,7 +759,7 @@ class lpf_fast(requirement):
 
     def init_buff(self):
         """ Initialize the buffer with past values of lpf_fast. """
-        self.lpf_fast_buff = np.array( [self.unit.init_val]*self.unit.steps, dtype=self.unit.bf_type)
+        self.lpf_fast_buff = np.array( [self.unit.init_act]*self.unit.steps, dtype=self.unit.bf_type)
 
     def get(self, steps):
         """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
@@ -618,7 +790,7 @@ class lpf_mid(requirement):
         """
         if not hasattr(unit,'tau_mid'): 
             raise NameError( 'Synaptic plasticity requires unit parameter tau_mid, not yet set' )
-        self.val = unit.init_val
+        self.val = unit.init_act
         self.unit = unit
         self.init_buff()
  
@@ -639,7 +811,7 @@ class lpf_mid(requirement):
 
     def init_buff(self):
         """ Initialize the buffer with past values of lpf_fast. """
-        self.lpf_mid_buff = np.array( [self.unit.init_val]*self.unit.steps, dtype=self.unit.bf_type)
+        self.lpf_mid_buff = np.array( [self.unit.init_act]*self.unit.steps, dtype=self.unit.bf_type)
 
     def get(self, steps):
         """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
@@ -670,7 +842,7 @@ class lpf_slow(requirement):
         """
         if not hasattr(unit,'tau_slow'): 
             raise NameError( 'Synaptic plasticity requires unit parameter tau_slow, not yet set' )
-        self.val = unit.init_val
+        self.val = unit.init_act
         self.unit = unit
         self.init_buff()
  
@@ -691,7 +863,7 @@ class lpf_slow(requirement):
 
     def init_buff(self):
         """ Initialize the buffer with past values of lpf_fast. """
-        self.lpf_slow_buff = np.array( [self.unit.init_val]*self.unit.steps, dtype=self.unit.bf_type)
+        self.lpf_slow_buff = np.array( [self.unit.init_act]*self.unit.steps, dtype=self.unit.bf_type)
 
     def get(self, steps):
         """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
@@ -702,7 +874,7 @@ class lpf(requirement):
     """ A low pass filter with a given time constant. """
     def __init__(self, unit):
         self.tau = unit.lpf_tau
-        self.val = unit.init_val
+        self.val = unit.init_act
         self.unit = unit
         self.init_buff()
  
@@ -723,7 +895,7 @@ class lpf(requirement):
 
     def init_buff(self):
         """ Initialize the buffer with past values. """
-        self.buff = np.array( [self.unit.init_val]*self.unit.steps, dtype=self.unit.bf_type)
+        self.buff = np.array( [self.unit.init_act]*self.unit.steps, dtype=self.unit.bf_type)
 
     def get(self, steps):
         """ Get the fast low-pass filtered activity, as it was 'steps' simulation steps before. """
@@ -742,7 +914,7 @@ class sq_lpf_slow(requirement):
         if not hasattr(unit,'tau_slow'): 
             raise NameError( 'sq_lpf_slow requires unit parameter tau_slow, not yet set' )
         self.tau = unit.tau_slow
-        self.val = unit.init_val
+        self.val = unit.init_act
         self.unit = unit
 
     def update(self,time):
@@ -769,7 +941,7 @@ class inp_vector(requirement):
     """
     def __init__(self, unit):
         self.unit = unit
-        self.val = np.tile(unit.init_val, len(unit.net.syns[unit.ID]))
+        self.val = np.tile(unit.init_act, len(unit.net.syns[unit.ID]))
         self.uid = unit.ID
 
     def update(self, time):
@@ -795,7 +967,7 @@ class mp_inputs(requirement):
             raise NameError( 'the mp_inputs requirement is for multiport units with a port_idx list' )
         self.val = [] 
         for prt_lst in unit.port_idx:
-            self.val.append(np.array([unit.init_val for _ in range(len(prt_lst))]))
+            self.val.append(np.array([unit.init_act for _ in range(len(prt_lst))]))
         self.unit = unit
 
     def update(self, time):

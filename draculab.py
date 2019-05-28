@@ -63,6 +63,7 @@ class unit_types(Enum):
     binary = 101 # from tutorial 5
 
     test_oscillator = 102 # from spinal units
+    am_pm_oscillator = 103 # from spinal units
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -178,6 +179,9 @@ class unit_types(Enum):
         elif self == unit_types.test_oscillator:
             from units.spinal_units import test_oscillator
             unit_class = test_oscillator
+        elif self == unit_types.am_pm_oscillator:
+            from units.spinal_units import am_pm_oscillator
+            unit_class = am_pm_oscillator
         else:
             raise NotImplementedError('Attempting to retrieve the class of an ' + 
                                       'unknown unit model')
@@ -209,7 +213,10 @@ class synapse_types(Enum):
 
     switcher = 101 # from tutorial 5
 
+
     diff_hebbsnorm2 = 201 # a variation on diff_hebbsnorm
+    anticov_inh = 202 # anticovariance for inhibitory synapses
+    rga = 203 # relative gain array-inspired version of diff_hebbsnorm
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -275,7 +282,12 @@ class synapse_types(Enum):
         elif self == synapse_types.diff_hebbsnorm2:
             from synapses.spinal_syns import diff_hebb_subsnorm_synapse2
             syn_class = diff_hebb_subsnorm_synapse2
-
+        elif self == synapse_types.anticov_inh:
+            from synapses.spinal_syns import anti_covariance_inh_synapse
+            syn_class = anti_covariance_inh_synapse
+        elif self == synapse_types.rga:
+            from synapses.spinal_syns import rga_synapse 
+            syn_class = rga_synapse
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -337,8 +349,8 @@ class syn_reqs(Enum):
     """ This enum contains all the variables that a synapse model may ask a unit
         to maintain in order to support its learning function.
 
-        For each requirement here there is a corresponding function or class in requirements.py,
-        in which further descriptions can be found.
+        For each requirement here there is a corresponding function or class
+        in requirements.py, where more information can be found.
     """
     lpf_fast = 1  # postsynaptic activity low-pass filtered with a fast time constant
     lpf_mid = 2   # postsynaptic activity low-pass filtered with a medium time constant
@@ -347,31 +359,46 @@ class syn_reqs(Enum):
     pre_lpf_mid = 5   # presynaptic activity low-pass filtered with a medium time constant
     pre_lpf_slow = 6  # presynaptic activity low-pass filtered with a slow time constant
     sq_lpf_slow = 7 # squared postsynaptic activity lpf'd with a slow time constant
-    inp_avg_hsn = 8   # Sum of fast-LPF'd hebbsnorm inputs, divided by number of hebbsnorm inputs 
-    pos_inp_avg_hsn = 9 # as inp_avg_hsn, but only considers inputs with positive synaptic weights
-    err_diff = 10 # The approximate derivative of the error signal used in input correlation
+    inp_avg_hsn = 8   # Sum of fast-LPF'd hebbsnorm inputs divided by number of hebbsnorm
+                      # inputs
+    pos_inp_avg_hsn = 9 # as inp_avg_hsn, but only considers inputs with positive weights
+    err_diff = 10 # The approximate derivative of the error signal used in 
+                   #input correlation
     sc_inp_sum_sqhsn = 11 # Scaled input sum from sq_hebssnorm synapses. 
     diff_avg = 12 # Average of derivatives for inputs with diff_hebb_subsnorm synapses.
     pos_diff_avg = 13 # As diff_avg, but only considers inputs with positive synaptic weights
     lpf_mid_inp_sum = 14 # LPF'd sum of presynaptic inputs with a medium time constant.
-    n_erd = 15 # number of exp_rate_dist synapses on the postsynaptic unit. ONLY USED IN LEGACY CODE
+    n_erd = 15 # number of exp_rate_dist synapses on the postsynaptic unit. LEGACY CODE
     balance = 16 # fraction of inputs above, below, and around the current rate
     exp_scale = 17 # synaptic scaling to produce an exponential firing rate distribution
     inp_vector = 18 # the current "raw" input vector in a numpy array
-    slide_thresh = 19 # An activation threshold that adjusts to produce an exp firing rate distro
+    slide_thresh = 19 # An activation threshold adjusting to produce an exp rate distro
     lpf_slow_mp_inp_sum = 20 # slow LPF'd scaled sum of inputs from individual ports
     mp_inputs = 21 # the multiport inputs, as returned by the get_mp_inputs method
     balance_mp = 22 # the multiport version of the 'balance' requirement above
-    slide_thresh_shrp = 23 # move threshold to produce exp rate distro if 'sharpen' input > 0.5
+    slide_thresh_shrp = 23 # move threshold to produce exp rate distro if 
+                           # 'sharpen' input > 0.5
     exp_scale_mp = 24 # scale factors to produce exp distro in multiport units
-    slide_thr_hr = 25 # Sliding threshold that produces "harmonic" rate patterns (multiport units)
-    syn_scale_hr = 26 # Synaptic scaling that produces "harmonic" rate patterns (multiport units)
+    slide_thr_hr = 25 # Sliding threshold to produce "harmonic" rate patterns (mp units)
+    syn_scale_hr = 26 # Synaptic scaling to produce "harmonic" rate patterns (mp units)
     exp_scale_shrp = 27 # scale synapses to produce exp rate distro if 'sharpen' input > 0.5
     error = 28 # desired output minus true output, used for delta synapses
     inp_l2 = 29 # L2 norm of the inputs at port 0
-    exp_scale_sort_mp = 30 # A single scale factor to produce exp rate distro in some mp ssrdc units
-    exp_scale_sort_shrp = 31 # A scale factor to produce exp rate distro in some ssrdc_sharp units
-    norm_factor = 32 # A scale factor that normalizes the influence of each input on the model cell
+    exp_scale_sort_mp = 30 # A single scale factor to produce exp rate distro in some 
+                           # mp ssrdc units
+    exp_scale_sort_shrp = 31 # A scale factor to produce exp rate distro in some 
+                             # ssrdc_sharp units
+    norm_factor = 32 # A scale factor to normalize the influence of each input on 
+                     # presyn_inh_sig units
+    
+    # requirements used for the spinal model
+    lpf_mid_mp_raw_inp_sum = 101 # mid LPF'd multiport list of raw input sums
+    inp_deriv_mp =102 # derivatives of inputs listed by port (as in mp_inputs)
+    avg_inp_deriv_mp = 103 # average of input derivatives for each port
+    del_inp_deriv_mp = 104 # version of inp_deriv_mp with custom input delays
+    del_avg_inp_deriv_mp = 105 # avg_inp_deriv_mp with custom input delays
+    l0_norm_factor_mp = 106 # Factors to normalize the absolute sum of weight values
+
 
     def list_names():
         """ Return a list with the name of all defined synaptic requirements. """
