@@ -3,7 +3,7 @@ spinal_units.py
 The units used in the motor control model.
 """
 from draculab import unit_types, synapse_types, syn_reqs  # names of models and requirements
-from units.units import unit
+from units.units import unit, sigmoidal
 import numpy as np
 
 class am_pm_oscillator(unit):
@@ -198,7 +198,8 @@ class am_pm_oscillator(unit):
     def input_sum_f(self, I):
         """ Interaction function based on port 1 input sum. """
         # TODO: I changed the sign here, should revert later
-        return -np.sin(2.*np.pi*self.lpf_slow_mp_inp_sum[1] - self.lpf_slow)
+        #       Also, the factors here are not normalized.
+        return -np.sin(2.*np.pi*(self.lpf_slow_mp_inp_sum[1] - self.lpf_slow))
 
     def kuramoto_f(self, I):
         """ Interaction function inspired by the Kuramoto model. """
@@ -258,68 +259,35 @@ class am_pm_oscillator(unit):
                                       for ws in self.get_mp_weights(time)]
  
 
-class test_oscillator(unit):
-    """ 
-    A model used to test the frameowork for multidimensional units.
+class out_norm_sig(sigmoidal):
+    """ The sigmoidal unit with one extra attribute.
 
-    The model consists of the equations for a sinusoidal:
-    y' = w*x
-    x' = -w*y
-    with y being the unit's output, and w the frequency of oscillation. w is the
-    reciprocal of the unit's time constant tau.
-    Inputs are currently ignored.
+        The attribute is called des_out_w_abs_sum. This is needed by the 
+        out_norm_factor requirement. 
+        
+        Units from this class are sigmoidals that can normalize the sum
+        of their outgoing weights using out_norm_factor. This requirement should 
+        be added by synapses that have the pre_out_norm_factor requirement.
     """
 
     def __init__(self, ID, params, network):
-        """ The unit's constructor.
+        """ The unit constructor.
 
-        Args:
-            ID, params, network, same as in unit.__init__, butthe 'init_val' parameter
-            needs to be a 1D array with two elements, corresponding to the initial values
-            of y and x.
-            In addition, params should have the following entries.
-            REQUIRED PARAMETERS
-            'tau' : Time constant of the update dynamics. Also, reciprocal of the 
-                    oscillator's frequency.
-            OPTIONAL PARAMETERS
-            'mu' : mean of white noise when using noisy integration
-            'sigma' : standard deviation of noise for noisy integration.
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'slope' : Slope of the sigmoidal function.
+                    'thresh' : Threshold of the sigmoidal function.
+                    'tau' : Time constant of the update dynamics.
+                    'des_out_w_abs_sum' : desired sum of absolute weight values
+                                          for the outgoing connections.
+            Raises:
+                AssertionError.
         """
-        params['multidim'] = True
-        unit.__init__(self, ID, params, network)
-        self.tau = params['tau']
-        self.w = 1/self.tau
-        if 'mu' in params:
-            self.mu = params['mu']
-        if 'sigma' in params:
-            self.sigma = params['sigma']
-        self.mudt = self.mu * self.time_bit # used by flat updaters
-        self.mudt_vec = np.zeros(self.dim)
-        self.mudt_vec[0] = self.mudt
-        self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
-
-    def derivatives(self, y, t):
-        """ Implements the ODE of the oscillator.
-
-        Args:
-            y : 1D, 2-element array with the values of the state variables.
-            t : time when the derivative is evaluated (not used).
-        Returns:
-            numpy array with [w*y[1], -w*y[0]]
-        """
-        return np.array([self.w*y[1], -self.w*y[0]])
-
-    def dt_fun(self, y, s):
-        """ The derivatives function used for flat networks. 
-        
-        Args:
-            y : 1D, 2-element array with the values of the state variables.
-            s: index to the inp_sum array (not used).
-        Returns:
-            Numpy array with 2 elements.
-            
-        """
-        return np.array([self.w*y[1], -self.w*y[0]])
+        sigmoidal.__init__(self, ID, params, network)
+        self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        #self.syn_needs.update([syn_reqs.out_norm_factor])
 
 
 

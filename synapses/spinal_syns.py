@@ -143,7 +143,8 @@ class rga_synapse(synapse):
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp ])
+                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.rga, ['Synapse from ' + str(self.preID) + 
                    ' to ' + str(self.postID) + ' instantiated with the wrong type']
         if not hasattr(self.net.units[self.postID], 'custom_inp_del'):
@@ -154,10 +155,12 @@ class rga_synapse(synapse):
         if 'err_port' in params: self.err_port = params['err_port']
         else: self.err_port = 0 
         # TODO: erase this
+        """
         if 'max_w' in params: self.max_w = params['max_w']
         else: self.max_w = 1.
         if 'min_w' in params: self.min_w = params['min_w']
         else: self.min_w = -1.
+        """
 
     def update(self, time):
         """ Update the weight using the RGA-inpsired learning rule.
@@ -177,10 +180,12 @@ class rga_synapse(synapse):
         up = u.get_lpf_fast(self.po_de) - u.get_lpf_mid(self.po_de)
         sp = u.avg_inp_deriv_mp[self.err_port]
         #spj = u.inp_deriv_mp[self.port][?]
-        spj = (self.net.units[self.preID].get_lpf_fast(self.delay_steps) -
-               self.net.units[self.preID].get_lpf_mid(self.delay_steps) )
-
-        self.w *= u.l0_norm_factor_mp[self.err_port]
+        pre = self.net.units[self.preID]
+        spj = (pre.get_lpf_fast(self.delay_steps) -
+               pre.get_lpf_mid(self.delay_steps) )
+        self.w *= 0.5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        #self.w *= pre.out_norm_factor
+        #self.w *= u.l0_norm_factor_mp[self.err_port]
         #self.w += self.alpha * max(up - xp, 0.) * (sp - spj)
         self.w += self.alpha * (up - xp) * (sp - spj)
         #self.w += self.alpha * ((up - xp) * (sp - spj) * 

@@ -544,3 +544,68 @@ class presyn_inh_sig(unit):
         sig2 = self.f(sum2)
 
         return sig2
+
+
+class test_oscillator(unit):
+    """ 
+    A model used to test the frameowork for multidimensional units.
+
+    The model consists of the equations for a sinusoidal:
+    y' = w*x
+    x' = -w*y
+    with y being the unit's output, and w the frequency of oscillation. w is the
+    reciprocal of the unit's time constant tau.
+    Inputs are currently ignored.
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit's constructor.
+
+        Args:
+            ID, params, network, same as in unit.__init__, butthe 'init_val' parameter
+            needs to be a 1D array with two elements, corresponding to the initial values
+            of y and x.
+            In addition, params should have the following entries.
+            REQUIRED PARAMETERS
+            'tau' : Time constant of the update dynamics. Also, reciprocal of the 
+                    oscillator's frequency.
+            OPTIONAL PARAMETERS
+            'mu' : mean of white noise when using noisy integration
+            'sigma' : standard deviation of noise for noisy integration.
+        """
+        params['multidim'] = True
+        unit.__init__(self, ID, params, network)
+        self.tau = params['tau']
+        self.w = 1/self.tau
+        if 'mu' in params:
+            self.mu = params['mu']
+        if 'sigma' in params:
+            self.sigma = params['sigma']
+        self.mudt = self.mu * self.time_bit # used by flat updaters
+        self.mudt_vec = np.zeros(self.dim)
+        self.mudt_vec[0] = self.mudt
+        self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
+
+    def derivatives(self, y, t):
+        """ Implements the ODE of the oscillator.
+
+        Args:
+            y : 1D, 2-element array with the values of the state variables.
+            t : time when the derivative is evaluated (not used).
+        Returns:
+            numpy array with [w*y[1], -w*y[0]]
+        """
+        return np.array([self.w*y[1], -self.w*y[0]])
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used for flat networks. 
+        
+        Args:
+            y : 1D, 2-element array with the values of the state variables.
+            s: index to the inp_sum array (not used).
+        Returns:
+            Numpy array with 2 elements.
+            
+        """
+        return np.array([self.w*y[1], -self.w*y[0]])
+

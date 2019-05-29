@@ -59,11 +59,12 @@ class unit_types(Enum):
     noisy_linear = 30
     noisy_sigmoidal = 31
     presyn_inh_sig = 32
+    test_oscillator = 33 
 
     binary = 101 # from tutorial 5
 
-    test_oscillator = 102 # from spinal units
-    am_pm_oscillator = 103 # from spinal units
+    am_pm_oscillator = 102 # from spinal units
+    out_norm_sig = 103 # from spinal units
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -177,11 +178,14 @@ class unit_types(Enum):
             from units.custom_units import binary_unit
             unit_class = binary_unit
         elif self == unit_types.test_oscillator:
-            from units.spinal_units import test_oscillator
+            from units.custom_units import test_oscillator
             unit_class = test_oscillator
         elif self == unit_types.am_pm_oscillator:
             from units.spinal_units import am_pm_oscillator
             unit_class = am_pm_oscillator
+        elif self == unit_types.out_norm_sig:
+            from units.spinal_units import out_norm_sig 
+            unit_class = out_norm_sig
         else:
             raise NotImplementedError('Attempting to retrieve the class of an ' + 
                                       'unknown unit model')
@@ -399,8 +403,9 @@ class syn_reqs(Enum):
     del_inp_deriv_mp = 104 # version of inp_deriv_mp with custom input delays
     del_avg_inp_deriv_mp = 105 # avg_inp_deriv_mp with custom input delays
     l0_norm_factor_mp = 106 # Factors to normalize the absolute sum of weight values
-    out_w_abs_sum = 107 # factor to normalize the absolute sum of outgoing weights
-    pre_out_w_abs_sum 108 # indicates that the presynaptic unit needs out_w_abs_sum
+    #out_w_abs_sum = 107 # The sum of absolute values of outgoing weights
+    out_norm_factor = 108 # factor to normalize the absolute sum of outgoing weights
+    pre_out_norm_factor = 109 # shows that the presynaptic unit needs out_norm_factor 
 
 
     def list_names():
