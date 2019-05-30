@@ -403,9 +403,8 @@ class syn_reqs(Enum):
     del_inp_deriv_mp = 104 # version of inp_deriv_mp with custom input delays
     del_avg_inp_deriv_mp = 105 # avg_inp_deriv_mp with custom input delays
     l0_norm_factor_mp = 106 # Factors to normalize the absolute sum of weight values
-    #out_w_abs_sum = 107 # The sum of absolute values of outgoing weights
-    out_norm_factor = 108 # factor to normalize the absolute sum of outgoing weights
-    pre_out_norm_factor = 109 # shows that the presynaptic unit needs out_norm_factor 
+    out_norm_factor = 107 # factor to normalize the absolute sum of outgoing weights
+    pre_out_norm_factor = 108 # shows that the presynaptic unit needs out_norm_factor 
 
 
     def list_names():

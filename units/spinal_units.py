@@ -153,19 +153,20 @@ class am_pm_oscillator(unit):
         I = [ np.dot(i, w) for i, w in 
               zip(self.get_mp_inputs(t), self.get_mp_weights(t)) ]
         # Obtain the derivatives
-        Dc = (I[0] * (1. - y[1]) + I[1]*y[1]) / self.tau_c
+        Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         slow_I0 = self.lpf_slow_mp_inp_sum[0]
         #Dc = ( I[0]*(1. - y[1]) + (I[1] - slow_I0)*y[1] ) / self.tau_c
         #Dc = ( I[0]*(1. - y[1]) - slow_I0*y[1] ) / self.tau_c
         Dth = (self.omega + self.f(I)) / self.tau_t
-        DI0 = (I[0] - y[3]) / self.tau_s
+        DI0 = np.sin(I[0] - y[3]) / self.tau_s
         #DI0 = (sum(self.get_mp_inputs(t)[0]) - y[3]) / self.tau_s
         #DIs = self.D_factor * (I[0] - y[3])
         #Du = (Dc + I[0]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])) / self.tau_u
-        ex = np.exp(-y[3]*np.sin(y[2]))
-        prime = 0.2*ex/(1.+ex)
+        #ex = np.exp(-y[3]*np.sin(y[2]))
+        #prime = 0.2*ex/(1.+ex)
         Du = ((1.-y[0]) * y[0] * (Dc + (y[1] - y[0]) + 
-               prime*(y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])))) / self.tau_u
+               #prime*(y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])))) / self.tau_u
+               (y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])))) / self.tau_u
         return np.array([Du, Dc, Dth, DI0])
 
     def dt_fun(self, y, s):
@@ -193,7 +194,6 @@ class am_pm_oscillator(unit):
         Du = ((1.-y[0]) * y[0] * (Dc + (y[1] - y[0]) + 
                prime*(y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])))) / self.tau_u
         return np.array([Du, Dc, Dth, DI0])
-        #raise NotImplementedError('dt_fun for am_pm_oscillator not yet implemented')
 
     def input_sum_f(self, I):
         """ Interaction function based on port 1 input sum. """
