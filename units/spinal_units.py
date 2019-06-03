@@ -153,7 +153,7 @@ class am_pm_oscillator(unit):
         I = [ np.dot(i, w) for i, w in 
               zip(self.get_mp_inputs(t), self.get_mp_weights(t)) ]
         # Obtain the derivatives
-        Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        Dc = y[1]*(1. - y[1])*(I[0] + I[1]) / self.tau_c
         #slow_I0 = self.lpf_slow_mp_inp_sum[0]
         #Dc = ( I[0]*(1. - y[1]) + (I[1] - slow_I0)*y[1] ) / self.tau_c
         #Dc = ( I[0]*(1. - y[1]) - slow_I0*y[1] ) / self.tau_c

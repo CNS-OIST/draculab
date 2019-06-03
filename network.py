@@ -61,7 +61,7 @@ class network():
 
     def create(self, n, params):
         """
-        This method is just a front to find out whether we're creating units or a plant.
+        This method is a wrapper to methods that create units or plants.
 
         If we're creating units, it will call create_units(n, params).
         If we're creating a plant, it will call create_plant(n, params).
@@ -99,14 +99,16 @@ class network():
         Raises:
             AssertionError, NotImplementedError, ValueError.
         """
-        assert self.sim_time == 0., 'A plant is being created when the simulation time is not zero'
+        assert self.sim_time == 0., 'A plant is being created when the ' + \
+                                    'simulation time is not zero'
         if n != 1:
             raise ValueError('Only one plant can be created on each call to create()')
         plantID = self.n_plants
         try:
             plant_class = params['type'].get_class()
         except NotImplementedError: # raising the same exception with a different message
-            raise NotImplementedError('Attempting to create a plant with an unknown model type')
+            raise NotImplementedError('Attempting to create a plant with ' +
+                                      'an unknown model type')
 
         self.plants.append(plant_class(plantID, params, self))
         self.n_plants += 1
@@ -491,19 +493,27 @@ class network():
                 plantID: ID of the plant that will receive the inputs
                 conn_spec: a dictionary with the connection specifications
                     REQUIRED ENTRIES
-                    'inp_ports' : A list. The i-th entry determines the input type of
+                    'inp_ports' : Either an integer or a list. If an integer, it
+                                  will be the input port for all inputs. If a list,
+                                  the i-th entry determines the input type of
                                   the i-th element in the unitIDs list.
-                    'delays' : Delay value for the inputs. A scalar, or a list of length len(unitIDs)
+                    'delays' : Delay value for the inputs. A scalar, or a list of 
+                               length len(unitIDs).
                                Delays should be multiples of the network minimum delay.
                 syn_spec: a dictionary with the synapse specifications.
                     REQUIRED ENTRIES
-                    'type' : one of the synapse_types. Currently only 'static' allowed, because the
-                             plant does not update the synapse dynamics in its update method.
-                    'init_w': initial synaptic weight. A scalar, a list of length len(unitIDs), or
-                              a dictionary specifying a distribution. Distributions:
-                              'uniform' - the delay dictionary must also include 'low' and 'high' values.
-                              Example: {..., 'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.} }
-
+                    'type' : one of the synapse_types. 
+                             Currently only 'static' allowed, because the
+                             plant does not update the synapse dynamics in its 
+                             update method.
+                    'init_w': initial synaptic weight. A scalar, 
+                              a list of length len(unitIDs), or
+                              a dictionary specifying a distribution. 
+                              Distributions:
+                              'uniform' - the delay dictionary must also include 
+                              'low' and 'high' values.
+                              Example: 
+                              {...,'init_w':{'distribution':'uniform', 'low':0.1, 'high':1.}}
             Raises:
                 ValueError, NotImplementedError
 
@@ -538,7 +548,8 @@ class network():
                 else:
                     raise NotImplementedError('Initializing weights with an unknown distribution')
             else:
-                raise ValueError('Invalid value for initial weights when connecting units to plant')
+                raise ValueError('Invalid value for initial weights when ' +
+                                 'connecting units to plant')
 
             for pre,w in zip(unitIDs,weights):
                 syn_spec['preID'] = pre
@@ -558,10 +569,10 @@ class network():
                 unit.delay = dely + self.min_delay
                 unit.init_buffers()
 
-        # For good measure, run init_pre_syn_update and init_buffers for all the units connected 
+        # run init_pre_syn_update and init_buffers for all the units connected 
         for u in unitIDs:
             self.units[u].init_pre_syn_update()
-            self.units[u].init_buffers() # this should go second, so it uses the new syn_needs
+            self.units[u].init_buffers() # this should go second, to use new syn_needs
 
    
     def set_plant_outputs(self, plantID, unitIDs, conn_spec, syn_spec):
@@ -574,31 +585,39 @@ class network():
 
             conn_spec: a dictionary with the connection specifications.
                 REQUIRED ENTRIES
-                'port_map': a list used to specify which output of the plant goes to which input
-                            port in each of the units. There are two options for this, one uses the
-                            same output-to-port map for all units, and one specifies it separately
+                'port_map': a list used to specify which output of the plant goes 
+                            to which input port in each of the units. There are two 
+                            options for this; one uses the same output-to-port map 
+                            for all units, and one specifies it separately
                             for each individual unit. More precisely, the two options are:
-                            1) port_map is a list of 2-tuples (a,b), indicating that output 'a' of
-                               the plant (the a-th element in the state vector) connects to port 'b'.
-                               This port connectivity scheme will be applied to all units.
-                            2) port_map[i] is a list of 2-tuples (a,b), indicating that output 'a' of the 
-                               plant is connected to port 'b' for the i-th neuron in the neuronIDs list.
+                            1) port_map is a list of 2-tuples (a,b), indicating that 
+                               output 'a' of the plant (the a-th element in the state 
+                               vector) connects to port 'b'. This port connectivity 
+                               scheme will be applied to all units.
+                            2) port_map[i] is a list of 2-tuples (a,b), indicating that
+                               output 'a' of the plant is connected to port 'b' for the
+                               i-th neuron in the neuronIDs list.
                             For example if unitIDs has two elements:
-                                [(0,0),(1,1)] -> output 0 to port 0 and output 1 to port 1 for the 2 units.
-                                [ [(0,0),(1,1)], [(0,1)] ] -> Same as above for the first unit,
-                                map 0 to 1 for the second unit. 
-                'delays' : either a dictionary specifying a distribution, a scalar delay value that
-                           will be applied to all connections, or a list of values. 
+                               [(0,0),(1,1)] -> output 0 to port 0 and 
+                                                output 1 to port 1 for the 2 units.
+                                [ [(0,0),(1,1)], [(0,1)] ] -> Same as above for the first
+                                                unit, map 0 to 1 for the second unit. 
+                'delays' : either a dictionary specifying a distribution, 
+                           a scalar delay value that will be applied to all connections, 
+                           or a list of values. 
                            Implemented dsitributions:
-                           'uniform' - the delay dictionary must also include 'low' and 'high' values.
-                                Example:  'delays':{'distribution':'uniform', 'low':0.1, 'high':1.} 
+                           'uniform' - the delay dictionary must also include 
+                                       'low' and 'high' values.
+                                Example:  
+                                'delays':{'distribution':'uniform', 'low':0.1, 'high':1.} 
                             Delays should be multiples of the network minimum delay.
 
             syn_spec: a dictionary with the synapse specifications.
                 REQUIRED ENTRIES
-                'type' : one of the synapse_types. The plant parent class does not currently store
-                         and update values used for synaptic plasticity, so synapse models that
-                         require presynaptic values (e.g. lpf_fast) will lead to errors.
+                'type' : one of the synapse_types. The plant parent class does not 
+                         currently store and update values used for synaptic plasticity, 
+                         so synapse models that require presynaptic values 
+                         (e.g. lpf_fast) will lead to errors.
                 'init_w': initial synaptic weight. A scalar, or a list of length len(unitIDs)
 
         Raises:

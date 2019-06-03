@@ -193,27 +193,33 @@ class plant():
         return self.derivatives(y, t)
 
     def append_inputs(self, inp_funcs, ports, delays, synaps):
-        """ Append the given input functions in the given input ports, with the given delays and synapses.
+        """ Append inputs with given functions, ports, delays, and synapses.
 
-        An input port is just a list in the 'inputs' list. The 'inputs' list contains 'inp_dim' lists,
-        each one with all the functions providing that type of input.
+        An input port is just a list in the 'inputs' list. 
+        The 'inputs' list contains 'inp_dim' lists, each one with all the
+        functions providing that type of input.
         
         append_inputs is an auxiliary method for network.set_plant_inputs.
 
         Args:
             inp_funcs: a list with functions that will provide inputs to the plant.
-            ports: a list with integers, identifying the type of input that the corresponding entry
-                   in inp_funcs will provide. 
+            ports: an integer, or a list with integers, identifying the type 
+                   of input that the corresponding entry in inp_funcs will provide. 
             delays: a list with the delays for the inputs in inp_funcs.
             synaps: a list of synapse objects that will scale the inputs in inp_funcs.
 
         Raises:
             ValueError, NotImplementedError.
         """
+        # Handle the case when ports is a single integer
+        if type(ports) in [int, np.int_]:
+            ports = [ports] * len(inp_funcs)
         # Test the port specification
         test1 = len(inp_funcs) == len(ports)
         test2 = (np.amax(ports) < self.inp_dim) and (np.amin(ports) >= 0)
-        if not(test1 and test2):
+        type_list = [type(n) in [int, np.int_] for n in ports]
+        test3 = sum(type_list) == len(inp_funcs)
+        if not(test1 and test2 and test3):
             raise ValueError('Invalid input port specification when adding inputs to plant')
 
         # Then append the inputs
@@ -226,7 +232,8 @@ class plant():
                 if (delz+1e-8) % md < 1e-6: # delay a multiple of minimum delay
                     self.inp_dels[portz].append(delz)
                 else:
-                    raise ValueError('Delay of connection to plant is not multiple of min_delay')
+                    raise ValueError('Delay of connection to plant is not ' +
+                                     'multiple of min_delay')
             else:
                 raise ValueError('Delay of connection to plant smaller than min_delay')
 

@@ -106,7 +106,8 @@ class rga_synapse(synapse):
 
         In addition, units using this type of synapse need to have a
         'custom_inp_del' attribute to indicate the extra delay steps in the 
-        'lateral' inputs. Normally it should match the 'post_delay' value below.
+        'lateral' inputs. The synapse will use this delay for the activities of
+        its postsynaptic unit and for the 'lateral' inputs.
 
         The current implementation normalizes the sum of the absolute values for
         the weights at the 'error' port, making them add to 1.
