@@ -12,22 +12,24 @@ from draculab import plant_models, synapse_types
 from numpy import sin, cos # for the double pendulum equations
 
 class plant():
-    """ The parent class of all non-unit models that interact with the network.
+    """ Parent class of all non-unit models that interact with the network.
 
     Derived classes can implement any system that can be modeled with an ODE.
 
-    Objects of the derived classes are basically the same as draculab's units: they receive inputs
-    and they send outputs to and from draculab's units. Moreover, their inputs and outputs are
-    mediated by the same synapse types used by units. But wheras a unit's output can only be a firing 
-    rate, models have multidimensional outputs that can correspond to the the state variables of a 
-    physical model. 
+    Objects of the derived classes are basically the same as draculab's units: 
+    they receive inputs and they send outputs to and from draculab's units. 
+    Moreover, their inputs and outputs are mediated by the same synapse types 
+    used by units. But whereas a unit's output can only be a firing rate,
+    models have multidimensional outputs that can correspond to the the state 
+    variables of a physical model. 
     
-    By putting the appropriate dynamics in the derivatives() function, a physical plant
-    controlled by the network of units can interact with the network using draculab's synapses and
-    delayed connections.
+    By putting the appropriate dynamics in the derivatives() function, a 
+    physical plant controlled by the network of units can interact with the 
+    network using draculab's synapses and delayed connections.
 
-    The added complexity of connecting the plant's multidimensional inputs and outputs is handled
-    by network.set_plant_inputs() and network.set_plant_outputs().
+    The added complexity of connecting the plant's multidimensional inputs 
+    and outputs is handled by network.set_plant_inputs() and 
+    network.set_plant_outputs().
     """
 
     def __init__(self, ID, params, network):
@@ -46,14 +48,15 @@ class plant():
         """
         self.ID = ID # An integer identifying the plant
         self.net = network # the network where the plant lives
-        self.inp_dim = params['inp_dim'] # input dimensionality; number of qualitatively different input types.
+        self.inp_dim = params['inp_dim'] # input dimensionality; 
+                                       # number of qualitatively different input types.
         self.inputs =  [[] for _ in range(self.inp_dim)]
         # self.inputs is a list of lists, with the get_act functions of the units that 
-                         # provide inputs to the plant. inputs[i][j] = j-th input of the i-th type.
+        # provide inputs to the plant. inputs[i][j] = j-th input of the i-th type.
         self.inp_dels = [[] for _ in range(self.inp_dim)]
-                        # for each entry in self.inputs, self.inp_dels gives the corresponding delay
+        # for each entry in self.inputs, self.inp_dels gives the corresponding delay
         self.inp_syns = [[] for _ in range(self.inp_dim)]
-                        # for each entry in self.inputs, self.inp_syns has its synapse
+        # for each entry in self.inputs, self.inp_syns has its synapse
         self.type = params['type'] # an enum identifying the type of plant being instantiated
         self.dim = params['dimension'] # dimensionality of the state vector
         # The delay of a plant is the maximum delay among the projections it sends. 
@@ -62,7 +65,7 @@ class plant():
             self.delay = params['delay']
             # delay must be a multiple of net.min_delay. Next line checks that.
             assert (self.delay+1e-6)%self.net.min_delay < 2e-6, ['unit' + str(self.ID) + 
-                                                                 ': delay is not a multiple of min_delay']       
+                                               ': delay is not a multiple of min_delay']       
         else:  # giving a temporary value
             self.delay = 2. * self.net.min_delay 
         self.rtol = self.net.rtol # local copies of ODE solver tolerances
@@ -95,6 +98,8 @@ class plant():
 
     def get_state(self, time):
         """ Returns an array with the state vector. """
+        # TODO: This method uses the very inefficient process of creating a new
+        # interpolator for each call. 
         if self.net.flat:
             ax = 1
         else:
@@ -105,7 +110,8 @@ class plant():
 
     def get_state_var(self, t, idx):
         """ Returns the value of the state variable with index 'idx' at time 't'. """
-        # Sometimes the ode solver asks about values slightly out of bounds, so I set this to extrapolate
+        # Sometimes the ode solver asks about values slightly out of bounds, 
+        # so I set this to extrapolate
         if self.net.flat:
             return interp1d(self.times, self.buffer[idx,:], kind='linear', bounds_error=False, 
                             copy=False, fill_value="extrapolate", assume_sorted=True)(t)
@@ -114,9 +120,11 @@ class plant():
                             copy=False, fill_value="extrapolate", assume_sorted=True)(t)
 
     def get_state_var_fun(self, idx):
-        """ Returns a function that returns the state variable with index 'idx' at a given time. 
+        """ 
+        Returns a function that yields the state variable with index 'idx' at a given time. 
         
-        This is used so units can ignore any input port settings while receiving inputs from a plant.
+        This is used so units can ignore any input port settings while 
+        receiving inputs from a plant.
         """
         # The creation of this function is done when the connections from the plant
         # are made with network.set_plant_outputs, and if the network is flattened,
@@ -124,14 +132,14 @@ class plant():
         # Thus, if network.act is to remain a valid way to obtain plant inputs even
         # when the network is flat, these functions need to be specified again.
         if self.net.flat:
-            return lambda t: interp1d(self.times, self.buffer[idx,:], kind='linear',
-                                      bounds_error=False, copy=False, 
-                                      fill_value="extrapolate", assume_sorted=True)(t)
+            return interp1d(self.times, self.buffer[idx,:], kind='linear',
+                            bounds_error=False, copy=False, 
+                            fill_value="extrapolate", assume_sorted=True)
         else:
+            # for this case it seems we need to wrap the interpolator in a lambda
             return lambda t: interp1d(self.times, self.buffer[:,idx], kind='linear',
                                       bounds_error=False, copy=False, 
                                       fill_value="extrapolate", assume_sorted=True)(t)
-
 
     def get_input_sum(self, time, port):
         """ Returns the sum of all inputs of type 'port', as received at the given 'time'.
@@ -269,7 +277,8 @@ class pendulum(plant):
     array. Angle has index 0, and angular velocity has index 1. The 'time' argument
     should be in the interval [sim_time - del, sim_time], where sim_time is the current
     simulation time (time of last simulation step), and del is the 'delay' value
-    of the plant.
+    of the plant. This method can be configured to provide angles in the 
+    [-pi, pi) interval by using the 'bound_angle' parameter.
 
     Alternatively, the state variables can be retrieved with the get_angle(t) and
     get_ang_vel(t) functions.
@@ -291,6 +300,8 @@ class pendulum(plant):
                 'g' : gravitational acceleration constant. [m/s^2] (Default: 9.8)
                 'inp_gain' : A gain value that multiplies the inputs. (Default: 1)
                 'mu' : A viscous friction coefficient. (Default: 0)
+                'bound_angle' : If True, the angle communicated through the output
+                                ports is in the interval [-pi, pi). False by default.
             network: the network where the plant instance lives.
 
         Raises:
@@ -299,8 +310,8 @@ class pendulum(plant):
         """
         # This is the stuff that goes into all model constructors. Adjust accordingly.
         #-------------------------------------------------------------------------------
-        assert params['type'] is plant_models.pendulum, ['Plant ' + str(self.ID) + 
-                                                    ' instantiated with the wrong type']
+        #assert params['type'] is plant_models.pendulum, ['Plant ' + str(self.ID) + 
+        #                                            ' instantiated with the wrong type']
         params['dimension'] = 2 # notifying dimensionality of model to parent constructor
         params['inp_dim'] = 1 # notifying there is only one type of inputs
         plant.__init__(self, ID, params, network) # calling parent constructor
@@ -324,6 +335,9 @@ class pendulum(plant):
         # And finally, we have a viscous friction coefficient
         if 'mu' in params: self.mu = params['mu']
         else: self.mu = 0.
+        if 'bound_angle' in params and params['bound_angle'] is True:
+            self.get_state_var_fun = self.get_state_var_fun_bound
+            self.get_state = self.get_state_bound
 
     def derivatives(self, y, t):
         """ Returns the derivatives of the state variables at a given point in time. 
@@ -350,6 +364,31 @@ class pendulum(plant):
         """ Returns the angular velocity in rads per second. """
         return self.get_state_var(time,1) 
         
+    def get_state_var_fun_bound(self, idx):
+        """ 
+        Overrides plant.get_state_var in order to bound the angle to [-pi,pi).
+        
+        This method is used optionally depending on the value of 'bound_angle'.
+        It slows things down, so it's off by default.
+        """
+        meth = plant.get_state_var_fun(self, idx)
+        if idx == 0:
+            return lambda t : (meth(t) + np.pi)%(2.*np.pi) - np.pi
+        else:
+            return meth
+
+    def get_state_bound(self, time):
+        """ Overrides plant.get_state to bound the angle to [-pi, pi). """
+        if self.net.flat:
+            ax = 1
+        else:
+            ax = 0
+        state = interp1d(self.times, self.buffer, kind='linear', axis=ax,
+                         bounds_error=False, copy=False, fill_value="extrapolate", 
+                         assume_sorted=True)(time)
+        state[0] = (state[0] + np.pi)%(2.*np.pi) - np.pi
+        return state
+
 
 class conn_tester(plant):
     """

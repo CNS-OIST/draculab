@@ -634,7 +634,7 @@ class network():
         T_if_lis = lambda x : (True if (len(x) == 1 and type(x[0]) is list) else 
                                (type(x[-1]) is list) and T_if_lis(x[:-1]) )
         # this function returns true if its argument is float or int
-        foi = lambda x : True if (type(x) is float) or (type(x) is int) else False
+        foi = lambda x : True if type(x) in [float, int, np.float_, np.int_] else False
         # this function gets a list, returns True if all elements are float or int
         T_if_scal = lambda x : ( True if (len(x) == 1 and foi(x[0])) else 
                                  foi(x[-1])  and T_if_scal(x[:-1]) )
