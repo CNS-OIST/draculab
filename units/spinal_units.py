@@ -287,4 +287,46 @@ class out_norm_sig(sigmoidal):
         #self.syn_needs.update([syn_reqs.out_norm_factor])
 
 
+class out_norm_gated_sig(unit):
+    """ A sigmoidal whose amplitude is modulated by inputs at port 1.
+
+        The output of the unit is the sigmoidal function applied to the
+        scaled sum of port 0 inputs, times the scaled sum of port 1 inputs.
+
+        This model also includes the 'des_out_w_abs_sum' attribute, so the
+        synapses that have this as their presynaptic unit can have the
+        'out_norm_factor' requirement for presynaptic weight normalization.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'slope' : Slope of the sigmoidal function.
+                    'thresh' : Threshold of the sigmoidal function.
+                    'tau' : Time constant of the update dynamics.
+                    'des_out_w_abs_sum' : desired sum of absolute weight values
+                                          for the outgoing connections.
+            Raises:
+                AssertionError.
+        """
+        if 'n_ports' in params and params['n_ports'] != 2:
+            raise AssertionError('out_norm_gated_sig units must have n_ports=2')
+        else:
+            params['n_ports'] == 2
+        unit.__init__(self, ID, params, network)
+        self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        self.needs_mp_inp_sum = True # in case we flatten
+      
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity at time t. """
+        I = [(w*i).sum() for w, i in zip(get_mp_weights(t), get_mp_weights(t))]
+        return ( I[1]*self.f(I[0]) - y[0] ) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        return ( self.mp_inp_sum[1][s]*self.f(self.mp_inp_sum[0][s]) - y ) * self.rtau
+
 
