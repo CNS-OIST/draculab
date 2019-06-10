@@ -43,7 +43,8 @@ class plant():
                 'type' : an enum identifying the type of plant being instantiated.
                 'inp_dim' : input dimensionality; number of qualitatively different input types.
             OPTIONAL PARAMETERS
-                'delay' : maximum delay in the outputs sent by the plant. Set by network.set_plant_outputs.
+                'delay' : maximum delay in the outputs sent by the plant. Set by
+                          network.set_plant_outputs.
 
         """
         self.ID = ID # An integer identifying the plant

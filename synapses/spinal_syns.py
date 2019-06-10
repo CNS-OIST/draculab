@@ -136,7 +136,8 @@ class rga_synapse(synapse):
         synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
-        #self.po_de = params['post_delay'] # delay in postsynaptic activity
+        # po_de is the delay in postsynaptic activity for the learning rule
+        # It is set to match the delay in the 'lateral' input ports of the post unit
         self.po_de = self.net.units[self.postID].custom_inp_del
         # most of the heavy lifting is done by requirements
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 

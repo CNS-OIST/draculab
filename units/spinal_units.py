@@ -86,9 +86,7 @@ class am_pm_oscillator(unit):
                 Using rga synapses brings an extra required parameter:
                 'custom_inp_del' : an integer indicating the delay that the rga
                                   learning rule uses for the lateral port inputs. 
-                                  The delay is in units of min_delay steps. It is 
-                                  recommended to use the 'post_delay' value of the 
-                                  rga synapses. 
+                                  The delay is in units of min_delay steps. 
                 OPTIONAL PARAMETERS
                 'n_ports' : number of input ports. Must equal 2. Defaults to 2.
                 'mu' : mean of white noise when using noisy integration
@@ -287,7 +285,7 @@ class out_norm_sig(sigmoidal):
         #self.syn_needs.update([syn_reqs.out_norm_factor])
 
 
-class out_norm_gated_sig(unit):
+class out_norm_am_sig(sigmoidal):
     """ A sigmoidal whose amplitude is modulated by inputs at port 1.
 
         The output of the unit is the sigmoidal function applied to the
@@ -313,16 +311,17 @@ class out_norm_gated_sig(unit):
                 AssertionError.
         """
         if 'n_ports' in params and params['n_ports'] != 2:
-            raise AssertionError('out_norm_gated_sig units must have n_ports=2')
+            raise AssertionError('out_norm_am_sig units must have n_ports=2')
         else:
-            params['n_ports'] == 2
-        unit.__init__(self, ID, params, network)
+            params['n_ports'] = 2
+        sigmoidal.__init__(self, ID, params, network)
         self.des_out_w_abs_sum = params['des_out_w_abs_sum']
         self.needs_mp_inp_sum = True # in case we flatten
       
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. """
-        I = [(w*i).sum() for w, i in zip(get_mp_weights(t), get_mp_weights(t))]
+        I = [(w*i).sum() for w, i in zip(self.get_mp_weights(t), 
+                                         self.get_mp_inputs(t))]
         return ( I[1]*self.f(I[0]) - y[0] ) * self.rtau
 
     def dt_fun(self, y, s):

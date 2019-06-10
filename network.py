@@ -693,18 +693,21 @@ class network():
             if d_dict['distribution'] == 'uniform':  #<----------------------
                 # delays must be multiples of the minimum delay
                 low_int = max(1, round(d_dict['low']/self.min_delay))
-                high_int = max(1, round(d_dict['high']/self.min_delay)) + 1 #+1, so randint can choose it
+                high_int = max(1, round(d_dict['high']/self.min_delay)) + 1 # +1, 
+                                                       # so randint can choose it
                 delayz = np.random.randint(low_int, high_int,  n_conns)
                 delayz = self.min_delay * delayz
             else:
-                raise NotImplementedError('Initializing delays with an unknown distribution')
+                raise NotImplementedError('Initializing delays with an ' +
+                                          'unknown distribution')
         elif type(conn_spec['delays']) is float or type(conn_spec['delays']) is int:
             delayz = [float(conn_spec['delays'])] * n_conns
         elif type(conn_spec['delays']) is list and T_if_scal(conn_spec['delays']):
             if len(conn_spec['delays']) == n_conns:
                 delayz = conn_spec['delays']
             else:
-                raise ValueError('Number of delays does not match the number of connections being created')
+                raise ValueError('Number of delays does not match the number ' +
+                                 'of connections being created')
         else:
             raise TypeError('The value given to the delay is of the wrong type')
 
