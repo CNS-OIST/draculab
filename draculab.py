@@ -66,6 +66,7 @@ class unit_types(Enum):
     am_pm_oscillator = 102 # from spinal units
     out_norm_sig = 103 # from spinal units
     out_norm_am_sig = 104 # from spinal units
+    logarithmic = 105 # from spinal units
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -190,6 +191,9 @@ class unit_types(Enum):
         elif self == unit_types.out_norm_am_sig:
             from units.spinal_units import out_norm_am_sig 
             unit_class = out_norm_am_sig
+        elif self == unit_types.logarithmic:
+            from units.spinal_units import logarithmic
+            unit_class = logarithmic
         else:
             raise NotImplementedError('Attempting to retrieve the class of an ' + 
                                       'unknown unit model')

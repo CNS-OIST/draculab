@@ -55,8 +55,10 @@ class synapse():
         # TODO: these tests assume unit-to-unit connections, and if there are more 
         # plants than units the tests may fail. There should be something to 
         # indicate whether the synapse is on a plant
-        assert self.net.n_units >= self.preID, 'Synapse connected from non existing unit ' + str(self.preID)  
-        assert self.net.n_units >= self.postID, 'Synapse connected to non existing unit ' + str(self.postID)  
+        assert self.net.n_units >= self.preID, 'Synapse connected from non ' + \
+                                               'existing unit ' + str(self.preID)  
+        assert self.net.n_units >= self.postID, 'Synapse connected to non ' + \
+                                                'existing unit ' + str(self.postID)  
         assert self.net.sim_time == 0., 'Synapse being created when sim_time is not zero'
 
         # Each synapse type is tasked with indicating what information it will ask

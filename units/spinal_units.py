@@ -329,3 +329,41 @@ class out_norm_am_sig(sigmoidal):
         return ( self.mp_inp_sum[1][s]*self.f(self.mp_inp_sum[0][s]) - y ) * self.rtau
 
 
+class logarithmic(unit):
+    """ A unit with a logarithminc activation function. 
+    
+        The output is zero if the scaled sum of inputs is smaller than a given
+        threshold 'thresh'. Otherwise, the activation approaches
+        log(1 + (I - thresh)) with time constant 'tau'.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'thresh' : Threshold of the activation function.
+                    'tau' : Time constant of the update dynamics.
+            Raises:
+                AssertionError.
+        """
+        unit.__init__(self, ID, params, network)
+        self.thresh = params['thresh']
+        self.tau = params['tau']
+
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity y at time t. """
+        return (np.log( 1. + max(0., self.get_input_sum(t)-self.thresh)) 
+                - y[0]) / self.tau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function for flat networks. """
+        return (np.log( 1. + max(0., self.inp_sum[s]-self.thresh))
+                - y) / self.tau
+
+
+
+
+
+

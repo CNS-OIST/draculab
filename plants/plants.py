@@ -86,14 +86,17 @@ class plant():
         min_del = self.net.min_delay  # just to have shorter lines below
         min_buff = self.net.min_buff_size
         self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
-        self.offset = (self.steps-1)*min_buff # * an index used in the update function of derived classes
+        self.offset = (self.steps-1)*min_buff # * an index used in the update
+                                              # function of derived classes
         self.buff_width = int(round(self.steps*min_buff)) # * number of state values to store
-        # keeping with scipy.integrate.odeint, each row in the buffer will correspond to a state
+        # keeping with scipy.integrate.odeint, each row in the buffer will
+        # correspond to a state
         if hasattr(self, 'init_state'): # if we have initial values to put in the buffer
             self.buffer = np.array([self.init_state]*self.buff_width) # * initializing buffer
         else:
             self.buffer = np.ndarray(shape=(self.buff_width, self.dim), dtype=float) # *
-        self.times = np.linspace(-self.delay, 0., self.buff_width) # * times for each buffer row
+        self.times = np.linspace(-self.delay, 0., self.buff_width) # * times for 
+                                                                   # each buffer row
         self.times_grid = np.linspace(0, min_del, min_buff+1) # used to create values for 'times'
 
 
@@ -143,12 +146,13 @@ class plant():
                                       fill_value="extrapolate", assume_sorted=True)(t)
 
     def get_input_sum(self, time, port):
-        """ Returns the sum of all inputs of type 'port', as received at the given 'time'.
+        """ Returns the sum of all inputs at a given port, and at a given time.
 
-            For each input of type 'port', you'll get its value at the time ('time' - delay),
-            multiply that value by the corresponding synaptic weight, and then sum all the
-            scaled values. This sum is the returned value, which constitutes the total
-            input provided by all inputs in the given port.
+            For each input arriving at 'port', you'll get its value at the 
+            time ('time' - delay), multiply that value by the corresponding
+            synaptic weight, and then sum all the scaled values. This sum is
+            the returned value, which constitutes the total input provided by 
+            all inputs in the given port.
         """
         return sum( [ fun(time - dely)*syn.w for fun,dely,syn in 
                       zip(self.inputs[port], self.inp_dels[port], self.inp_syns[port]) ] )

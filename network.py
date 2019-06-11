@@ -145,14 +145,16 @@ class network():
             ValueError, TypeError, NotImplementedError
                 
         """
-        assert (type(n) == int) and (n > 0), 'Number of units must be a positive integer'
-        assert self.sim_time == 0., 'Units are being created when the simulation time is not zero'
+        assert (type(n) == int) and (n > 0), 'Number of units must be a ' + \
+                                             'positive integer'
+        assert self.sim_time == 0., 'Units are being created when the ' + \
+                                    'simulation time is not zero'
 
-        # Any entry in 'params' other than 'coordinates', 'type', 'function', 'branch_params',
-        # 'integ_meth', or 'init_val'  should either be a scalar, a boolean, a list of length 'n', 
-        # or a numpy array of length 'n'.  
+        # Any entry in 'params' other than 'coordinates', 'type', 'function', 
+        # 'branch_params', 'integ_meth', or 'init_val'  should either be a scalar,
+        # a boolean, a list of length 'n', or a numpy array of length 'n'.  
         listed = [] # the entries in 'params' specified with a list
-        accepted_types = [float, int, bool, str] # accepted data types for parameters
+        accepted_types = [float, int, np.float_, np.int_, bool, str] # accepted data types
         for par in params:
             if par == 'type':
                 if not issubclass(type(params[par]), unit_types):
@@ -209,8 +211,8 @@ class network():
                     raise ValueError('Found parameter list of incorrect size ' +
                                      'during unit creation')
             elif not (type(params[par]) in accepted_types):
-                raise TypeError('Found a parameter of the wrong type during ' +
-                                'unit creation')
+                raise TypeError('Found parameter "' + par + '" with the wrong ' +
+                                'type during unit creation')
                     
         params_copy = params.copy() # The 'params' dictionary that a unit receives 
                              # in its constructorshould only contain scalar values. 
@@ -539,14 +541,16 @@ class network():
             syn_spec['postID'] = plantID
             if type(syn_spec['init_w']) is float:
                 weights = [syn_spec['init_w']]*len(unitIDs)
-            elif (type(syn_spec['init_w']) is list) or (type(syn_spec['init_w']) is np.ndarray):
+            elif ((type(syn_spec['init_w']) is list) or 
+                  (type(syn_spec['init_w']) is np.ndarray)):
                 weights = syn_spec['init_w']
             elif type(syn_spec['init_w']) is dict: 
                 w_dict = syn_spec['init_w']
                 if w_dict['distribution'] == 'uniform':  #<----------------------
                     weights = np.random.uniform(w_dict['low'], w_dict['high'], len(unitIDs))
                 else:
-                    raise NotImplementedError('Initializing weights with an unknown distribution')
+                    raise NotImplementedError('Initializing weights with an ' +
+                                              'unknown distribution')
             else:
                 raise ValueError('Invalid value for initial weights when ' +
                                  'connecting units to plant')
@@ -682,7 +686,7 @@ class network():
                 weights = syn_spec['init_w']
             else:
                 raise ValueError('Number of initial weights does not match ' + \
-                                 'number of connections being created')
+                            'number of connections being created:'+str(n_conns))
         else:
             raise TypeError('The value given to the initial weights is of the wrong type')
 
@@ -731,8 +735,10 @@ class network():
                 self.delays[target].append( delayz[idx] )
             else:
                 raise ValueError('Delays should be multiples of the network minimum delay')
-            if self.plants[plantID].delay <= delayz[idx]: # this is the longest delay for this source
-                # added self.min_delay because the ODE solver may ask for values a bit out of range
+            if self.plants[plantID].delay <= delayz[idx]: # this is the longest
+                                                        # delay for this source
+                # add self.min_delay because the ODE solver may 
+                # ask for out of range values
                 self.plants[plantID].delay = delayz[idx]+self.min_delay
                 self.plants[plantID].init_buffers() # update plant buffers
                 
