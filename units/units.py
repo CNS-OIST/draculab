@@ -684,10 +684,11 @@ class unit():
         for syn in self.net.syns[self.ID]:
             self.syn_needs.update(syn.upd_requirements)
         pre_reqs = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
-                        syn_reqs.pre_lpf_slow, syn_reqs.pre_out_w_abs_sum])
+                        syn_reqs.pre_lpf_slow, syn_reqs.pre_out_norm_factor])
         self.syn_needs.difference_update(pre_reqs) # the "pre_" requirements are handled below
 
-        # For each projection you send, check if its synapse needs the lpf presynaptic activity
+        # For each projection you send, check if its
+        # synapse needs the lpf presynaptic activity
         for syn_list in self.net.syns:
             for syn in syn_list:
                 if syn.preID == self.ID:
@@ -697,6 +698,8 @@ class unit():
                         self.syn_needs.add(syn_reqs.lpf_mid)
                     if syn_reqs.pre_lpf_slow in syn.upd_requirements:
                         self.syn_needs.add(syn_reqs.lpf_slow)
+                    if syn_reqs.pre_out_norm_factor in syn.upd_requirements:
+                        self.syn_needs.add(syn_reqs.out_norm_factor)
 
         # If we require support for multiple input ports, create the port_idx list.
         # port_idx is a list whose elements are lists of integers.
@@ -1024,7 +1027,7 @@ class unit():
         
 
     def upd_slide_thresh_shrp(self, time):
-        """ Updates the threshold of trdc units when input at 'sharpen' port is larger than 0.5 .
+        """ Updates threshold of trdc units when input at 'sharpen' port larger than 0.5 .
 
             The algorithm is based on upd_slide_thresh.
         """
@@ -1048,10 +1051,11 @@ class unit():
         pass
         
 
-    def upd_out_w_abs_sum(self, time):
-        """ Update the sum of absolute values for outgoing weights. """
-        self.out_w_abs_sum = sum([abs(self.net.syns[uid][sid].w)
-                             for uid, sid in self.out_syns_idx])
+    def upd_out_norm_factor(self, time):
+        """ Update a factor to normalize the value of outgoing weights. """
+        out_w_abs_sum = sum([abs(self.net.syns[uid][sid].w)
+                            for uid, sid in self.out_syns_idx])
+        self.out_norm_factor = self.des_out_w_abs_sum / (out_w_abs_sum + 1e-32)
 
 
     ##########################################
@@ -1294,8 +1298,8 @@ class sigmoidal(unit):
         self.thresh = params['thresh']  # horizontal displacement of the sigmoidal
         self.tau = params['tau']  # the time constant of the dynamics
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
-        assert self.type is unit_types.sigmoidal, ['Unit ' + str(self.ID) + 
-                                                            ' instantiated with the wrong type']
+        #assert self.type is unit_types.sigmoidal, ['Unit ' + str(self.ID) + 
+        #                                           ' instantiated with the wrong type']
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """

@@ -59,11 +59,14 @@ class unit_types(Enum):
     noisy_linear = 30
     noisy_sigmoidal = 31
     presyn_inh_sig = 32
+    test_oscillator = 33 
 
     binary = 101 # from tutorial 5
 
-    test_oscillator = 102 # from spinal units
-    am_pm_oscillator = 103 # from spinal units
+    am_pm_oscillator = 102 # from spinal units
+    out_norm_sig = 103 # from spinal units
+    out_norm_am_sig = 104 # from spinal units
+    logarithmic = 105 # from spinal units
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -177,11 +180,20 @@ class unit_types(Enum):
             from units.custom_units import binary_unit
             unit_class = binary_unit
         elif self == unit_types.test_oscillator:
-            from units.spinal_units import test_oscillator
+            from units.custom_units import test_oscillator
             unit_class = test_oscillator
         elif self == unit_types.am_pm_oscillator:
             from units.spinal_units import am_pm_oscillator
             unit_class = am_pm_oscillator
+        elif self == unit_types.out_norm_sig:
+            from units.spinal_units import out_norm_sig 
+            unit_class = out_norm_sig
+        elif self == unit_types.out_norm_am_sig:
+            from units.spinal_units import out_norm_am_sig 
+            unit_class = out_norm_am_sig
+        elif self == unit_types.logarithmic:
+            from units.spinal_units import logarithmic
+            unit_class = logarithmic
         else:
             raise NotImplementedError('Attempting to retrieve the class of an ' + 
                                       'unknown unit model')
@@ -306,6 +318,7 @@ class plant_models(Enum):
     simple_double_pendulum = 4
     compound_double_pendulum = 5
     planar_arm = 6
+    bouncy_pendulum = 7
 
     def get_class(self):
         """ Return the class object corresponding to a given plant enum. 
@@ -336,6 +349,9 @@ class plant_models(Enum):
         elif self == plant_models.planar_arm:
             from plants.plants import planar_arm
             plant_class = planar_arm
+        elif self == plant_models.bouncy_pendulum:
+            from plants.spinal_plants import bouncy_pendulum 
+            plant_class = bouncy_pendulum
         else:
             raise NotImplementedError('Attempting to retrieve the class for an unknown plant model')
         return plant_class
@@ -399,8 +415,8 @@ class syn_reqs(Enum):
     del_inp_deriv_mp = 104 # version of inp_deriv_mp with custom input delays
     del_avg_inp_deriv_mp = 105 # avg_inp_deriv_mp with custom input delays
     l0_norm_factor_mp = 106 # Factors to normalize the absolute sum of weight values
-    out_w_abs_sum = 107 # factor to normalize the absolute sum of outgoing weights
-    pre_out_w_abs_sum 108 # indicates that the presynaptic unit needs out_w_abs_sum
+    out_norm_factor = 107 # factor to normalize the absolute sum of outgoing weights
+    pre_out_norm_factor = 108 # shows that the presynaptic unit needs out_norm_factor 
 
 
     def list_names():

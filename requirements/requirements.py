@@ -707,16 +707,19 @@ def add_exp_euler_vars(unit):
     setattr(unit, 'upd_exp_euler_vars', upd_exp_euler_vars)
 
 
-def add_out_w_abs_sum(unit):
-    """ Add the sum of synaptic weights for all outgoing connections.
+def add_out_norm_factor(unit):
+    """ Add a factor to normalize the sum of absolute values for outgoing weights. 
     
         A unit having this requirement will, on each update, calculate the sum
         of the absolute value of the weights for all the projections it sends.
-        This can be used by the synapses in order to perform weight
-        normalization based on the weights of its presynaptic unit.
+        The out_norm_factor value produced comes from a parameter called
+        des_out_w_abs_sum divided by the value of this sum.
 
-        The update function implementation is currently in the unit class.
+        The update function implementaion is part of the unit class. 
     """
+    if not hasattr(unit, 'des_out_w_abs_sum'):
+        raise AssertionError('The out_norm_factor requirement needs the ' +
+                             'des_out_w_abs_sum attribute in its unit.')
     # Obtain indexes to all of the unit's connections in net.syns
     out_syns_idx = []
     out_w_abs_sum = 0.
@@ -725,9 +728,9 @@ def add_out_w_abs_sum(unit):
             if syn.preID == unit.ID:
                 out_syns_idx.append((list_idx, syn_idx))
                 out_w_abs_sum += abs(syn.w)
+    out_norm_factor = unit.des_out_w_abs_sum / (out_w_abs_sum + 1e-32)
     setattr(unit, 'out_syns_idx', out_syns_idx)
-    setattr(unit, 'out_w_abs_sum', out_w_abs_sum)
-
+    setattr(unit, 'out_norm_factor', out_norm_factor)
 
 #-------------------------------------------------------------------------------------
 # Use of the following classes has been deprecated because they slow down execution

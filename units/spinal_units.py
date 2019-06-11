@@ -3,7 +3,7 @@ spinal_units.py
 The units used in the motor control model.
 """
 from draculab import unit_types, synapse_types, syn_reqs  # names of models and requirements
-from units.units import unit
+from units.units import unit, sigmoidal
 import numpy as np
 
 class am_pm_oscillator(unit):
@@ -86,9 +86,7 @@ class am_pm_oscillator(unit):
                 Using rga synapses brings an extra required parameter:
                 'custom_inp_del' : an integer indicating the delay that the rga
                                   learning rule uses for the lateral port inputs. 
-                                  The delay is in units of min_delay steps. It is 
-                                  recommended to use the 'post_delay' value of the 
-                                  rga synapses. 
+                                  The delay is in units of min_delay steps. 
                 OPTIONAL PARAMETERS
                 'n_ports' : number of input ports. Must equal 2. Defaults to 2.
                 'mu' : mean of white noise when using noisy integration
@@ -153,19 +151,20 @@ class am_pm_oscillator(unit):
         I = [ np.dot(i, w) for i, w in 
               zip(self.get_mp_inputs(t), self.get_mp_weights(t)) ]
         # Obtain the derivatives
-        Dc = (I[0] * (1. - y[1]) + I[1]*y[1]) / self.tau_c
-        slow_I0 = self.lpf_slow_mp_inp_sum[0]
+        Dc = y[1]*(1. - y[1])*(I[0] + I[1]) / self.tau_c
+        #slow_I0 = self.lpf_slow_mp_inp_sum[0]
         #Dc = ( I[0]*(1. - y[1]) + (I[1] - slow_I0)*y[1] ) / self.tau_c
         #Dc = ( I[0]*(1. - y[1]) - slow_I0*y[1] ) / self.tau_c
         Dth = (self.omega + self.f(I)) / self.tau_t
-        DI0 = (I[0] - y[3]) / self.tau_s
+        DI0 = np.tanh(I[0] - y[3]) / self.tau_s
         #DI0 = (sum(self.get_mp_inputs(t)[0]) - y[3]) / self.tau_s
         #DIs = self.D_factor * (I[0] - y[3])
         #Du = (Dc + I[0]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])) / self.tau_u
-        ex = np.exp(-y[3]*np.sin(y[2]))
-        prime = 0.2*ex/(1.+ex)
-        Du = ((1.-y[0]) * y[0] * (Dc + (y[1] - y[0]) + 
-               prime*(y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])))) / self.tau_u
+        #ex = np.exp(-y[3]*np.sin(y[2]))
+        #prime = 0.2*ex/(1.+ex)
+        Du = ((1.-y[0]) * (y[0]-.01) * (Dc + (y[1] - y[0]) + 
+               #prime*(y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])))) / self.tau_u
+               y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2]))) / self.tau_u
         return np.array([Du, Dc, Dth, DI0])
 
     def dt_fun(self, y, s):
@@ -184,21 +183,18 @@ class am_pm_oscillator(unit):
         # get the input sum at each port
         I = [ port_sum[s] for port_sum in self.mp_inp_sum ]
         # Obtain the derivatives
-        Dc = (I[0] * (1. - y[1]) + I[1]*y[1]) / self.tau_c
-        slow_I0 = self.lpf_slow_mp_inp_sum[0]
+        Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         Dth = (self.omega + self.f(I)) / self.tau_t
-        DI0 = (I[0] - y[3]) / self.tau_s
-        ex = np.exp(-y[3]*np.sin(y[2]))
-        prime = 0.2*ex/(1.+ex)
-        Du = ((1.-y[0]) * y[0] * (Dc + (y[1] - y[0]) + 
-               prime*(y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])))) / self.tau_u
+        DI0 = np.tanh(I[0] - y[3]) / self.tau_s
+        Du = ((1.-y[0]) * (y[0]-.01) * (Dc + (y[1] - y[0]) + 
+               y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2]))) / self.tau_u
         return np.array([Du, Dc, Dth, DI0])
-        #raise NotImplementedError('dt_fun for am_pm_oscillator not yet implemented')
 
     def input_sum_f(self, I):
         """ Interaction function based on port 1 input sum. """
         # TODO: I changed the sign here, should revert later
-        return -np.sin(2.*np.pi*self.lpf_slow_mp_inp_sum[1] - self.lpf_slow)
+        #       Also, the factors here are not normalized.
+        return -np.sin(2.*np.pi*(self.lpf_slow_mp_inp_sum[1] - self.lpf_slow))
 
     def kuramoto_f(self, I):
         """ Interaction function inspired by the Kuramoto model. """
@@ -258,68 +254,116 @@ class am_pm_oscillator(unit):
                                       for ws in self.get_mp_weights(time)]
  
 
-class test_oscillator(unit):
-    """ 
-    A model used to test the frameowork for multidimensional units.
+class out_norm_sig(sigmoidal):
+    """ The sigmoidal unit with one extra attribute.
 
-    The model consists of the equations for a sinusoidal:
-    y' = w*x
-    x' = -w*y
-    with y being the unit's output, and w the frequency of oscillation. w is the
-    reciprocal of the unit's time constant tau.
-    Inputs are currently ignored.
+        The attribute is called des_out_w_abs_sum. This is needed by the 
+        out_norm_factor requirement. 
+        
+        Units from this class are sigmoidals that can normalize the sum
+        of their outgoing weights using out_norm_factor. This requirement should 
+        be added by synapses that have the pre_out_norm_factor requirement.
     """
 
     def __init__(self, ID, params, network):
-        """ The unit's constructor.
+        """ The unit constructor.
 
-        Args:
-            ID, params, network, same as in unit.__init__, butthe 'init_val' parameter
-            needs to be a 1D array with two elements, corresponding to the initial values
-            of y and x.
-            In addition, params should have the following entries.
-            REQUIRED PARAMETERS
-            'tau' : Time constant of the update dynamics. Also, reciprocal of the 
-                    oscillator's frequency.
-            OPTIONAL PARAMETERS
-            'mu' : mean of white noise when using noisy integration
-            'sigma' : standard deviation of noise for noisy integration.
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'slope' : Slope of the sigmoidal function.
+                    'thresh' : Threshold of the sigmoidal function.
+                    'tau' : Time constant of the update dynamics.
+                    'des_out_w_abs_sum' : desired sum of absolute weight values
+                                          for the outgoing connections.
+            Raises:
+                AssertionError.
         """
-        params['multidim'] = True
-        unit.__init__(self, ID, params, network)
-        self.tau = params['tau']
-        self.w = 1/self.tau
-        if 'mu' in params:
-            self.mu = params['mu']
-        if 'sigma' in params:
-            self.sigma = params['sigma']
-        self.mudt = self.mu * self.time_bit # used by flat updaters
-        self.mudt_vec = np.zeros(self.dim)
-        self.mudt_vec[0] = self.mudt
-        self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
+        sigmoidal.__init__(self, ID, params, network)
+        self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        #self.syn_needs.update([syn_reqs.out_norm_factor])
 
+
+class out_norm_am_sig(sigmoidal):
+    """ A sigmoidal whose amplitude is modulated by inputs at port 1.
+
+        The output of the unit is the sigmoidal function applied to the
+        scaled sum of port 0 inputs, times the scaled sum of port 1 inputs.
+
+        This model also includes the 'des_out_w_abs_sum' attribute, so the
+        synapses that have this as their presynaptic unit can have the
+        'out_norm_factor' requirement for presynaptic weight normalization.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'slope' : Slope of the sigmoidal function.
+                    'thresh' : Threshold of the sigmoidal function.
+                    'tau' : Time constant of the update dynamics.
+                    'des_out_w_abs_sum' : desired sum of absolute weight values
+                                          for the outgoing connections.
+            Raises:
+                AssertionError.
+        """
+        if 'n_ports' in params and params['n_ports'] != 2:
+            raise AssertionError('out_norm_am_sig units must have n_ports=2')
+        else:
+            params['n_ports'] = 2
+        sigmoidal.__init__(self, ID, params, network)
+        self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        self.needs_mp_inp_sum = True # in case we flatten
+      
     def derivatives(self, y, t):
-        """ Implements the ODE of the oscillator.
-
-        Args:
-            y : 1D, 2-element array with the values of the state variables.
-            t : time when the derivative is evaluated (not used).
-        Returns:
-            numpy array with [w*y[1], -w*y[0]]
-        """
-        return np.array([self.w*y[1], -self.w*y[0]])
+        """ Return the derivative of the activity at time t. """
+        I = [(w*i).sum() for w, i in zip(self.get_mp_weights(t), 
+                                         self.get_mp_inputs(t))]
+        return ( I[1]*self.f(I[0]) - y[0] ) * self.rtau
 
     def dt_fun(self, y, s):
-        """ The derivatives function used for flat networks. 
-        
-        Args:
-            y : 1D, 2-element array with the values of the state variables.
-            s: index to the inp_sum array (not used).
-        Returns:
-            Numpy array with 2 elements.
-            
+        """ The derivatives function used when the network is flat. """
+        return ( self.mp_inp_sum[1][s]*self.f(self.mp_inp_sum[0][s]) - y ) * self.rtau
+
+
+class logarithmic(unit):
+    """ A unit with a logarithminc activation function. 
+    
+        The output is zero if the scaled sum of inputs is smaller than a given
+        threshold 'thresh'. Otherwise, the activation approaches
+        log(1 + (I - thresh)) with time constant 'tau'.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'thresh' : Threshold of the activation function.
+                    'tau' : Time constant of the update dynamics.
+            Raises:
+                AssertionError.
         """
-        return np.array([self.w*y[1], -self.w*y[0]])
+        unit.__init__(self, ID, params, network)
+        self.thresh = params['thresh']
+        self.tau = params['tau']
+
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity y at time t. """
+        return (np.log( 1. + max(0., self.get_input_sum(t)-self.thresh)) 
+                - y[0]) / self.tau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function for flat networks. """
+        return (np.log( 1. + max(0., self.inp_sum[s]-self.thresh))
+                - y) / self.tau
+
+
+
 
 
 
