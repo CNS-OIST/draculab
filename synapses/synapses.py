@@ -441,8 +441,8 @@ class input_correlation_synapse(synapse):
     """ This class implements a version of the input correlation learning rule.
 
         The rule is based on Porr & Worgotter 2006, Neural Computation 18, 1380-1412;
-        but we have no constrain on the number of different types of predictive inputs, or on the
-        number of error signals, whose sum acts as the 'error' signal.
+        but we have no constrain on the number of different types of predictive inputs,
+        or on the number of error signals, whose sum acts as the 'error' signal.
 
         Learning happens only on predictive inputs. The equation is: 
         w' = lrate * pre * err_diff,
@@ -467,11 +467,12 @@ class input_correlation_synapse(synapse):
             REQUIRED PARAMETERS
             'lrate' : A scalar value that will multiply the derivative of the weight.
             'input_type' : A string with two possible values
-                           'pred' : predictive input.
-                           'error' : error input.
-                           Each input can be either predictive or error. The predictive inputs are
-                           the ones where the input correlation learning rule is applied, based on
-                           an approximation of the derivative of the error inputs.
+                         'pred' : predictive input.
+                         'error' : error input.
+                         Each input can be either predictive or error. The predictive 
+                         inputs are the ones where the input correlation learning 
+                         rule is applied, based on an approximation of the 
+                         derivative of the error inputs.
 
         Raises:
             ValueError, AssertionError.
@@ -484,14 +485,16 @@ class input_correlation_synapse(synapse):
 
         # to approximate the input derivatives, we use LPFs at two different time scales
         if self.input_type == 'error':
-            self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, syn_reqs.err_diff])
+            self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
+                                         syn_reqs.err_diff])
         elif self.input_type == 'pred':
             self.upd_requirements = set([syn_reqs.err_diff, syn_reqs.pre_lpf_fast])
         else:
-            raise ValueError('The input_type parameter for input correlation synapses should be either pred or error')
+            raise ValueError('The input_type parameter for input correlation ' +
+                             'synapses should be either pred or error')
 
-        assert self.type is synapse_types.inp_corr, ['Synapse from ' + str(self.preID) + ' to ' +
-                                                      str(self.postID) + ' instantiated with the wrong type']
+        assert self.type is synapse_types.inp_corr, ['Synapse from ' + str(self.preID) + 
+                        ' to ' + str(self.postID) + ' instantiated with the wrong type']
     
     def update(self, time):
         """ Update the weight using input correlation learning. """
@@ -499,8 +502,8 @@ class input_correlation_synapse(synapse):
             pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
             err_diff = self.net.units[self.postID].err_diff
             self.w = self.w + self.alpha * pre * err_diff
-        # In this version of the rule, the error signals don't alter their weights, and we don't
-        # test for weights becoming negative
+        # In this version of the rule, the error signals don't alter their weights,
+        # and we don't test for weights becoming negative
 
 
 class bcm_synapse(synapse):

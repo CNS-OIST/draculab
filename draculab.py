@@ -229,6 +229,7 @@ class synapse_types(Enum):
     diff_hebbsnorm2 = 201 # a variation on diff_hebbsnorm
     anticov_inh = 202 # anticovariance for inhibitory synapses
     rga = 203 # relative gain array-inspired version of diff_hebbsnorm
+    inp_sel = 204 # variant of input correlation
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -300,6 +301,9 @@ class synapse_types(Enum):
         elif self == synapse_types.rga:
             from synapses.spinal_syns import rga_synapse 
             syn_class = rga_synapse
+        elif self == synapse_types.inp_sel:
+            from synapses.spinal_syns import input_selection_synapse
+            syn_class = input_selection_synapse
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -417,6 +421,9 @@ class syn_reqs(Enum):
     l0_norm_factor_mp = 106 # Factors to normalize the absolute sum of weight values
     out_norm_factor = 107 # factor to normalize the absolute sum of outgoing weights
     pre_out_norm_factor = 108 # shows that the presynaptic unit needs out_norm_factor 
+    sc_inp_sum_diff_mp = 109 # derivative of the scaled input sum for each port
+    lpf_fast_sc_inp_sum_mp = 110 # fast LPF'd scaled input sum per port
+    lpf_mid_sc_inp_sum_mp = 111 # mid LPF'd scaled input sum per port
 
 
     def list_names():

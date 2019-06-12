@@ -167,14 +167,17 @@ class rga_synapse(synapse):
     def update(self, time):
         """ Update the weight using the RGA-inpsired learning rule.
         
-            If the network is correctly initialized, the pre-synaptic unit updates lpf_fast, 
-            and lpf_mid, whereas the post-synaptic unit updates lpf_fast, lpf_mid and the 
-            average of approximate input derivatives for each port.
+            If the network is correctly initialized, the pre-synaptic unit 
+            updates lpf_fast, and lpf_mid, whereas the post-synaptic unit
+            updates lpf_fast, lpf_mid and the average of approximate input
+            derivatives for each port.
 
-            Notice the average of input derivatives can come form upd_pos_diff_avg, which 
-            considers only the inputs whose synapses have positive values. To allow synapses
-            to potentially become negative, you need to change the synapse requirement in __init__
-            from pos_diff_avg to diff_avg, and the pos_diff_avg value used below to diff_avg.
+            Notice the average of input derivatives can come form 
+            upd_pos_diff_avg, which considers only the inputs whose synapses
+            have positive values. To allow synapses to potentially become negative,
+            you need to change the synapse requirement in __init__ from 
+            pos_diff_avg to diff_avg, and the pos_diff_avg value used below to 
+            diff_avg.
             Also, remove the line "if self.w < 0: self.w = 0"
         """
         u = self.net.units[self.postID]
@@ -195,6 +198,81 @@ class rga_synapse(synapse):
         #self.w += self.alpha * up * (sp - spj)
 
 
+class input_selection_synapse(synapse):
+    """ A variant of the input correlation synapse.
+
+        Like the input correlation synapse, it is assumed that a unit receiving
+        an input_selection_synapse will have two types of inputs. One will be
+        called "error", and the other "aff", for afferent. Unlike the
+        inp_corr model, this synapse model assumes that its corresponding input
+        is of 'aff' type. Thus the synapses for inputs at the 'error' port in
+        the postsynaptic unit can use any other model.
+
+        A second difference with the input correlation model is that weights
+        from synapses at the "aff" postsynaptic port will be normalized so their
+        absolte values add to 1. This is achieved with the l0_norm_factor_mp 
+        requirement.
+
+        The learning equation is: 
+        w' = lrate * pre * err_diff,
+        where err_diff is an approximation to the derivative of the scaled sum 
+        of 'error' inputs, which are in the default case the inputs at port 1 of
+        the postsynaptic unit. This derivative is obtained through the
+        upd_sc_inp_sum_diff_mp requirement of the postsynaptic unit.
+ 
+        'error' presynaptic units require the 'tau_fast' and 'tau_mid' parameters.
+        'aff' presynaptic units require the 'tau_fast' parameter.
+
+        The Enum name for this synapse type is 'inp_sel'.
+
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            OPTIONAL PARAMETERS
+            'error_port' : port where the 'error' signals are received in the
+                           postsynaptic unit. Default 1.
+            'aff_port' : port where the 'afferent' signals are received in the
+                         postsynaptic unit. Default 0.
+
+        Raises:
+            ValueError, AssertionError.
+        """
+
+        synapse.__init__(self, params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        if 'error_port' in params:
+            self.error_port = params['error_port']
+        else:
+            self.error_port = 1
+        if 'aff_port' in params:
+            self.aff_port = params['aff_port']
+        else:
+            self.aff_port = 0
+        # this may be inefficient because the lpf_mid_sc_inp_sum is being
+        # calculated also for the afferent inputs
+        self.upd_requirements = set([syn_reqs.lpf_fast_sc_inp_sum_mp,
+                                     syn_reqs.lpf_mid_sc_inp_sum_mp,
+                                     syn_reqs.l0_norm_factor_mp,
+                                     syn_reqs.pre_lpf_fast])
+
+    def update(self, time):
+        """ Update the weight using the input selection rule. """
+        u = self.net.units[self.postID]
+        err_diff = (u.lpf_fast_sc_inp_sum_mp[self.error_port] -
+                    u.lpf_mid_sc_inp_sum_mp[self.error_port]) 
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+            
+        self.w *= self.net.units[self.postID].l0_norm_factor_mp[self.aff_port]
+        self.w = self.w + self.alpha * pre * err_diff
+
+
+
 class anti_covariance_inh_synapse(synapse):
     """ Anticovariance rule for inhibitory synapses
     
@@ -205,7 +283,7 @@ class anti_covariance_inh_synapse(synapse):
         The presynaptic activity includes its corresponding transmission delay.
 
         This synapse type expects to be initialized with a negative weight, and will
-        implement soft weight bounding in order to ensure the sign of the weight does
+        implement soft weight bounding in order to ensure the sign of the weigh  does
         not become positive, so the rule is actually:
         w' = - lrate * w * (post - theta) * pre,
     
@@ -232,14 +310,16 @@ class anti_covariance_inh_synapse(synapse):
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The anti-covaraince rule requires the current pre- and post-synaptic activity
         # For the postsynaptic activity, both fast and slow averages are used
-        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.lpf_slow])
-        assert self.type is synapse_types.anticov_inh, ['Synapse from ' + str(self.preID) + ' to ' +
-                                                     str(self.postID) + ' instantiated with the wrong type']
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, 
+                                     syn_reqs.lpf_slow])
+        assert self.type is synapse_types.anticov_inh, ['Synapse from ' + str(self.preID) + 
+                           ' to ' + str(self.postID) + ' instantiated with the wrong type']
     
     def update(self, time):
         """ Update the weight according to the anti-covariance learning rule."""
-        # If the network is correctly initialized, the pre-synaptic unit is updatig lpf_fast, and the 
-        # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
+        # If the network is correctly initialized, the pre-synaptic unit 
+        # is updatig lpf_fast, and the  post-synaptic unit is updating 
+        # lpf_fast and lpf_slow at each update() call
         avg_post = self.net.units[self.postID].get_lpf_slow(0)
         post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)

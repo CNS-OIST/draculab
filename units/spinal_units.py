@@ -248,11 +248,6 @@ class am_pm_oscillator(unit):
         self.del_avg_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
                                      for l in self.del_inp_deriv_mp]
 
-    def upd_l0_norm_factor_mp(self, time):
-        """ Update the factors to normalize the L0 norms for weight vectors. """
-        self.l0_norm_factor_mp = [ 1. / (np.absolute(ws).sum() + 1e-32) 
-                                      for ws in self.get_mp_weights(time)]
- 
 
 class out_norm_sig(sigmoidal):
     """ The sigmoidal unit with one extra attribute.
@@ -361,6 +356,29 @@ class logarithmic(unit):
         """ The derivatives function for flat networks. """
         return (np.log( 1. + max(0., self.inp_sum[s]-self.thresh))
                 - y) / self.tau
+
+    def upd_sc_inp_sum_diff_mp(self, time):
+        """ Update the derivatives for the scaled sum of inputs at each port."""
+        # TODO: there is replication of computations when the requirements
+        # obtain the input sums
+        self.sc_inp_sum_diff_mp = [lpf_fast - lpf_mid for lpf_fast, lpf_mid in
+                  zip(self.lpf_fast_sc_inp_sum_mp, self.lpf_mid_sc_inp_sum_mp)]
+
+    def upd_lpf_fast_sc_inp_sum_mp(self, time):
+        """ Update a list with fast LPF'd scaled sums of inputs at each port. """
+        sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(time),
+                                           self.get_mp_weights(time))]
+        # same update rule from other upd_lpf_X methods, put in a list comprehension
+        self.lpf_fast_sc_inp_sum_mp = [sums[i] + (self.lpf_fast_sc_inp_sum_mp[i] - sums[i])
+                                       * self.fast_prop for i in range(self.n_ports)]
+
+    def upd_lpf_mid_sc_inp_sum_mp(self, time):
+        """ Update a list with medium LPF'd scaled sums of inputs at each port. """
+        sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(time),
+                                           self.get_mp_weights(time))]
+        # same update rule from other upd_lpf_X methods, put in a list comprehension
+        self.lpf_mid_sc_inp_sum_mp = [sums[i] + (self.lpf_mid_sc_inp_sum_mp[i] - sums[i])
+                                       * self.mid_prop for i in range(self.n_ports)]
 
 
 

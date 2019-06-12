@@ -59,7 +59,7 @@ class bouncy_pendulum(pendulum):
         # torque may also come from gravity and friction
         torque -= self.c * np.cos(y[0]) +  self.mu * y[1]
         # torque will also appear when angle is close to pi
-        torque -= (np.tan((y[0]%(2.*np.pi))/2.)/5.)**3
+        torque -= (np.tan((y[0]%(2.*np.pi))/2.)/4.)**3
         # angular acceleration = torque / (inertia moment)
         ang_accel = torque / self.I
         return np.array([y[1], ang_accel])

@@ -807,6 +807,8 @@ class unit():
 
     def upd_mp_inputs(self, time):
         """ Update the mp_inputs variable. """
+        # TODO: add a time stamp, and use it to 
+        # see if mp_inputs has been updated before using it.
         self.mp_inputs = self.get_mp_inputs(time)
 
 
@@ -825,14 +827,16 @@ class unit():
 
 
     def upd_err_diff(self, time):
-        """ Update an approximate derivative of the error inputs used for input correlation learning. 
+        """ Update the derivative of the error inputs for input correlation learning. 
 
-            A very simple approach is taken, where the derivative is approximated as the difference
-            between the fast and medium low-pass filtered inputs. Each input arrives with its
-            corresponding transmission delay.
+            A very simple approach is taken, where the derivative is approximated
+            as the difference between the fast and medium low-pass filtered inputs.
+            Each input arrives with its corresponding transmission delay.
         """
-        self.err_diff = ( sum([ self.net.units[i].get_lpf_fast(s) for i,s in self.err_idx_dels ]) -
-                          sum([ self.net.units[i].get_lpf_mid(s) for i,s in self.err_idx_dels ]) )
+        self.err_diff = ( sum([ self.net.units[i].get_lpf_fast(s) 
+                                for i,s in self.err_idx_dels ]) -
+                          sum([ self.net.units[i].get_lpf_mid(s) 
+                                for i,s in self.err_idx_dels ]) )
        
 
     def upd_sc_inp_sum_sqhsn(self, time):
@@ -882,7 +886,7 @@ class unit():
 
 
     def upd_lpf_slow_mp_inp_sum(self, time):
-        """ Update the slow LPF'd scaled sum of inputs at individual ports, returning them in a list. """
+        """ Update a list with the slow LPF'd scaled sum of inputs for each port. """
         assert time >= self.last_time, ['Unit ' + str(self.ID) + 
                                         ' lpf_slow_mp_inp_sum updated backwards in time']
         inputs = self.mp_inputs    # updated because mp_inputs is a requirement variable
@@ -1056,6 +1060,11 @@ class unit():
         out_w_abs_sum = sum([abs(self.net.syns[uid][sid].w)
                             for uid, sid in self.out_syns_idx])
         self.out_norm_factor = self.des_out_w_abs_sum / (out_w_abs_sum + 1e-32)
+
+    def upd_l0_norm_factor_mp(self, time):
+        """ Update the factors to normalize the L0 norms for weight vectors. """
+        self.l0_norm_factor_mp = [ 1. / (np.absolute(ws).sum() + 1e-32) 
+                                   for ws in self.get_mp_weights(time)]
 
 
     ##########################################

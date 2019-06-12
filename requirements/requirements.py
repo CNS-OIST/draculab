@@ -110,11 +110,18 @@ def add_mp_inputs(unit):
 
         Quoting the docstring of unit.get_mp_inputs:
         "This method is for units where multiport = True, and that have a port_idx attribute.
-        The i-th element of the returned list is a numpy array containing the raw (not multiplied
-        by the synaptic weight) inputs at port i. The inputs include transmision delays."
+        The i-th element of the returned list is a numpy array containing the raw 
+        (not multiplied by the synaptic weight) inputs at port i. The inputs include 
+        transmision delays."
+
+        THIS METHOD CAN BE UNSAFE, because mp_inputs could be updated AFTER the
+        requirements that use it.
     """
+    # TODO: add a time stamp in upd_mp_inputs, and use this time stamp to see if
+    # mp_inputs has been updated before using it.
     if not hasattr(unit,'port_idx'): 
-        raise NameError( 'the mp_inputs requirement is for multiport units with a port_idx list' )
+        raise NameError( 'the mp_inputs requirement is for multiport units ' +
+                         'with a port_idx list' )
     val = [] 
     for prt_lst in unit.port_idx:
         val.append(np.array([unit.init_act for _ in range(len(prt_lst))]))
@@ -203,7 +210,8 @@ def add_err_diff(unit):
             elif syn.input_type == 'pred': 
                 pred_idx.append(syn.preID) # not currently using this list
             else:
-                raise ValueError('Incorrect input_type ' + str(syn.input_type) + ' found in synapse')
+                raise ValueError('Incorrect input_type ' + str(syn.input_type) +
+                                 ' found in synapse')
     err_idx_dels = list(zip(err_idx, err_dels)) # both lists zipped
     setattr(unit, 'err_diff', err_diff)
     setattr(unit, 'err_idx_dels', err_idx_dels)
@@ -298,6 +306,7 @@ def add_lpf_mid_mp_raw_inp_sum(unit):
         The lpf_mid_mp_raw_inp_sum requirement is used by units of the 
         am_pm_oscillator class.
     """
+    # TODO: ensure upd_mp_inputs is called before upd_lpf_mid_mp_raw_inp_sum
     if not hasattr(unit,'tau_mid'): 
         raise NameError( 'Requirement lpf_mid_mp_raw inp_sum requires ' +
                          'parameter tau_mid, not yet set' )
@@ -576,8 +585,8 @@ def add_l0_norm_factor_mp(unit):
     """ Factors to normalize the L0 norm of weight vectors for each port.
 
         This requirement is used by the rga_synapse, and the implementation is
-        in the am_pm_oscillator. The requirement, however, is general enough to
-        be used in any multiport model where the sum of absolute values for the
+        in the unit class. The requirement  is general enough to be used in 
+        any multiport model where the sum of absolute values for the
         weights should be 1.
 
         l0_norm_factor_mp is a list whose length is the number of ports.
@@ -731,6 +740,65 @@ def add_out_norm_factor(unit):
     out_norm_factor = unit.des_out_w_abs_sum / (out_w_abs_sum + 1e-32)
     setattr(unit, 'out_syns_idx', out_syns_idx)
     setattr(unit, 'out_norm_factor', out_norm_factor)
+
+
+def add_sc_inp_sum_diff_mp(unit):
+    """ Add a list with the derivatives of scaled input sums per port.
+
+        inp_sum_diff_mp[i] will be the derivative of the scaled sum of inputs at
+        port i. This derivatie comes from the fast lpf'd input sum minus the mid
+        lpf'd input sum. These two values come from the lpf_fast_sc_inp_sum_mp, 
+        and lpf_mid_sc_inp_sum_mp requirements.
+
+        This requirement was initially used with the input_selection synapse,
+        and its update implementation is currently in the logarithmic unit.
+    """
+    if (not syn_reqs.lpf_fast_sc_inp_sum_mp in unit.syn_needs or
+        not syn_reqs.lpf_mid_sc_inp_sum_mp in unit.syn_needs):
+        raise AssertionError('The sc_inp_sum_diff_mp requirement  needs both' + 
+                             'lpf_fast_inp_sum_mp, and lpf_mid_inp_sum_mp')
+    if not unit.multiport:
+        raise AssertionError('The sc_inp_sum_diff_mp requirement is for ' +
+                             'multiport units')
+    sc_inp_sum_diff_mp = [0.]*unit.n_ports
+    setattr(unit, 'sc_inp_sum_diff_mp', sc_inp_sum_diff_mp)
+
+
+def add_lpf_fast_sc_inp_sum_mp(unit):
+    """ Add the fast LPF'd scaled sum of inputs for each port separately. 
+
+        This requirement was initially used with the input_selection synapse,
+        and its update implementation is currently in the logarithmic unit.
+    """
+    # TODO: create a safe version with mp_inputs
+    if not unit.multiport:
+        raise AssertionError('The lpf_fast_sc_inp_sum_mp requirement is for ' +
+                             'multiport units')
+    if not hasattr(unit,'tau_fast'): 
+        raise NameError( 'Requirement lpf_fast_sc_inp_sum requires ' +
+                         'parameter tau_fast, not yet set' )
+    if not hasattr(unit, 'fast_prop'):
+        add_propagator(unit, 'fast')
+    setattr(unit, 'lpf_fast_sc_inp_sum_mp', [0.2]*unit.n_ports)
+
+
+def add_lpf_mid_sc_inp_sum_mp(unit):
+    """ Add the medium LPF'd scaled sum of inputs for each port separately. 
+
+        This requirement was initially used with the input_selection synapse,
+        and its update implementation is currently in the logarithmic unit.
+    """
+    # TODO: create a safe version with mp_inputs
+    if not unit.multiport:
+        raise AssertionError('The lpf_mid_sc_inp_sum_mp requirement is for ' +
+                             'multiport units')
+    if not hasattr(unit,'tau_mid'): 
+        raise NameError( 'Requirement lpf_mid_sc_inp_sum_mp requires ' +
+                         'parameter tau_mid, not yet set' )
+    if not hasattr(unit, 'mid_prop'):
+        add_propagator(unit, 'mid')
+    setattr(unit, 'lpf_mid_sc_inp_sum_mp', [0.2]*unit.n_ports)
+
 
 #-------------------------------------------------------------------------------------
 # Use of the following classes has been deprecated because they slow down execution
