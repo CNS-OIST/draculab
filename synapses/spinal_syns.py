@@ -127,8 +127,6 @@ class rga_synapse(synapse):
             OPTIONAL PARAMETERS
             'err_port' : port for "error" inputs. Default is 0.
             'lat_port' : port for "lateral" inputs. Default is 1.
-            'max_w' : maximum synaptic weight. Default is 3. DEPRECATED
-            'min_w' : minimum synaptic weight. Default is -3. DEPRECATED
 
         Raises:
             AssertionError.
@@ -156,14 +154,7 @@ class rga_synapse(synapse):
         else: self.lat_port = 1 
         if 'err_port' in params: self.err_port = params['err_port']
         else: self.err_port = 0 
-        # TODO: erase this
-        """
-        if 'max_w' in params: self.max_w = params['max_w']
-        else: self.max_w = 1.
-        if 'min_w' in params: self.min_w = params['min_w']
-        else: self.min_w = -1.
-        """
-
+        
     def update(self, time):
         """ Update the weight using the RGA-inpsired learning rule.
         

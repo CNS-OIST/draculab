@@ -93,7 +93,7 @@ class bouncy_pendulum(pendulum):
         # the inputs generate torque
         torque = self.inp_gain * self.get_input_sum(t,0)
         # torque will also appear when angle is close to pi
-        torque -= (np.tan((y[0]%(2.*np.pi))/2.)/5.)**3
+        torque -= (np.tan((y[0]%(2.*np.pi))/2.)/10.)**3
         # extra viscosity appears close to pi
         mupi = self.pi_visco / (((y[0]+np.pi)%(2.*np.pi))**2 + 1e-5)
         # torque may also come from gravity and friction
