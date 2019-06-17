@@ -4,7 +4,7 @@ The plant models specially adapted for the spinal model.
 """
 from draculab import unit_types, synapse_types, syn_reqs 
 #from units.units import unit, sigmoidal
-from plants.plants import plant, pendulum
+from plants.plants import plant, pendulum, spring_muscle, planar_arm
 import numpy as np
 
 class bouncy_pendulum(pendulum):
@@ -102,3 +102,24 @@ class bouncy_pendulum(pendulum):
         ang_accel = torque / self.I
         return np.array([y[1], ang_accel])
 
+
+class bouncy_planar_arm(planar_arm):
+    """ A version of the planar arm with bounded angles.
+
+        For both the shoulder and elbow joints there are maximum and minimum
+        angles, set by extra parameters in the constructor. These angles are
+        enforced by creating torque and viscous friction whenever a limit angle
+        is approached.
+    """
+    def __init__(self, ID, params, network):
+        """ The class constructor.
+
+            This constructor works by calling the constructor for the planar_arm
+            class, and subsequently setting the extra paramters. See
+            planar_arm.__init__ for the other arguments.
+
+            Args:
+                s_min = minimum shoulder angle
+                s_max = maximum shoulder angle
+                e_min = minimum elbow angle
+                e_max = maximum elbow angle

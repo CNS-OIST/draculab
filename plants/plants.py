@@ -76,12 +76,14 @@ class plant():
 
 
     def init_buffers(self):
-        """ This method (re)initializes the buffer variables according to the current parameters.
+        """ This method nitializes the buffer variables with the current parameters.  
 
-        It is useful because new connections may increase self.delay, and thus the size of the buffers.
+        It is useful because new connections may increase self.delay, and thus
+        the size of the buffers.
         """
     
-        assert self.net.sim_time == 0., 'Plant buffers were reset when the simulation time is not zero'
+        assert self.net.sim_time == 0., 'Plant buffers were reset when ' + \
+                                        'the simulation time is not zero'
         # variables with '*' become redefined for flat networks (see network.flatten)
         min_del = self.net.min_delay  # just to have shorter lines below
         min_buff = self.net.min_buff_size
@@ -1155,6 +1157,8 @@ class planar_arm(plant):
         self.buffer = np.array([self.init_state]*self.buff_width) 
         # initializing muscle state variables in the buffer
         self.upd_muscle_buff(0.)
+        # one variable used in the update method
+        self.mbs = self.net.min_buff_size
 
     def upd_ip(self):
         """ Update the coordinates of all the insertion points (self.ip).
@@ -1202,7 +1206,7 @@ class planar_arm(plant):
         """ Update the buffer entries for the muscle variables. 
         
             'time' is the time for which the muscle inputs will be retrieved.
-            Notice that regardles of the value of 'time', the muscle
+            Notice that regardless of the value of 'time', the muscle
             insertion points used will be the latest ones.
             
             The 'flat' argument indicates whether the network is flattened,
@@ -1346,12 +1350,10 @@ class planar_arm(plant):
         '''
         # updating the double pendulum state variables
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.net.min_buff_size)
-        self.times[self.offset:] = new_times[1:] 
-        new_buff = odeint(self.derivatives, self.buffer[-1,0:4], new_times, 
-                          rtol=self.rtol, atol=self.atol)
-        self.buffer = np.roll(self.buffer, -self.net.min_buff_size, axis=0)
-        self.buffer[self.offset:,0:4] = new_buff[1:,:] 
+        self.times += self.net.min_delay
+        self.buffer[:self.offset,:] = self.buffer[self.mbs:,:]
+        self.buffer[self.offset:,0:4] = odeint(self.derivatives, self.buffer[-1,0:4],
+                                    new_times, rtol=self.rtol, atol=self.atol)[1:,:]
         # updating the muscles
         self.upd_muscle_buff(time)
 
