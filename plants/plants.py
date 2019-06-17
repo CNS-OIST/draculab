@@ -1011,8 +1011,8 @@ class planar_arm(plant):
         """
         # This is the stuff that goes into all model constructors. Adjust accordingly.
         #-------------------------------------------------------------------------------
-        assert params['type'] is plant_models.planar_arm, ['Plant ' +
-                                 str(self.ID) + ' instantiated with the wrong type']
+        #assert params['type'] is plant_models.planar_arm, ['Plant ' +
+        #                         str(self.ID) + ' instantiated with the wrong type']
         params['dimension'] = 28 # notifying dimensionality of model to parent constructor
         params['inp_dim'] = 18 # notifying there are eighteen input ports
         plant.__init__(self, ID, params, network) # calling parent constructor
@@ -1272,6 +1272,7 @@ class planar_arm(plant):
         step the muscle tensions are considered to be constant.
 
         The muscle variables are handled by the custom update methods.
+        Inputs to the muscles are appliead in upd_muscle_buffs.
         These equations were copy-pasted from double_pendulum_validation.ipynb .
 
         Args:
