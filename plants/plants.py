@@ -821,13 +821,13 @@ class spring_muscle():
                     between the received p1 and p2 coordinates, which is the
                     default resting length.
 
-        The tension of the muscle is obtained as:
-            T = s*(l - l0) + g1*i1
-        where T=tension, l=length, and i1=contracting stimulation
+        The spring force of the muscle is obtained as:
+            F = s*(l - l0,0) + g1*i1
+        where F=Force, l=length, and i1=contracting stimulation
         The afferent outputs come from length, velocity, and tension:
             affs[0] = g2*(1+i2)*l/l0, where l0 = resting length in meters.
             affs[1] = g3*(1+i3)*v
-            affs[2] = T
+            affs[2] = s*max(l - l0,0) + g1*i1
         where v is the contraction velocity, and i2,i3 are inputs.
         These output are supposed to represent the Ia, II, and Ib afferents,
         respectively.
@@ -900,7 +900,7 @@ class spring_muscle():
         self.l_lpf_fast = self.l + (self.l_lpf_fast-self.l) * self.fast_propagator
         self.l_lpf_mid = self.l + (self.l_lpf_mid-self.l) * self.mid_propagator
         # update the tension
-        self.T = self.s*(self.l-self.l0) + self.g1*i1
+        self.T = self.s * max(self.l-self.l0, 0.) + self.g1*i1
         # update the velocity
         self.v = self.v_scale * (self.l_lpf_fast - self.l_lpf_mid)
         # update afferents vector
@@ -952,7 +952,7 @@ class planar_arm(plant):
         port 5: group Ia afferent output for muscle 1 (see muscle model)
         port 6: group II afferent output for muscle 1
         port 7: group Ib afferent output for muscle 1
-        port 8-11: same, for muscle 2
+        port 8-11: same as ports 4-7, but for muscle 2
         port 12-15: same, for muscle 3
         port 16-19: same, for muscle 4
         port 20-23: same, for muscle 5

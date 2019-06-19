@@ -111,6 +111,13 @@ class bouncy_planar_arm(planar_arm):
         angles, set by extra parameters in the constructor. These angles are
         enforced by creating torque and viscous friction whenever a limit angle
         is approached.
+
+        A prospective feature of this model is that the afferent outputs are
+        normalized in order to produce an output between 0 and 1. In order to
+        normalize the muscle lengths the maximum and minimum length for each
+        muscle are calculated, and reported to the muscle constructor.
+        In order to normalize the velocity and the tension maximum values are
+        assumed.
     """
     def __init__(self, ID, params, network):
         """ The class constructor.
@@ -120,7 +127,8 @@ class bouncy_planar_arm(planar_arm):
             planar_arm.__init__ for details.
 
             Args:
-                ID, params, network : same as in the planar_arm class
+                ID, params, network : same as in the planar_arm class except:
+                'type' : The enum 'plant_models.bouncy_planar_arm'
                 OPTIONAL PARAMETERS
                 s_min : minimum shoulder angle in (-pi, pi). Default=-0.3 
                 s_max : maximum shoulder angle in (-pi, pi). Default=pi-0.1
@@ -157,7 +165,7 @@ class bouncy_planar_arm(planar_arm):
             raise ValueError('Initial shoulder angle outside permitted range')
         if self.e_min > params['init_q2'] or self.e_max < params['init_q2']:
             raise ValueError('Initial elbow angle outside permitted range')
-        if 'l_torque' in params: self.l_torque = params['l_torque ']
+        if 'l_torque' in params: self.l_torque = params['l_torque']
         else: self.l_torque = 0.01
         if 'l_visco' in params: self.l_visco = params['l_visco']
         else: self.l_visco = 0.
@@ -246,6 +254,78 @@ class bouncy_planar_arm(planar_arm):
                        (L1*L2*m2*q1p**2*sin(q2) + L2*g*m2*cos(q1 + q2) + 2.0*mu2*q2p -
                        2.0*tau2)) / (L1**2*L2**2*m2*(4.0*m1 + 9.0*m2*sin(q2)**2 + 3.0*m2))
         return dydt
+
+    def coords_to_angs(self, coords):
+        """ Receives X-Y coordinates, returns angles that put the hand there.
+
+            Args:
+                coords : list-like with [x,y] coordinates.
+            Returns:
+                List [q1, q2], where q1=shoulder angle, q2=elbow angle.
+            Raises:
+                ValueError
+        """
+        x = coords[0]
+        y = coords[1]
+        Rsq = x*x + y*y
+        R = np.sqrt(Rsq)
+        L1 = self.l_arm
+        L2 = self.l_farm
+        if R > L1 + L2:
+            raise ValueError('Unreachable coordinate given')
+        q2 = np.pi - np.arccos((L1**2 + L2**2 - Rsq) / (2.*L1*L2))
+        q1 = np.arctan2(y,x) - np.arcsin((L2/R)*np.sin(q2))
+        return np.array([q1, q2])
+
+    def coords_to_lengths(self, coords):
+        """ Return the muscle lengths when the hand is at given coordinates.
+
+            Args:
+                coords : list-like with [x,y] coordinates.
+            Returns:
+                Numpy array [l0,...,l5] with the lengts of the 6 muscles.
+            Raises:
+                ValueError
+        """
+        angs = self.coords_to_angs(coords)
+        q1 = angs[0]
+        q2 = angs[1]
+        # Code replicated from upd_ip
+        q12 = q1+q2
+        q1_clip = max(min(q1, self.q1_max), self.q1_min)
+        # update coordinates of the elbow and hand
+        c_elbow = (self.l_arm*np.cos(q1), self.l_arm*np.sin(q1)) 
+        #~~ muscle 1
+        ip1 = self.p1 # if this point doesn't rotate
+        ip2 = (c_elbow[0] + self.l_i2*np.cos(q12+self.a_i2),
+               c_elbow[1] + self.l_i2*np.sin(q12+self.a_i2))
+        #~~ muscle 2
+        ip3 = self.p3  # if this point doesn't rotate
+        ip4 = (self.l_i4*np.cos(q1+self.a_i4), self.l_i4*np.sin(q1+self.a_i4))
+        #~~ muscle 3
+        ip5 = self.p5 # if this point doesn't rotate
+        ip6 = (self.l_i6*np.cos(q1+self.a_i6), self.l_i6*np.sin(q1+self.a_i6))
+        #~~ muscle 4
+        ip7 = self.p7 # if this point doesn't rotate
+        ip8 = (c_elbow[0] - self.l_i8*np.cos(q12-self.a_i8),
+               c_elbow[1] - self.l_i8*np.sin(q12-self.a_i8))
+        #~~ muscle 5
+        ip9 = (self.l_i9*np.cos(q1+self.a_i9), self.l_i9*np.sin(q1+self.a_i9))
+        ip10 = (c_elbow[0] + self.l_i10*np.cos(q12+self.a_i10),
+                c_elbow[1] + self.l_i10*np.sin(q12+self.a_i10))
+        #~~ muscle 6
+        ip11 = (self.l_i11*np.cos(q1+self.a_i11), self.l_i11*np.sin(q1+self.a_i11))
+        ip12 = (c_elbow[0] - self.l_i12*np.cos(q12-self.a_i12),
+                c_elbow[1] - self.l_i12*np.sin(q12-self.a_i12))
+        ips = [[ip1, ip2], [ip3,ip4], [ip5,ip6], [ip7,ip8], [ip9,ip10], [ip11,ip12]]
+        ips = [[np.array(ip[0]), np.array(ip[1])] for ip in ips]
+        lengths = []
+        for ipp in ips:
+            lengths.append(np.linalg.norm(ipp[0]-ipp[1]))
+        return np.array(lengths)
+
+
+
 
 
 
