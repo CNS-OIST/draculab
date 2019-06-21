@@ -825,7 +825,7 @@ class spring_muscle():
             F = s*(l - l0,0) + g1*i1
         where F=Force, l=length, and i1=contracting stimulation
         The afferent outputs come from length, velocity, and tension:
-            affs[0] = g2*(1+i2)*l/l0, where l0 = resting length in meters.
+            affs[0] = g2*(1+i2)*(l-l0)/l0, where l0 = resting length in meters.
             affs[1] = g3*(1+i3)*v
             affs[2] = s*max(l - l0,0) + g1*i1
         where v is the contraction velocity, and i2,i3 are inputs.
@@ -904,7 +904,7 @@ class spring_muscle():
         # update the velocity
         self.v = self.v_scale * (self.l_lpf_fast - self.l_lpf_mid)
         # update afferents vector
-        self.affs[0] = self.g2 * (1.+i2) * self.l / self.l0
+        self.affs[0] = self.g2 * (1.+i2) * (self.l - self.l0) / self.l0
         self.affs[1] = self.g3 * (1.+i3) * self.v
         self.affs[2] = self.T
 
@@ -1002,7 +1002,10 @@ class planar_arm(plant):
                         used in rest_l are the lengths in the reference
                         position; e.g. the default value of rest_l is an array
                         like [1, 1, 1, 1, 1, 1].
-                m_gain: gain for the muscle forces (default 1).
+                m_gain: gain for the muscle inputs (default 1).
+                l_gain : gain for muscle Ia (length) afferents (default 1)
+                v_gain : gain for muscle II (velocity) afferents (default 1)
+                spring : muscle spring constant (Default 1)
             network: the network where the plant instance lives.
 
         Raises:
@@ -1091,6 +1094,12 @@ class planar_arm(plant):
             self.rest_l = np.ones(6)
         if 'm_gain' in params: self.m_gain = params['m_gain']
         else: self.m_gain = 1.
+        if 'l_gain' in params: self.l_gain = params['l_gain']
+        else: self.l_gain = 1.
+        if 'v_gain' in params: self.v_gain = params['v_gain']
+        else: self.v_gain = 1.
+        if 'spring' in params: self.spring = params['spring']
+        else: self.spring = 1.
         # extract geometry information from the coordinates
         #~~ arm and forearm lengths
         self.l_arm = self.c_elbow[0]  # length of the upper arm
@@ -1136,10 +1145,10 @@ class planar_arm(plant):
         self.q1_max = np.pi/12.
         # create the muscles
         mus_pars = {'l0': 1., # resting length
-                's' : 5., # spring constant
+                's' : self.spring, # spring constant
                 'g1': self.m_gain,  # contraction input gain
-                'g2': 1., # length afferent gain
-                'g3': 1., # velocity afferent gain
+                'g2': self.l_gain, # length afferent gain
+                'g3': self.v_gain, # velocity afferent gain
                 'dt': self.net.min_delay, # time step length
                 'p1': [], # proximal insertion point
                 'p2': [] } # distal insertion point
