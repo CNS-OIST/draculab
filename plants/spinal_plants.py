@@ -111,14 +111,13 @@ class bouncy_planar_arm(planar_arm):
         angles, set by extra parameters in the constructor. These angles are
         enforced by creating torque and viscous friction whenever a limit angle
         is approached.
-
-        A prospective feature of this model is that the afferent outputs are
-        normalized in order to produce an output between 0 and 1. In order to
-        normalize the muscle lengths the maximum and minimum length for each
-        muscle are calculated, and reported to the muscle constructor.
-        In order to normalize the velocity and the tension maximum values are
-        assumed.
     """
+        #A prospective feature of this model is that the afferent outputs are
+        #normalized in order to produce an output between 0 and 1. In order to
+        #normalize the muscle lengths the maximum and minimum length for each
+        #muscle are calculated, and reported to the muscle constructor.
+        #In order to normalize the velocity and the tension maximum values 
+        #would be assumed.
     def __init__(self, ID, params, network):
         """ The class constructor.
 

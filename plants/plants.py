@@ -981,18 +981,18 @@ class planar_arm(plant):
                 'g' : gravitational acceleration constant. [m/s^2] (Default: 9.81)
                 'mu1' : Viscous friction coefficient at shoulder joint. (Default: 0)
                 'mu2' : Viscous friction coefficient at elbow joint. (Default: 0)
-                i1: proximal insertion point of muscle 1 (2-element array-like).
-                i2: distal insertion point of muscle 1 (2-element array-like).
-                i3: proximal insertion point of muscle 2 (2-element array-like).
-                i4: distal insertion point of muscle 2 (2-element array-like).
-                i5: proximal insertion point of muscle 3 (2-element array-like).
-                i6: distal insertion point of muscle 3 (2-element array-like).
-                i7: proximal insertion point of muscle 4 (2-element array-like).
-                i8: distal insertion point of muscle 4 (2-element array-like).
-                i9: proximal insertion point of muscle 5 (2-element array-like).
-                i10: distal insertion point of muscle 5 (2-element array-like).
-                i11: proximal insertion point of muscle 6 (2-element array-like).
-                i12: distal insertion point of muscle 6 (2-element array-like).
+                p1: proximal insertion point of muscle 1 (2-element array-like).
+                p2: distal insertion point of muscle 1 (2-element array-like).
+                p3: proximal insertion point of muscle 2 (2-element array-like).
+                p4: distal insertion point of muscle 2 (2-element array-like).
+                p5: proximal insertion point of muscle 3 (2-element array-like).
+                p6: distal insertion point of muscle 3 (2-element array-like).
+                p7: proximal insertion point of muscle 4 (2-element array-like).
+                p8: distal insertion point of muscle 4 (2-element array-like).
+                p9: proximal insertion point of muscle 5 (2-element array-like).
+                p10: distal insertion point of muscle 5 (2-element array-like).
+                p11: proximal insertion point of muscle 6 (2-element array-like).
+                p12: distal insertion point of muscle 6 (2-element array-like).
                 c_elbow: coordinates of the elbow in the reference position.
                 c_hand: coordinates of the hand in the reference position.
                 rest_l: a 6-element array-like with the rest lengths for the 6

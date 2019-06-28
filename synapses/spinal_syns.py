@@ -156,7 +156,7 @@ class rga_synapse(synapse):
         else: self.err_port = 0 
         
     def update(self, time):
-        """ Update the weight using the RGA-inpsired learning rule.
+        """ Update the weight using the RGA-inspired learning rule.
         
             If the network is correctly initialized, the pre-synaptic unit 
             updates lpf_fast, and lpf_mid, whereas the post-synaptic unit
@@ -179,7 +179,7 @@ class rga_synapse(synapse):
         pre = self.net.units[self.preID]
         spj = (pre.get_lpf_fast(self.delay_steps) -
                pre.get_lpf_mid(self.delay_steps) )
-        self.w *= 0.5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        #self.w *= 0.5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         #self.w *= pre.out_norm_factor
         #self.w *= u.l0_norm_factor_mp[self.err_port]
         #self.w += self.alpha * max(up - xp, 0.) * (sp - spj)

@@ -152,6 +152,7 @@ class am_pm_oscillator(unit):
               zip(self.get_mp_inputs(t), self.get_mp_weights(t)) ]
         # Obtain the derivatives
         #Dc = y[1]*(1. - y[1])*(I[0] + I[1]) / self.tau_c
+        #Dc = max(y[1],1e-3)*max(1. - y[1],1e-3)*(I[0] + I[1]) / self.tau_c
         # The Dc version below is when I[0] is always positive
         Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         #slow_I0 = self.lpf_slow_mp_inp_sum[0]
@@ -169,6 +170,10 @@ class am_pm_oscillator(unit):
                y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2]))) / self.tau_u
         return np.array([Du, Dc, Dth, DI0])
 
+    def H(self, t):
+        """ The Heaviside step function. """
+        return 1. if t > 0. else 0.
+
     def dt_fun(self, y, s):
         """ the derivatives function when the network is flat.
 :
@@ -185,11 +190,14 @@ class am_pm_oscillator(unit):
         # get the input sum at each port
         I = [ port_sum[s] for port_sum in self.mp_inp_sum ]
         # Obtain the derivatives
-        #Dc = y[1]*(1. - y[1])*(I[0] + I[1]) / self.tau_c
+        #Dc = max(y[1],1e-3)*max(1. - y[1],1e-3)*(I[0] + I[1]) / self.tau_c
         # The Dc version below is when I[0] is always positive
-        Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        #Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        Dc = 0.01*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         Dth = (self.omega + self.f(I)) / self.tau_t
         DI0 = np.tanh(I[0] - y[3]) / self.tau_s
+        Dc += DI0 #/self.tau_c
+        #Dc = self.H(self.net.sim_time-600.)*y[1]*(1. - y[1])*(I[0] + I[1]) / self.tau_c
         Du = ((1.-y[0]) * (y[0]-.01) * (Dc + (y[1] - y[0]) + 
                y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2]))) / self.tau_u
         return np.array([Du, Dc, Dth, DI0])
@@ -326,6 +334,22 @@ class out_norm_am_sig(sigmoidal):
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
         return ( self.mp_inp_sum[1][s]*self.f(self.mp_inp_sum[0][s]) - y ) * self.rtau
+
+    def upd_lpf_fast_sc_inp_sum_mp(self, time):
+        """ Update a list with fast LPF'd scaled sums of inputs at each port. """
+        sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(time),
+                                           self.get_mp_weights(time))]
+        # same update rule from other upd_lpf_X methods, put in a list comprehension
+        self.lpf_fast_sc_inp_sum_mp = [sums[i] + (self.lpf_fast_sc_inp_sum_mp[i] - sums[i])
+                                       * self.fast_prop for i in range(self.n_ports)]
+
+    def upd_lpf_mid_sc_inp_sum_mp(self, time):
+        """ Update a list with medium LPF'd scaled sums of inputs at each port. """
+        sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(time),
+                                           self.get_mp_weights(time))]
+        # same update rule from other upd_lpf_X methods, put in a list comprehension
+        self.lpf_mid_sc_inp_sum_mp = [sums[i] + (self.lpf_mid_sc_inp_sum_mp[i] - sums[i])
+                                       * self.mid_prop for i in range(self.n_ports)]
 
 
 class logarithmic(unit):
