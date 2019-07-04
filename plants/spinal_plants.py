@@ -286,12 +286,9 @@ class bouncy_planar_arm(planar_arm):
             Raises:
                 ValueError
         """
-        angs = self.coords_to_angs(coords)
-        q1 = angs[0]
-        q2 = angs[1]
+        q1, q2 = self.coords_to_angs(coords)
         # Code replicated from upd_ip
         q12 = q1+q2
-        q1_clip = max(min(q1, self.q1_max), self.q1_min)
         # update coordinates of the elbow and hand
         c_elbow = (self.l_arm*np.cos(q1), self.l_arm*np.sin(q1)) 
         #~~ muscle 1

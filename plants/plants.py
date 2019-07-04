@@ -1141,8 +1141,8 @@ class planar_arm(plant):
         self.l_i12 = np.sqrt((self.p12[0]-self.c_elbow[0])**2 + self.p12[1]**2)
         self.a_i12 = np.arctan(abs((self.c_elbow[0]-self.p12[0])/self.p12[1]))
         # set limit rotation angles for shoulder insertion points (see upd_ip)
-        self.q1_min = -np.pi/12.
-        self.q1_max = np.pi/12.
+        #self.q1_min = -np.pi/12. # currently not used
+        #self.q1_max = np.pi/12.
         # create the muscles
         mus_pars = {'l0': 1., # resting length
                 's' : self.spring, # spring constant
@@ -1182,7 +1182,7 @@ class planar_arm(plant):
             q1 = self.buffer[-1, 0] 
             q2 = self.buffer[-1, 2] 
         q12 = q1+q2
-        q1_clip = max(min(q1, self.q1_max), self.q1_min)
+        #q1_clip = max(min(q1, self.q1_max), self.q1_min)
         # update coordinates of the elbow and hand
         self.c_elbow = (self.l_arm*np.cos(q1), self.l_arm*np.sin(q1)) 
         self.c_hand = (self.c_elbow[0] + self.l_farm*np.cos(q12),

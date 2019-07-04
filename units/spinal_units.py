@@ -410,6 +410,74 @@ class logarithmic(unit):
 
 
 
+class rga_sig(sigmoidal):
+    """ A sigmoidal unit that can receive rga synapses.
 
+        This means it has the extra custom_inp_del attribute, as well as
+        implementations of all required requirement update functions.
+        Moreover, it is a multiport unit.
 
+        The des_out_w_abs_sum parameter is included in case the
+        pre_out_norm_factor requirement is used.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'slope' : Slope of the sigmoidal function.
+                    'thresh' : Threshold of the sigmoidal function.
+                    'tau' : Time constant of the update dynamics.
+                    Using rga synapses brings an extra required parameter:
+                   'custom_inp_del' : an integer indicating the delay that the rga
+                                  learning rule uses for the lateral port inputs. 
+                                  The delay is in units of min_delay steps. 
+                OPTIONAL PARAMETERS
+                    'des_out_w_abs_sum' : desired sum of absolute weight values
+                                          for the outgoing connections.
+                                          Default is 1.
+            Raises:
+                AssertionError.
+        """
+        if 'n_ports' in params and params['n_ports'] != 2:
+            raise AssertionError('rga_sig units must have n_ports=2')
+        else:
+            params['n_ports'] = 2
+        if 'custom_inp_del' in params:
+            self.custom_inp_del = params['custom_inp_del']
+        else:
+            raise AssertionError('rga_sig units need a custom_inp_del parameter')
+        sigmoidal.__init__(self, ID, params, network)
+        if 'des_out_w_abs_sum' in params:
+            self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        else:
+            self.des_out_w_abs_sum = 1.
+        self.needs_mp_inp_sum = False # the sigmoidal uses self.inp_sum
+
+    def upd_avg_inp_deriv_mp(self, time):
+        """ Update the list with the average of input derivatives for each port. """
+        self.avg_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
+                                 for l in self.inp_deriv_mp]
+
+    def upd_inp_deriv_mp(self, time):
+        """ Update the list with input derivatives for each port.  """
+        u = self.net.units
+        self.inp_deriv_mp = [[u[uid[idx]].get_lpf_fast(dely[idx]) -
+                              u[uid[idx]].get_lpf_mid(dely[idx]) 
+                              for idx in range(len(uid))]
+                              for uid, dely in self.pre_list_del_mp]
+ 
+    def upd_del_avg_inp_deriv_mp(self, time):
+        """ Update the list with delayed averages of input derivatives for each port. """
+        self.del_avg_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
+                                     for l in self.del_inp_deriv_mp]
+
+    def upd_del_inp_deriv_mp(self, time):
+        """ Update the list with custom delayed input derivatives for each port. """
+        u = self.net.units
+        self.del_inp_deriv_mp = [[u[uid].get_lpf_fast(self.custom_inp_del) - 
+                                  u[uid].get_lpf_mid(self.custom_inp_del) 
+                                  for uid in lst] for lst in self.pre_list_mp]
 
