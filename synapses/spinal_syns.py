@@ -134,9 +134,6 @@ class rga_synapse(synapse):
         synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
-        # po_de is the delay in postsynaptic activity for the learning rule
-        # It is set to match the delay in the 'lateral' input ports of the post unit
-        self.po_de = self.net.units[self.postID].custom_inp_del
         # most of the heavy lifting is done by requirements
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
                              syn_reqs.lpf_fast, syn_reqs.lpf_mid, 
@@ -150,6 +147,9 @@ class rga_synapse(synapse):
         if not hasattr(self.net.units[self.postID], 'custom_inp_del'):
             raise AssertionError('An rga synapse has a postsynaptic unit without ' +
                                  'the custom_inp_del attribute')
+        # po_de is the delay in postsynaptic activity for the learning rule
+        # It is set to match the delay in the 'lateral' input ports of the post unit
+        self.po_de = self.net.units[self.postID].custom_inp_del
         if 'lat_port' in params: self.lat_port = params['lat_port']
         else: self.lat_port = 1 
         if 'err_port' in params: self.err_port = params['err_port']
@@ -179,7 +179,7 @@ class rga_synapse(synapse):
         pre = self.net.units[self.preID]
         spj = (pre.get_lpf_fast(self.delay_steps) -
                pre.get_lpf_mid(self.delay_steps) )
-        #self.w *= 0.5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        self.w *= 0.5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         #self.w *= pre.out_norm_factor
         #self.w *= u.l0_norm_factor_mp[self.err_port]
         #self.w += self.alpha * max(up - xp, 0.) * (sp - spj)
