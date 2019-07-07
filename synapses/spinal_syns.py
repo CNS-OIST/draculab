@@ -259,7 +259,7 @@ class input_selection_synapse(synapse):
                     u.lpf_mid_sc_inp_sum_mp[self.error_port]) 
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
             
-        self.w *= self.net.units[self.postID].l0_norm_factor_mp[self.aff_port]
+        self.w *= 2.*self.net.units[self.postID].l0_norm_factor_mp[self.aff_port]
         self.w = self.w + self.alpha * pre * err_diff
 
 
