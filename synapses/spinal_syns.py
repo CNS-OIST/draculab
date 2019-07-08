@@ -179,7 +179,7 @@ class rga_synapse(synapse):
         pre = self.net.units[self.preID]
         spj = (pre.get_lpf_fast(self.delay_steps) -
                pre.get_lpf_mid(self.delay_steps) )
-        self.w *= 0.5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        #self.w *= 0.5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         #self.w *= pre.out_norm_factor
         #self.w *= u.l0_norm_factor_mp[self.err_port]
         #self.w += self.alpha * max(up - xp, 0.) * (sp - spj)

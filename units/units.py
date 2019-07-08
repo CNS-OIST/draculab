@@ -880,6 +880,13 @@ class unit():
         self.lpf_mid_inp_sum_buff[-1] = self.lpf_mid_inp_sum
 
 
+    def upd_lpf_slow_sc_inp_sum(self, time):
+        """ Update the lpf_slow_sc_inp_sum variable. """
+        I = self.get_input_sum(time)
+        self.lpf_slow_sc_inp_sum = I + ( (self.lpf_slow_sc_inp_sum - I) * 
+                                         self.slow_prop )
+
+
     def get_lpf_mid_inp_sum(self):
         """ Get the latest value of the mid-speed low-pass filtered sum of inputs. """
         return self.lpf_mid_inp_sum_buff[-1]

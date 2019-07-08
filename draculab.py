@@ -432,6 +432,7 @@ class syn_reqs(Enum):
     sc_inp_sum_diff_mp = 109 # derivative of the scaled input sum for each port
     lpf_fast_sc_inp_sum_mp = 110 # fast LPF'd scaled input sum per port
     lpf_mid_sc_inp_sum_mp = 111 # mid LPF'd scaled input sum per port
+    lpf_slow_sc_inp_sum = 112 # slow LPF'd scaled input sum, single port
 
 
     def list_names():

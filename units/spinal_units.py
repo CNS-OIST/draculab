@@ -417,6 +417,11 @@ class rga_sig(sigmoidal):
         implementations of all required requirement update functions.
         Moreover, it is a multiport unit.
 
+        Another addition is that this unit has an integral component. This means
+        that the input is integrated (actually, low-pass filtered with the
+        tau_slow time constant), and the output comes from the sigmoidal 
+        function applied to the scaled input sum plus the integral component.
+
         The des_out_w_abs_sum parameter is included in case the
         pre_out_norm_factor requirement is used.
     """
@@ -430,10 +435,14 @@ class rga_sig(sigmoidal):
                     'slope' : Slope of the sigmoidal function.
                     'thresh' : Threshold of the sigmoidal function.
                     'tau' : Time constant of the update dynamics.
+                    'tau_slow' : Slow LPF time constant.
+                    'integ_amp' : amplitude multiplier of the integral
+                                    component.
                     Using rga synapses brings an extra required parameter:
-                   'custom_inp_del' : an integer indicating the delay that the rga
+                    'custom_inp_del' : an integer indicating the delay that the rga
                                   learning rule uses for the lateral port inputs. 
                                   The delay is in units of min_delay steps. 
+
                 OPTIONAL PARAMETERS
                     'des_out_w_abs_sum' : desired sum of absolute weight values
                                           for the outgoing connections.
@@ -454,7 +463,20 @@ class rga_sig(sigmoidal):
             self.des_out_w_abs_sum = params['des_out_w_abs_sum']
         else:
             self.des_out_w_abs_sum = 1.
+        self.integ_amp = params['integ_amp']
+        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum])
         self.needs_mp_inp_sum = False # the sigmoidal uses self.inp_sum
+
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity at time t. """
+        inp = self.get_input_sum(t) + self.integ_amp * self.lpf_slow_sc_inp_sum
+        return ( self.f(inp) - y[0] ) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        inp = self.inp_sum[s] + self.integ_amp * self.lpf_slow_sc_inp_sum
+        return ( self.f(inp) - y ) * self.rtau
+
 
     def upd_avg_inp_deriv_mp(self, time):
         """ Update the list with the average of input derivatives for each port. """

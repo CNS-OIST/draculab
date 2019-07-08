@@ -274,6 +274,27 @@ def add_lpf_mid_inp_sum(unit):
             np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type))
 
 
+def add_lpf_slow_sc_inp_sum(unit):
+    """ Adds the slow low-pass filtered scaled sum of inputs.
+
+        This requirement was first used by the rga_sig unit model.
+
+        As the name suggests, the sum of inputs is filtered with the tau_slow time
+        constant. The inputs include transmission delays, and each one is multiplied
+        by its synaptic weight. The sum of inputs comes from the get_input_sum
+        function.
+
+        Unlike lpf_slow_inp_sum, this requirement has no associated buffer at
+        this point.
+    """
+    if not hasattr(unit,'tau_slow'): 
+        raise NameError( 'The lpf_slow_sc_inp_sum requirement needs the ' +
+                         'parameter tau_slow, not yet set' )
+    if not hasattr(unit, 'slow_prop'):
+        add_propagator(unit, 'slow')
+    setattr(unit, 'lpf_slow_sc_inp_sum', unit.init_act) # arbitrary initialization
+
+
 def add_lpf_slow_mp_inp_sum(unit):
     """ Adds a slow LPF'd scaled sum of inputs for each input port.
 
