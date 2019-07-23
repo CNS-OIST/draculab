@@ -68,6 +68,7 @@ class unit_types(Enum):
     out_norm_am_sig = 104 # from spinal units
     logarithmic = 105 # from spinal units
     rga_sig = 106 # from spinal units
+    act = 107 # from spinal units
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -198,6 +199,9 @@ class unit_types(Enum):
         elif self == unit_types.rga_sig:
             from units.spinal_units import rga_sig 
             unit_class = rga_sig 
+        elif self == unit_types.act:
+            from units.spinal_units import act 
+            unit_class = act 
         else:
             raise NotImplementedError('Attempting to retrieve the class of an ' + 
                                       'unknown unit model')
@@ -432,7 +436,8 @@ class syn_reqs(Enum):
     sc_inp_sum_diff_mp = 109 # derivative of the scaled input sum for each port
     lpf_fast_sc_inp_sum_mp = 110 # fast LPF'd scaled input sum per port
     lpf_mid_sc_inp_sum_mp = 111 # mid LPF'd scaled input sum per port
-    lpf_slow_sc_inp_sum = 112 # slow LPF'd scaled input sum, single port
+    lpf_mid_sc_inp_sum_mp = 112 # slow LPF'd scaled input sum per port
+    lpf_slow_sc_inp_sum = 113 # slow LPF'd scaled input sum, single port
 
 
     def list_names():

@@ -503,3 +503,65 @@ class rga_sig(sigmoidal):
                                   u[uid].get_lpf_mid(self.custom_inp_del) 
                                   for uid in lst] for lst in self.pre_list_mp]
 
+
+class act(unit):
+    """ Action clock unit from the cortex wiki.
+
+        In the context of the spinal model, they are meant to receive input
+        from the SPF layer at port 0, increasing their value from 0 to 1, going
+        slower when F is close to P, and faster when the SPF signals are larger.
+        The equations are in the "detecting layer distances" tiddler.
+
+        When their value gets close enough to 1, their target unit will trigger
+        an oscillatory/exploratory phase.
+
+        When the scaled sum of inputs at port 1 is larger than a reset
+        threshold, the unit will reset its value back to 0, and will remain
+        insensitive to port 1 inputs until its own activation goes beyond a
+        minimum level. The reset may also temporarily set the effective value of
+        the the gamma parameter to 0 until the minimum level is reached.
+
+        This unit has the lpf_slow_sc_inp_sum_mp requirement, which requires the
+        tau_slow parameter.
+    """
+    def __init__(self, ID, params, network):
+        """
+        The unit constructor.
+
+        Args:
+            ID, params, network: same as in the 'unit' class.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                tau_u : time constant for the activation growth.
+                gamma : multiplier to the "sigmoidal distance" Y.
+                g : slope of the sigmoidal that produces Y.
+                theta : threshold of the sigmoidal that produces Y.
+                tau_slow : slow LPF time constant.
+        """
+        if 'n_ports' in params and params['n_ports'] != 2:
+            raise AssertionError('act units must have n_ports=2')
+        else:
+            params['n_ports'] = 2
+        unit.__init__(self, ID, params, network)
+        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum_mp])
+        self.needs_mp_inp_sum = True  # don't want port 1 inputs in the sum
+        self.g = params['g']
+        self.theta = params['theta']
+        self.gamma = params['gamma']
+        self.gamma_eff = params['gamma']
+
+
+
+    def upd_lpf_slow_sc_inp_sum_mp(self, time):
+        """ Update a list with slow LPF'd scaled sums of inputs at each port. """
+        sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(time),
+                                           self.get_mp_weights(time))]
+        # same update rule from other upd_lpf_X methods, put in a list comprehension
+        self.lpf_slow_sc_inp_sum_mp = [sums[i] + (self.lpf_slow_sc_inp_sum_mp[i] - sums[i])
+                                       * self.slow_prop for i in range(self.n_ports)]
+
+
+
+
+
+

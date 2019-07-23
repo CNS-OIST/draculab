@@ -821,6 +821,25 @@ def add_lpf_mid_sc_inp_sum_mp(unit):
     setattr(unit, 'lpf_mid_sc_inp_sum_mp', [0.2]*unit.n_ports)
 
 
+def add_lpf_slow_sc_inp_sum_mp(unit):
+    """ Add the slow LPF'd scaled sum of inputs for each port separately. 
+
+        This requirement was initially used with the act unit, where its
+        update implementation currently resides.
+    """
+    # TODO: create a safe version with mp_inputs
+    if not unit.multiport:
+        raise AssertionError('The lpf_slow_sc_inp_sum_mp requirement is for ' +
+                             'multiport units')
+    if not hasattr(unit,'tau_slow'): 
+        raise NameError( 'Requirement lpf_slow_sc_inp_sum_mp requires ' +
+                         'parameter tau_slow, not yet set' )
+    if not hasattr(unit, 'slow_prop'):
+        add_propagator(unit, 'slow')
+    setattr(unit, 'lpf_slow_sc_inp_sum_mp', [0.2]*unit.n_ports)
+
+
+
 #-------------------------------------------------------------------------------------
 # Use of the following classes has been deprecated because they slow down execution
 #-------------------------------------------------------------------------------------
