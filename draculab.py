@@ -68,7 +68,8 @@ class unit_types(Enum):
     out_norm_am_sig = 104 # from spinal units
     logarithmic = 105 # from spinal units
     rga_sig = 106 # from spinal units
-    act = 107 # from spinal units
+    gated_rga_sig = 107 # from spinal units
+    act = 108 # from spinal units
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -199,6 +200,9 @@ class unit_types(Enum):
         elif self == unit_types.rga_sig:
             from units.spinal_units import rga_sig 
             unit_class = rga_sig 
+        elif self == unit_types.gated_rga_sig:
+            from units.spinal_units import gated_rga_sig 
+            unit_class = gated_rga_sig 
         elif self == unit_types.act:
             from units.spinal_units import act 
             unit_class = act 
@@ -237,7 +241,9 @@ class synapse_types(Enum):
     diff_hebbsnorm2 = 201 # a variation on diff_hebbsnorm
     anticov_inh = 202 # anticovariance for inhibitory synapses
     rga = 203 # relative gain array-inspired version of diff_hebbsnorm
-    inp_sel = 204 # variant of input correlation
+    gated_rga = 204 # rga with modulated learning rate
+    inp_sel = 205 # variant of input correlation
+    chg = 206 # the change detection synapse (CHG)
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -309,9 +315,15 @@ class synapse_types(Enum):
         elif self == synapse_types.rga:
             from synapses.spinal_syns import rga_synapse 
             syn_class = rga_synapse
+        elif self == synapse_types.gated_rga:
+            from synapses.spinal_syns import gated_rga_synapse 
+            syn_class = gated_rga_synapse
         elif self == synapse_types.inp_sel:
             from synapses.spinal_syns import input_selection_synapse
             syn_class = input_selection_synapse
+        elif self == synapse_types.chg:
+            from synapses.spinal_syns import chg_synapse
+            syn_class = chg_synapse 
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -436,8 +448,10 @@ class syn_reqs(Enum):
     sc_inp_sum_diff_mp = 109 # derivative of the scaled input sum for each port
     lpf_fast_sc_inp_sum_mp = 110 # fast LPF'd scaled input sum per port
     lpf_mid_sc_inp_sum_mp = 111 # mid LPF'd scaled input sum per port
-    lpf_mid_sc_inp_sum_mp = 112 # slow LPF'd scaled input sum per port
+    lpf_slow_sc_inp_sum_mp = 112 # slow LPF'd scaled input sum per port
     lpf_slow_sc_inp_sum = 113 # slow LPF'd scaled input sum, single port
+    acc_mid = 114 # accumulator with dynamics acc_mid' = (1 - acc_mid)/tau_mid
+    acc_slow = 115 # accumuluator with dynamics acc_slow' = (1 - acc_slow)/tau_slow
 
 
     def list_names():

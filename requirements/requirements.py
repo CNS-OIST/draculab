@@ -839,6 +839,43 @@ def add_lpf_slow_sc_inp_sum_mp(unit):
     setattr(unit, 'lpf_slow_sc_inp_sum_mp', [0.2]*unit.n_ports)
 
 
+def add_acc_mid(unit):
+    """ Add value that approaches 1 asymptotically.
+
+        acc_mid' = (1 - acc_mid) / tau_mid
+        This was originally used in the rga_sig units as a part of a mechanism
+        that stopped learning for a moment whenever the target was changed.
+        Currently upd_acc_mid is in the gated_rga_sig unit. The implementation
+        resets the value to 0 if the scaled input sum at port 2 is larger than
+        0.5 .
+    """
+    if not hasattr(unit,'tau_mid'): 
+        raise NameError( 'Requirement acc_mid requires the ' +
+                         'parameter tau_mid, not yet set' )
+    if not hasattr(unit, 'mid_prop'):
+        add_propagator(unit, 'mid')
+    setattr(unit, 'acc_mid', 0.)
+
+
+def add_acc_slow(unit):
+    """ Add value that approaches 1 asymptotically.
+
+        acc_slow' = (1 - acc_slow) / tau_slow
+        This was originally used in the rga_sig units as a part of a mechanism
+        that stopped learning for a moment whenever the target was changed.
+        Currently upd_acc_slow is in the gated_rga_sig unit. The implementation
+        resets the value to 0 if the scaled input sum at port 2 is larger than
+        0.5 .
+    """
+    if not hasattr(unit,'tau_slow'): 
+        raise NameError( 'Requirement acc_slow requires the ' +
+                         'parameter tau_slow, not yet set' )
+    if not hasattr(unit, 'slow_prop'):
+        add_propagator(unit, 'slow')
+    setattr(unit, 'acc_slow', 0.)
+
+
+
 
 #-------------------------------------------------------------------------------------
 # Use of the following classes has been deprecated because they slow down execution

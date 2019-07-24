@@ -113,8 +113,9 @@ class oja_synapse(synapse):
         A possibly significant difference is that the presynaptic activity (pre) is delayed,
         according to the transmission delay corresponding to this synapse.
 
-        Since there are no discrete inputs, the presynaptic activity is tracked with a low-pass filter,
-        and used to adapt the weight everytime the "update" function is called.
+        Since there are no discrete inputs, the presynaptic activity is tracked
+        with a low-pass filter, and used to adapt the weight everytime the 
+        "update" function is called.
         Pre and postsynaptic units need to include a 'tau_fast' parameter.
     """
     def __init__(self, params, network):
