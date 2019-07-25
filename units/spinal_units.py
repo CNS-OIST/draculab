@@ -516,12 +516,10 @@ class act(unit):
         When their value gets close enough to 1, their target unit will trigger
         an oscillatory/exploratory phase.
 
-        When the scaled sum of inputs at port 1 is larger than a reset
-        threshold, the unit will reset its value back to 0, and will remain
-        insensitive to port 1 inputs until its own activation goes beyond a
-        minimum level. The reset may also temporarily set the effective value of
-        the the gamma parameter to 0 until the minimum level is reached.
-
+        When the scaled sum of inputs at port 1 is larger than 0.5,  the unit
+        will reset its value to 0, and will remain at 0 until the port 1 
+        inputs decrease below 0.5 .
+        
         This unit has the lpf_slow_sc_inp_sum_mp requirement, which requires the
         tau_slow parameter.
     """
@@ -545,13 +543,12 @@ class act(unit):
             params['n_ports'] = 2
         unit.__init__(self, ID, params, network)
         self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum_mp])
-        self.needs_mp_inp_sum = True  # don't want port 1 inputs in the sum
+        self.tau_u = params['tau_u']
         self.g = params['g']
         self.theta = params['theta']
         self.gamma = params['gamma']
-        self.gamma_eff = params['gamma']
-
-
+        self.tau_slow = params['tau_slow']
+        self.needs_mp_inp_sum = True  # don't want port 1 inputs in the sum
 
     def upd_lpf_slow_sc_inp_sum_mp(self, time):
         """ Update a list with slow LPF'd scaled sums of inputs at each port. """
@@ -561,6 +558,34 @@ class act(unit):
         self.lpf_slow_sc_inp_sum_mp = [sums[i] + (self.lpf_slow_sc_inp_sum_mp[i] - sums[i])
                                        * self.slow_prop for i in range(self.n_ports)]
 
+
+    def derivatives(self, y, t):
+        """ Return the derivative of the activation at the given time. """
+        I1 = (self.get_mp_inputs(t)[1]*self.get_mp_weights(t)[1]).sum()
+        if I1 < 0.5:
+            I0 = (self.get_mp_inputs(t)[0]*self.get_mp_weights(t)[0]).sum()
+            I0_lpf = self.lpf_slow_sc_inp_sum_mp[0]
+            Y = 1. / (1. + np.exp(self.g*(I0 - self.theta)))
+            Y_lpf = 1. / (1. + np.exp(-self.g*(I0_lpf - self.theta)))
+            dY = Y - Y_lpf
+            du = (1. - y[0] + self.gamma*dY) / self.tau_u
+        else:
+            du = -40.*y[0] # rushing towards 0
+        return du
+
+    def dt_fun(self, y, s):
+        """ Return the derivative of the activation in a flat network. """
+        I1 = self.mp_inp_sum[1][s]
+        if I1 < 0.5:
+            I0 = self.mp_inp_sum[0][s]
+            I0_lpf = self.lpf_slow_sc_inp_sum_mp[0]
+            Y = 1. / (1. + np.exp(self.g*(I0 - self.theta)))
+            Y_lpf = 1. / (1. + np.exp(-self.g*(I0_lpf - self.theta)))
+            dY = Y - Y_lpf
+            du = (1. - y + self.gamma*dY) / self.tau_u
+        else:
+            du = -40.*y # rushing towards 0
+        return du
 
 
 
@@ -630,8 +655,7 @@ class gated_rga_sig(sigmoidal):
         else:
             self.des_out_w_abs_sum = 1.
         self.integ_amp = params['integ_amp']
-        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum, syn_reqs.acc_slow,
-                               syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid])
+        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum, syn_reqs.acc_slow])
         self.needs_mp_inp_sum = True # to avoid adding the reset signal
 
     def derivatives(self, y, t):
@@ -654,11 +678,15 @@ class gated_rga_sig(sigmoidal):
 
     def upd_inp_deriv_mp(self, time):
         """ Update the list with input derivatives for each port.  """
+        # WARNING: this method has been modified so only ports 0 and 1 are
+        # considered.
         u = self.net.units
         self.inp_deriv_mp = [[u[uid[idx]].get_lpf_fast(dely[idx]) -
                               u[uid[idx]].get_lpf_mid(dely[idx]) 
                               for idx in range(len(uid))]
-                              for uid, dely in self.pre_list_del_mp]
+                              for uid, dely in 
+                            [self.pre_list_del_mp[0], self.pre_list_del_mp[1]]]
+                              #self.pre_list_del_mp]
  
     def upd_del_avg_inp_deriv_mp(self, time):
         """ Update the list with delayed averages of input derivatives for each port. """
@@ -667,10 +695,14 @@ class gated_rga_sig(sigmoidal):
 
     def upd_del_inp_deriv_mp(self, time):
         """ Update the list with custom delayed input derivatives for each port. """
+        # WARNING: this method has been modified so only ports 0 and 1 are
+        # considered.
         u = self.net.units
         self.del_inp_deriv_mp = [[u[uid].get_lpf_fast(self.custom_inp_del) - 
                                   u[uid].get_lpf_mid(self.custom_inp_del) 
-                                  for uid in lst] for lst in self.pre_list_mp]
+                                  for uid in lst] for lst in 
+                                  [self.pre_list_mp[0], self.pre_list_mp[1]]]
+                                  #self.pre_list_mp]
 
     def upd_acc_mid(self, time):
         """ Update the medium speed accumulator. """

@@ -845,6 +845,7 @@ def add_acc_mid(unit):
         acc_mid' = (1 - acc_mid) / tau_mid
         This was originally used in the rga_sig units as a part of a mechanism
         that stopped learning for a moment whenever the target was changed.
+
         Currently upd_acc_mid is in the gated_rga_sig unit. The implementation
         resets the value to 0 if the scaled input sum at port 2 is larger than
         0.5 .
@@ -863,6 +864,7 @@ def add_acc_slow(unit):
         acc_slow' = (1 - acc_slow) / tau_slow
         This was originally used in the rga_sig units as a part of a mechanism
         that stopped learning for a moment whenever the target was changed.
+
         Currently upd_acc_slow is in the gated_rga_sig unit. The implementation
         resets the value to 0 if the scaled input sum at port 2 is larger than
         0.5 .

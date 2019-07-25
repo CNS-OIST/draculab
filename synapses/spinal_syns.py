@@ -207,7 +207,10 @@ class gated_rga_synapse(synapse):
         its postsynaptic unit and for the 'lateral' inputs.
 
         The current implementation normalizes the sum of the absolute values for
-        the weights at the 'error' port, making them add to 1.
+        the weights at the 'error' port, making them add to a parameter 'w_sum'
+        times the sum of l0_norm_factor and the out_norm_factor of the 
+        presynaptic unit.
+        
     """
     def __init__(self, params, network):
         """ The class constructor.
@@ -224,6 +227,8 @@ class gated_rga_synapse(synapse):
             OPTIONAL PARAMETERS
             'err_port' : port for "error" inputs. Default is 0.
             'lat_port' : port for "lateral" inputs. Default is 1.
+            'w_sum' : multiplies the sum of weight values at the error
+                      port. Default is 1.
 
         Raises:
             AssertionError.
@@ -251,6 +256,8 @@ class gated_rga_synapse(synapse):
         else: self.lat_port = 1 
         if 'err_port' in params: self.err_port = params['err_port']
         else: self.err_port = 0 
+        if 'w_sum' in params: self.w_sum = params['w_sum']
+        else: self.w_sum = 1.
         
     def update(self, time):
         """ Update the weight using the RGA-inspired learning rule.
@@ -275,7 +282,8 @@ class gated_rga_synapse(synapse):
         pre = self.net.units[self.preID]
         spj = (pre.get_lpf_fast(self.delay_steps) -
                pre.get_lpf_mid(self.delay_steps) )
-        self.w *= 1.5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
+                              pre.out_norm_factor)
         #self.w += u.acc_mid * self.alpha * (up - xp) * (sp - spj)
         self.w += u.acc_slow * self.alpha * (up - xp) * (sp - spj)
 
@@ -294,8 +302,8 @@ class input_selection_synapse(synapse):
 
         A second difference with the input correlation model is that weights
         from synapses at the "aff" postsynaptic port will be normalized so their
-        absolte values add to 1. This is achieved with the l0_norm_factor_mp 
-        requirement.
+        absolte values add to a parameter w_sum. This is achieved with the 
+        l0_norm_factor_mp requirement.
 
         The learning equation is: 
         w' = lrate * pre * err_diff,
@@ -322,6 +330,8 @@ class input_selection_synapse(synapse):
                            postsynaptic unit. Default 1.
             'aff_port' : port where the 'afferent' signals are received in the
                          postsynaptic unit. Default 0.
+            'w_sum' : value of the sum of synaptic weights at the 'aff' synapse.
+                      Default is 1.
 
         Raises:
             ValueError, AssertionError.
@@ -338,6 +348,10 @@ class input_selection_synapse(synapse):
             self.aff_port = params['aff_port']
         else:
             self.aff_port = 0
+        if 'w_sum' in params:
+            self.w_sum = params['w_sum']
+        else:
+            self.w_sum = 1.
         # this may be inefficient because the lpf_mid_sc_inp_sum is being
         # calculated also for the afferent inputs
         self.upd_requirements = set([syn_reqs.lpf_fast_sc_inp_sum_mp,
@@ -352,7 +366,7 @@ class input_selection_synapse(synapse):
                     u.lpf_mid_sc_inp_sum_mp[self.error_port]) 
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
             
-        self.w *= 2.*self.net.units[self.postID].l0_norm_factor_mp[self.aff_port]
+        self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
         self.w = self.w + self.alpha * pre * err_diff
 
 
