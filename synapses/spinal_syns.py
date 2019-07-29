@@ -370,6 +370,28 @@ class input_selection_synapse(synapse):
         self.w = self.w + self.alpha * pre * err_diff
 
 
+class gated_input_selection_synapse(input_selection_synapse):
+    """ The input selection synapse with modulated learning rate.
+        
+        The acc_slow attribute of the postsynaptic unit is used to modulate the
+        learning rate. Thus, this synapse should only connect to units that
+        contain that requirement. In the case of the gated_out_norm_am_sig unit,
+        inputs at port 2 are used to reset acc_slow.
+    """
+    def update(self, time):
+        """ Update the weight using the input selection rule. """
+        u = self.net.units[self.postID]
+        err_diff = (u.lpf_fast_sc_inp_sum_mp[self.error_port] -
+                    u.lpf_mid_sc_inp_sum_mp[self.error_port]) 
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+
+        self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
+        self.w = self.w + u.acc_slow * self.alpha * pre * err_diff
+
+
+
+        
+
 
 class anti_covariance_inh_synapse(synapse):
     """ Anticovariance rule for inhibitory synapses

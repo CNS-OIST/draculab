@@ -69,7 +69,9 @@ class unit_types(Enum):
     logarithmic = 105 # from spinal units
     rga_sig = 106 # from spinal units
     gated_rga_sig = 107 # from spinal units
-    act = 108 # from spinal units
+    gated_rga_adapt_sig = 108 # from spinal units
+    act = 109 # from spinal units
+    gated_out_norm_am_sig = 110 # from spinal units
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -182,6 +184,7 @@ class unit_types(Enum):
         elif self == unit_types.binary:
             from units.custom_units import binary_unit
             unit_class = binary_unit
+        # Models from spinal
         elif self == unit_types.test_oscillator:
             from units.custom_units import test_oscillator
             unit_class = test_oscillator
@@ -203,9 +206,15 @@ class unit_types(Enum):
         elif self == unit_types.gated_rga_sig:
             from units.spinal_units import gated_rga_sig 
             unit_class = gated_rga_sig 
+        elif self == unit_types.gated_rga_adapt_sig:
+            from units.spinal_units import gated_rga_adapt_sig 
+            unit_class = gated_rga_adapt_sig 
         elif self == unit_types.act:
             from units.spinal_units import act 
             unit_class = act 
+        elif self == unit_types.gated_out_norm_am_sig:
+            from units.spinal_units import gated_out_norm_am_sig 
+            unit_class = gated_out_norm_am_sig
         else:
             raise NotImplementedError('Attempting to retrieve the class of an ' + 
                                       'unknown unit model')
@@ -244,6 +253,7 @@ class synapse_types(Enum):
     gated_rga = 204 # rga with modulated learning rate
     inp_sel = 205 # variant of input correlation
     chg = 206 # the change detection synapse (CHG)
+    gated_inp_sel = 207 # inp sel with gated learning rate
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -324,6 +334,9 @@ class synapse_types(Enum):
         elif self == synapse_types.chg:
             from synapses.spinal_syns import chg_synapse
             syn_class = chg_synapse 
+        elif self == synapse_types.gated_inp_sel:
+            from synapses.spinal_syns import gated_input_selection_synapse
+            syn_class = gated_input_selection_synapse
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -452,6 +465,7 @@ class syn_reqs(Enum):
     lpf_slow_sc_inp_sum = 113 # slow LPF'd scaled input sum, single port
     acc_mid = 114 # accumulator with dynamics acc_mid' = (1 - acc_mid)/tau_mid
     acc_slow = 115 # accumuluator with dynamics acc_slow' = (1 - acc_slow)/tau_slow
+    slow_decay_adapt = 116 # adapation factor, decays with tau_slow time constant
 
 
     def list_names():

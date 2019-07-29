@@ -867,7 +867,7 @@ def add_acc_slow(unit):
 
         Currently upd_acc_slow is in the gated_rga_sig unit. The implementation
         resets the value to 0 if the scaled input sum at port 2 is larger than
-        0.5 .
+        0.5 . Another implementation is in gated_out_norm_am_sig.
     """
     if not hasattr(unit,'tau_slow'): 
         raise NameError( 'Requirement acc_slow requires the ' +
@@ -877,6 +877,25 @@ def add_acc_slow(unit):
     setattr(unit, 'acc_slow', 0.)
 
 
+def add_slow_decay_adapt(unit):
+    """ Add an adaptation factor that decays with tau_slow time constant.
+
+        This requirement was designed to implement gated adaptation in the
+        gated_rga_adap_sig model, where the update implementation is located.
+
+        When the inputs at port 3 are below 0.8, the adaptation will
+        exponentially decay to 0. When the port 3 inputs exceed 0.8 the
+        adaptation will be reset to its initial value, which depends on the slow
+        LPF'd value of the activity. Afterwards no further reset will be 
+        possible until the adaptation falls below 0.2.
+    """
+    if not hasattr(unit, 'tau_slow'):
+        raise NameError( 'Requirement slow_decay_adapt requires the ' +
+                         'parameter tau_slow, not yet set' )
+    if (not syn_reqs.lpf_slow in unit.syn_needs):
+        raise AssertionError('The slow_decay_adapt requirement  needs the ' + 
+                             'lpf_slow requirement')
+    setattr(unit, 'slow_decay_adapt', 0.)
 
 
 #-------------------------------------------------------------------------------------
