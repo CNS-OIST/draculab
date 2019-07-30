@@ -516,8 +516,8 @@ class act(unit):
         When their value gets close enough to 1, their target unit will trigger
         an oscillatory/exploratory phase.
 
-        When the scaled sum of inputs at port 1 is larger than 0.5,  the unit
-        will reset its value to 0, and will remain at 0 until the port 1 
+        When the scaled sum of inputs at port 1 is larger than a threshold,  the
+        unit will reset its value to 0, and will remain at 0 until the port 1 
         inputs decrease below 0.5 .
         
         This unit has the lpf_slow_sc_inp_sum_mp requirement, which requires the
@@ -537,6 +537,9 @@ class act(unit):
                 theta : threshold of the sigmoidal that produces Y.
                 tau_slow : slow LPF time constant.
                 y_min : value of Y below which increase of activity stops.
+                OPTIONAL PARAMETERS
+                rst_thr : threshold for port 1 input to cause a reset.
+                          Default is 0.5 .
         """
         if 'n_ports' in params and params['n_ports'] != 2:
             raise AssertionError('act units must have n_ports=2')
@@ -550,6 +553,8 @@ class act(unit):
         self.gamma = params['gamma']
         self.tau_slow = params['tau_slow']
         self.y_min = params['y_min']
+        if "rst_thr" in params: self.rst_thr = params['rst_thr']
+        else: self.rst_thr = 0.5
         self.needs_mp_inp_sum = True  # don't want port 1 inputs in the sum
 
     def upd_lpf_slow_sc_inp_sum_mp(self, time):
@@ -564,7 +569,7 @@ class act(unit):
     def derivatives(self, y, t):
         """ Return the derivative of the activation at the given time. """
         I1 = (self.get_mp_inputs(t)[1]*self.get_mp_weights(t)[1]).sum()
-        if I1 < 0.5:
+        if I1 < self.rst_thr:
             I0 = (self.get_mp_inputs(t)[0]*self.get_mp_weights(t)[0]).sum()
             I0_lpf = self.lpf_slow_sc_inp_sum_mp[0]
             Y = 1. / (1. + np.exp(-self.g*(I0 - self.theta)))
@@ -579,7 +584,7 @@ class act(unit):
     def dt_fun(self, y, s):
         """ Return the derivative of the activation in a flat network. """
         I1 = self.mp_inp_sum[1][s]
-        if I1 < 0.5:
+        if I1 < self.rst_thr:
             I0 = self.mp_inp_sum[0][s]
             I0_lpf = self.lpf_slow_sc_inp_sum_mp[0]
             Y = 1. / (1. + np.exp(-self.g*(I0 - self.theta)))
