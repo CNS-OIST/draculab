@@ -377,13 +377,46 @@ class gated_input_selection_synapse(input_selection_synapse):
         learning rate. Thus, this synapse should only connect to units that
         contain that requirement. In the case of the gated_out_norm_am_sig unit,
         inputs at port 2 are used to reset acc_slow.
+
+        There is also an extra delay for the presynaptic input, in order to
+        synchronize the error and the afferent signal. This delay is given as
+        the number of 'min_delay' steps, in the 'extra_steps' parameter of the
+        constructor. The 'delay' parameter of the presynaptic units must be
+        large enough to accomodate this extra delay. This means:
+        delay > min_delay * (delay_steps + extra_steps).
+
+        The name of this synapse type is 'gated_inp_sel'.
     """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            OPTIONAL PARAMETERS
+            'error_port' : port where the 'error' signals are received in the
+                           postsynaptic unit. Default 1.
+            'aff_port' : port where the 'afferent' signals are received in the
+                         postsynaptic unit. Default 0.
+            'w_sum' : value of the sum of synaptic weights at the 'aff' synapse.
+                      Default is 1.
+            'extra_steps' : extra delay steps for presynaptic input.
+
+        Raises:
+            ValueError, AssertionError.
+        """
+        input_selection_synapse.__init__(self, params, network)
+        self.extra_steps = params['extra_steps']
+
     def update(self, time):
         """ Update the weight using the input selection rule. """
         u = self.net.units[self.postID]
         err_diff = (u.lpf_fast_sc_inp_sum_mp[self.error_port] -
                     u.lpf_mid_sc_inp_sum_mp[self.error_port]) 
-        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+        #pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps +
+                                                      self.extra_steps)
 
         self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
         self.w = self.w + u.acc_slow * self.alpha * pre * err_diff
