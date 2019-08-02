@@ -576,7 +576,10 @@ class act(unit):
             Y_lpf = 1. / (1. + np.exp(-self.g*(I0_lpf - self.theta)))
             dY = Y - Y_lpf
             Y_dist = Y-self.y_min  #max(Y - self.y_min, 0.)
-            du = Y_dist*(1. - y[0] + self.gamma*dY) / self.tau_u
+            if Y_dist < 0.:
+                du = Y_dist 
+            else:
+                du = Y_dist*(1. - y + self.gamma*dY) / self.tau_u
         else:
             du = -40.*y[0] # rushing towards 0
         return du
@@ -591,7 +594,10 @@ class act(unit):
             Y_lpf = 1. / (1. + np.exp(-self.g*(I0_lpf - self.theta)))
             dY = Y - Y_lpf
             Y_dist = Y-self.y_min # max(Y - self.y_min, 0.)
-            du = Y_dist*(1. - y + self.gamma*dY) / self.tau_u
+            if Y_dist < 0.:
+                du = Y_dist 
+            else:
+                du = Y_dist*(1. - y + self.gamma*dY) / self.tau_u
         else:
             du = -40.*y # rushing towards 0
         return du
