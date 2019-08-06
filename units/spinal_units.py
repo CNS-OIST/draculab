@@ -741,7 +741,7 @@ class gated_rga_adapt_sig(sigmoidal):
 
         The difference with the gated_rga_sig model is that this model has 4
         ports instead of 3. When the inputs at port 3 surpass a threshold the
-        unit experience adaptation, which means that its slow-lpf'd activity
+        unit experiences adaptation, which means that its slow-lpf'd activity
         will be used to decrease its current activation. This is achieved
         through the slow_decay_adapt requirement.
 
@@ -819,6 +819,7 @@ class gated_rga_adapt_sig(sigmoidal):
         """ Return the derivative of the activity at time t. """
         sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(t),
                                            self.get_mp_weights(t))]
+        # TODO: replace lpf_slow_sc_inp_sum; it adds the inputs from ports2, 3
         inp = (sums[0] + sums[1] 
                + self.integ_amp * self.lpf_slow_sc_inp_sum
                - self.adapt_amp * self.slow_decay_adapt)
@@ -826,6 +827,7 @@ class gated_rga_adapt_sig(sigmoidal):
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
+        # TODO: replace lpf_slow_sc_inp_sum; it adds the inputs from ports2, 3
         inp = (self.mp_inp_sum[0][s] + self.mp_inp_sum[1][s]
                + self.integ_amp * self.lpf_slow_sc_inp_sum 
                - self.adapt_amp * self.slow_decay_adapt)
@@ -890,6 +892,189 @@ class gated_rga_adapt_sig(sigmoidal):
             #self.slow_decay_adapt = self.lpf_slow - 0.3
         else:
             self.slow_decay_adapt *= self.slow_prop
+
+
+class gated_rga_inpsel_adapt_sig(sigmoidal):
+    """ Sigmoidal with gated rga, inp_sel synapses and gated adaptation.
+
+        Unlike gated_rga_adapt_sig this model has 5 ports instead of 4. 
+        The scaled sum of inputs at port 0 constitutes the error signal for 
+        both the gated_rga and gated_input_selection synapses. Inputs at port 1
+        are the "lateral" inputs for the gated_rga synapses. Inputs at port 2
+        are the "afferent" inputs for the gated_input_selection synapse. 
+        The output of the unit is the sigmoidal function applied to the scaled
+        sum of inputs at ports 0, 1, and 2.
+
+        The scaled sum of inputs at port 3 is for the signal that resets the 
+        acc_slow accumulator, used to gate both rga and input selection synapses.
+        When the scaled sum of inputs at port 3 is larger than 0.5, acc_mid is
+        set to 0.
+         
+        When the inputs at port 4 surpasses a threshold the unit experiences
+        adaptation, which means that its slow-lpf'd activity will be used to 
+        decrease its current activation. This is achieved through the 
+        slow_decay_adapt requirement.
+
+        Like the other rga models it has the extra custom_inp_del attribute, 
+        as well as implementations of all required requirement update 
+        functions.
+
+        Like gated_rga_sig this unit has an integral component. This means
+        that the input is integrated (actually, low-pass filtered with the
+        tau_slow time constant), and the output comes from the sigmoidal 
+        function applied to the scaled input sum plus the integral component.
+
+        The des_out_w_abs_sum parameter is included in case the
+        pre_out_norm_factor requirement is used.
+
+        The presynaptic units should have the lpf_fast and lpf_mid requirements,
+        since these will be added by the gated_rga synapse.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'slope' : Slope of the sigmoidal function.
+                    'thresh' : Threshold of the sigmoidal function.
+                    'tau' : Time constant of the update dynamics.
+                    'tau_slow' : Slow LPF time constant.
+                    'tau_mid' : Medium LPF time constant.
+                    'integ_amp' : amplitude multiplier of the integral
+                                    component.
+                    Using rga synapses brings an extra required parameter:
+                    'custom_inp_del' : an integer indicating the delay that the rga
+                                  learning rule uses for the lateral port inputs. 
+                                  The delay is in units of min_delay steps. 
+
+                OPTIONAL PARAMETERS
+                    'des_out_w_abs_sum' : desired sum of absolute weight values
+                                          for the outgoing connections.
+                                          Default is 1.
+                    'adapt_amp' : amplitude of adapation. Default is 1.
+            Raises:
+                AssertionError.
+        """
+        if 'n_ports' in params and params['n_ports'] != 5:
+            raise AssertionError('gated_rga_inpsel_adapt_sig units must have n_ports=5')
+        else:
+            params['n_ports'] = 5
+        if 'custom_inp_del' in params:
+            self.custom_inp_del = params['custom_inp_del']
+        else:
+            raise AssertionError('gated_rga_inpsel_adapt_sig units need a ' +
+                                 'custom_inp_del parameter')
+        sigmoidal.__init__(self, ID, params, network)
+        if 'des_out_w_abs_sum' in params:
+            self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        else:
+            self.des_out_w_abs_sum = 1.
+        if 'adapt_amp' in params:
+            self.adapt_amp = params['adapt_amp']
+        else:
+            self.adapt_amp = 1.
+        self.integ_amp = params['integ_amp']
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum, syn_reqs.acc_slow,
+                               syn_reqs.lpf_slow, syn_reqs.slow_decay_adapt,
+                               syn_reqs.mp_inputs])
+        self.needs_mp_inp_sum = True # to avoid adding signals from ports 3,4
+
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity at time t. """
+        sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(t),
+                                           self.get_mp_weights(t))]
+        inp = (sums[0] + sums[1] + sums[2]
+               + self.integ_amp * sum(self.lpf_slow_mp_inp_sum[0:3])
+               - self.adapt_amp * self.slow_decay_adapt)
+        return ( self.f(inp) - y[0] ) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        inp = (self.mp_inp_sum[0][s] + self.mp_inp_sum[1][s] + self.mp_inp_sum[2][s]
+               + self.integ_amp * sum(self.lpf_slow_mp_inp_sum[0:3])
+               - self.adapt_amp * self.slow_decay_adapt)
+        return ( self.f(inp) - y ) * self.rtau
+
+    def upd_avg_inp_deriv_mp(self, time):
+        """ Update the list with the average of input derivatives for each port. """
+        # untouched copy from gated_rga_adapt_sig
+        self.avg_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
+                                 for l in self.inp_deriv_mp]
+
+    def upd_inp_deriv_mp(self, time):
+        """ Update the list with input derivatives for each port.  """
+        # untouched copy from gated_rga_adapt_sig
+        # although the gated_input_selection synapse also uses the input
+        # derivative, in this case the synapse calculates it itself.
+        u = self.net.units
+        self.inp_deriv_mp = [[u[uid[idx]].get_lpf_fast(dely[idx]) -
+                              u[uid[idx]].get_lpf_mid(dely[idx]) 
+                              for idx in range(len(uid))]
+                              for uid, dely in 
+                            [self.pre_list_del_mp[0], self.pre_list_del_mp[1]]]
+
+    def upd_del_inp_deriv_mp(self, time):
+        """ Update the list with custom delayed input derivatives for each port. """
+        # untouched copy from gated_rga_adapt_sig
+        u = self.net.units
+        self.del_inp_deriv_mp = [[u[uid].get_lpf_fast(self.custom_inp_del) - 
+                                  u[uid].get_lpf_mid(self.custom_inp_del) 
+                                  for uid in lst] for lst in 
+                                  [self.pre_list_mp[0], self.pre_list_mp[1]]]
+
+    def upd_del_avg_inp_deriv_mp(self, time):
+        """ Update the list with delayed averages of input derivatives for each port. """
+        # untouched copy from gated_rga_adapt_sig
+        self.del_avg_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
+                                     for l in self.del_inp_deriv_mp]
+
+    def upd_acc_mid(self, time):
+        """ Update the medium speed accumulator. """
+        # modified to reset from port 3
+        if ( (self.get_mp_inputs(time)[3]*self.get_mp_weights(time)[3]).sum()
+             > 0.5 and self.acc_mid > 0.5 ):
+             self.acc_mid = 0.
+        else: 
+            self.acc_mid = 1. - (1.-self.acc_mid)*self.mid_prop
+
+    def upd_acc_slow(self, time):
+        """ Update the slow speed accumulator. """
+        # modified to reset from port 3
+        if ( (self.get_mp_inputs(time)[3]*self.get_mp_weights(time)[3]).sum()
+             > 0.5 and self.acc_slow > 0.5 ):
+             self.acc_slow = 0.
+        else: 
+            self.acc_slow = 1. - (1.-self.acc_slow)*self.slow_prop
+
+    def upd_slow_decay_adapt(self, time):
+        """ Update method for the slow-decaying adaptation. """
+        # modified to use port 4 signals
+        if ((self.get_mp_inputs(time)[4]*self.get_mp_weights(time)[4]).sum()
+            > 0.8 and self.slow_decay_adapt < 0.2):
+            #self.slow_decay_adapt = self.lpf_slow
+            self.slow_decay_adapt = self.lpf_slow * self.lpf_slow
+        else:
+            self.slow_decay_adapt *= self.slow_prop
+
+    def upd_lpf_fast_sc_inp_sum_mp(self, time):
+        """ Update a list with fast LPF'd scaled sums of inputs at each port. """
+        # untouched copy from gated_out_norm_am_sig
+        sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(time),
+                                           self.get_mp_weights(time))]
+        # same update rule from other upd_lpf_X methods, put in a list comprehension
+        self.lpf_fast_sc_inp_sum_mp = [sums[i] + (self.lpf_fast_sc_inp_sum_mp[i] - sums[i])
+                                       * self.fast_prop for i in range(self.n_ports)]
+
+    def upd_lpf_mid_sc_inp_sum_mp(self, time):
+        """ Update a list with medium LPF'd scaled sums of inputs at each port. """
+        # untouched copy from gated_out_norm_am_sig
+        sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(time),
+                                           self.get_mp_weights(time))]
+        # same update rule from other upd_lpf_X methods, put in a list comprehension
+        self.lpf_mid_sc_inp_sum_mp = [sums[i] + (self.lpf_mid_sc_inp_sum_mp[i] - sums[i])
+                                       * self.mid_prop for i in range(self.n_ports)]
 
 
 class gated_out_norm_am_sig(sigmoidal):

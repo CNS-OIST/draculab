@@ -634,7 +634,8 @@ def add_inp_deriv_mp(unit):
         port, following the order in the port_idx list.
 
         This requirement was created for the rga synapse, and was implemented in the
-        am_pm_oscillator class.
+        am_pm_oscillator class. Modified versions exist in the variations of the
+        rga units.
 
         Any synapse using this requirement should have the pre_lpf_fast and
         pre_lpf_mid requirements.
@@ -888,6 +889,9 @@ def add_slow_decay_adapt(unit):
         adaptation will be reset to its initial value, which depends on the slow
         LPF'd value of the activity. Afterwards no further reset will be 
         possible until the adaptation falls below 0.2.
+
+        The implementation in the gated_rga_inpsel_adapt_sig model uses inputs
+        at port 4 instead of 3.
     """
     if not hasattr(unit, 'tau_slow'):
         raise NameError( 'Requirement slow_decay_adapt requires the ' +
@@ -1168,6 +1172,10 @@ class mp_inputs(requirement):
         This method is for units where multiport = True, and that have a port_idx attribute.
         The i-th element of the returned list is a numpy array containing the raw (not multiplied
         by the synaptic weight) inputs at port i. The inputs include transmision delays.
+
+        WARNING: Currently this requirement has the disadvantage that it can't
+        be ensured that mp_inputs will be udpated before the other requirements
+        that use mp_inputs in their computations.
     """
     def __init__(self, unit):
         if not hasattr(unit,'port_idx'): 

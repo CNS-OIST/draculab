@@ -63,15 +63,17 @@ class unit_types(Enum):
 
     binary = 101 # from tutorial 5
 
-    am_pm_oscillator = 102 # from spinal units
-    out_norm_sig = 103 # from spinal units
-    out_norm_am_sig = 104 # from spinal units
-    logarithmic = 105 # from spinal units
-    rga_sig = 106 # from spinal units
-    gated_rga_sig = 107 # from spinal units
-    gated_rga_adapt_sig = 108 # from spinal units
-    act = 109 # from spinal units
-    gated_out_norm_am_sig = 110 # from spinal units
+    # Units from spinal_units.py
+    am_pm_oscillator = 102
+    out_norm_sig = 103
+    out_norm_am_sig = 104
+    logarithmic = 105
+    rga_sig = 106
+    gated_rga_sig = 107
+    gated_rga_adapt_sig = 108
+    act = 109
+    gated_out_norm_am_sig = 110
+    gated_rga_inpsel_adapt_sig = 111
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -215,6 +217,9 @@ class unit_types(Enum):
         elif self == unit_types.gated_out_norm_am_sig:
             from units.spinal_units import gated_out_norm_am_sig 
             unit_class = gated_out_norm_am_sig
+        elif self == unit_types.gated_rga_inpsel_adapt_sig:
+            from units.spinal_units import gated_rga_inpsel_adapt_sig 
+            unit_class = gated_rga_inpsel_adapt_sig 
         else:
             raise NotImplementedError('Attempting to retrieve the class of an ' + 
                                       'unknown unit model')

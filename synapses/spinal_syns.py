@@ -302,7 +302,7 @@ class input_selection_synapse(synapse):
 
         A second difference with the input correlation model is that weights
         from synapses at the "aff" postsynaptic port will be normalized so their
-        absolte values add to a parameter w_sum. This is achieved with the 
+        absolute values add to a parameter w_sum. This is achieved with the 
         l0_norm_factor_mp requirement.
 
         The learning equation is: 
@@ -330,6 +330,8 @@ class input_selection_synapse(synapse):
                            postsynaptic unit. Default 1.
             'aff_port' : port where the 'afferent' signals are received in the
                          postsynaptic unit. Default 0.
+                         This port will  be deprecated, and the afferent port
+                         will be considered to be the synapse's port.
             'w_sum' : value of the sum of synaptic weights at the 'aff' synapse.
                       Default is 1.
 
@@ -348,6 +350,10 @@ class input_selection_synapse(synapse):
             self.aff_port = params['aff_port']
         else:
             self.aff_port = 0
+        if self.aff_port != self.port:
+            from warnings import warn
+            warn("aff_port and port don't coincide in input selection synapse",
+                 UserWarning)
         if 'w_sum' in params:
             self.w_sum = params['w_sum']
         else:
@@ -376,7 +382,8 @@ class gated_input_selection_synapse(input_selection_synapse):
         The acc_slow attribute of the postsynaptic unit is used to modulate the
         learning rate. Thus, this synapse should only connect to units that
         contain that requirement. In the case of the gated_out_norm_am_sig unit,
-        inputs at port 2 are used to reset acc_slow.
+        inputs at port 2 are used to reset acc_slow. For the
+        gated_rga_inpsel_adapt unit inputs at port 3 are used instead.
 
         There is also an extra delay for the presynaptic input, in order to
         synchronize the error and the afferent signal. This delay is given as
@@ -417,13 +424,8 @@ class gated_input_selection_synapse(input_selection_synapse):
         #pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps +
                                                       self.extra_steps)
-
         self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
         self.w = self.w + u.acc_slow * self.alpha * pre * err_diff
-
-
-
-        
 
 
 class anti_covariance_inh_synapse(synapse):
