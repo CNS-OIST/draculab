@@ -477,6 +477,20 @@ class syn_reqs(Enum):
         """ Return a list with the name of all defined synaptic requirements. """
         return [name for name, member in syn_reqs.__members__.items()]
 
+    def get_priority(self):
+        """ Returns the priority of a given requirement.
+
+            Requirements with higher priority (e.g. a lower priority number)
+            are placed first in the unit's `functions` list, and are thus
+            executed first.
+
+        """
+        high_priority = {'lpf_fast', 'lpf_mid', 'lpf_slow', 'mp_inputs'}
+        if self.name in high_priority:
+            return 1
+        else:
+            return 2
+        
 
 # Importing the classes used by the simulator
 from network import *

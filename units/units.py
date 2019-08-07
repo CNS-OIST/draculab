@@ -171,7 +171,7 @@ class unit():
                             # Used by the upd_lpf_X functions (DEPRECATED)
         self.using_interp1d = False # True when interp1d is used for interpolation in get_act
         self.init_buffers() # This will create the buffers that store states and times
-        self.functions = set() # will contain all the functions that update requirements
+        self.functions = [] # will contain all the functions that update requirements
 
      
     def init_buffers(self):
@@ -649,7 +649,9 @@ class unit():
         2) Update: a method with the name upd_<req name>  that is added to the
            'functions' list of the unit. This method oftentimes belongs to the 'unit' 
            class and is written somewhere after init_pre_syn_update, but it 
-           can also be defined only for one of the descendants of 'unit'.
+           can also be defined only for one of the descendants of 'unit'. It is
+           good practice to write the location of the update method in the
+           docstring of the 'add_<req_name>' function.
            
            The name of the requirement, as it appears in the syn_reqs Enum, must
            also be used in the 'add_' and 'upd_' methods. Failing to use this
@@ -669,6 +671,12 @@ class unit():
            The buffers should have the name <req name>_buff.
         2) There are 'getter' methods to retrieve past values of the requirement.
            The getter methods are named get_<req_name> .
+
+        Requirements may optionally have a priority number. Requirements with a
+        lower priority number will be executed first. This is useful when one 
+        requirement uses the value of another for its update. By default all
+        requirements have priority 2. This can be changed in the 'get_priority'
+        function of the syn_reqs class.
         """
         assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
                                          str(self.ID) + ' when simulation time is not zero']
@@ -719,9 +727,14 @@ class unit():
         for req in self.syn_needs:
             if issubclass(type(req), syn_reqs):
                 eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
             else:  
                 raise NotImplementedError('Asking for a requirement that is not implemented')
+        # self.functions must be a list sorted according to priority.
+        # Thus we turn the set syn_needs into a list sorted by priority
+        priority = lambda x: x.get_priority()
+        syn_needs_list = sorted(self.syn_needs, key=priority)
+        self.functions = [eval('self.upd_'+req.name, {'self':self}) 
+                          for req in syn_needs_list]
 
 
     ###################################
