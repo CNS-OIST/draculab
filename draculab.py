@@ -471,6 +471,7 @@ class syn_reqs(Enum):
     acc_mid = 114 # accumulator with dynamics acc_mid' = (1 - acc_mid)/tau_mid
     acc_slow = 115 # accumuluator with dynamics acc_slow' = (1 - acc_slow)/tau_slow
     slow_decay_adapt = 116 # adapation factor, decays with tau_slow time constant
+    mp_weights = 117 # weights by port, as returned by get_mp_weights()
 
 
     def list_names():
@@ -485,11 +486,15 @@ class syn_reqs(Enum):
             executed first.
 
         """
-        high_priority = {'lpf_fast', 'lpf_mid', 'lpf_slow', 'mp_inputs'}
+        high_priority = {'lpf_fast', 'lpf_mid', 'lpf_slow', 
+                         'mp_inputs', 'mp_weights'}
+        mid_priority = {}
         if self.name in high_priority:
             return 1
-        else:
+        elif self.name in mid_priority:
             return 2
+        else:
+            return 3
         
 
 # Importing the classes used by the simulator

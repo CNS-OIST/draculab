@@ -157,7 +157,9 @@ def dt_fun(self, y, s):
         2) Update: a method with the name upd_<req name>  that is added to the
            'functions' list of the unit. This method usually belongs to the 'unit' 
            class and is written somewhere after init_pre_syn_update, but in
-           some cases it is defined only for one of the descendants of 'unit'.
+           some cases it is defined only for one of the descendants of 'unit'. It is
+           good practice to write the location of the update method in the
+           docstring of the 'add_<req_name>' function.
            
            The name of the requirement, as it appears in the syn_reqs Enum, must
            also be used in the 'add_' and 'upd_' methods. Failing to use this
@@ -177,6 +179,13 @@ def dt_fun(self, y, s):
            The buffers should have the name <req name>_buff.
         2) There are 'getter' methods to retrieve past values of the requirement.
            The getter methods are named get_<req_name> .
+           
+        Requirements may optionally have a priority number. Requirements with a
+        lower priority number will be executed first. This is useful when one 
+        requirement uses the value of another for its update. By default all
+        requirements have priority 3. This can be changed in the 'get_priority'
+        function of the syn_reqs class.
+
 """
 
 
@@ -185,7 +194,8 @@ def dt_fun(self, y, s):
 # prerequisite requirements are present. In this case, we want the `mp_inputs` requirement to be present.
 
 # ### Exercise 2
-# What does `mp_inputs` do?
+# What does `mp_inputs` do?  
+# What is the priority number of `mp_inputs`?
 
 # ### Exercise 3
 # Does it make sense to write a version of `get_mp_input_sum` that takes advantage of the `mp_inputs` requirement?
@@ -208,12 +218,17 @@ def dt_fun(self, y, s):
 
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Prepare all the requirements to be updated by the pre_syn_update function. 
-    for req in self.syn_needs:
-        if issubclass(type(req), syn_reqs):
-            eval('add_'+req.name+'(self)')
-            eval('self.functions.add(self.upd_'+req.name+')')
-        else:  
-            raise NotImplementedError('Asking for a requirement that is not implemented')
+        for req in self.syn_needs:
+            if issubclass(type(req), syn_reqs):
+                eval('add_'+req.name+'(self)')
+            else:
+                raise NotImplementedError('Asking for a requirement that is not implemented')
+        # self.functions must be a list sorted according to priority.
+        # Thus we turn the set syn_needs into a list sorted by priority
+        priority = lambda x: x.get_priority()
+        syn_needs_list = sorted(self.syn_needs, key=priority)
+        self.functions = [eval('self.upd_'+req.name, {'self':self})
+                          for req in syn_needs_list]
 #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 # Can you see how the naming conventions are used?
@@ -547,6 +562,8 @@ def get_mp_input_sum(self,time):
 # ### SOLUTION TO EXERCISE 2
 # The documentation of `mp_inputs` is in the docstring of the `add_mp_inputs` method in `requirements.py`.
 # In general, the documentation to a requirement is kept in the `add_<requirement_name>` method.
+# 
+# After importing `draculab`, the priority of `mp_inputs` can be obtained with: `syn_reqs.mp_inputs.get_priority()`.
 
 # ### SOLUTION TO EXERCISE 3
 # It would not be recommended to use the `mp_inputs` array to implement the `get_mp_input_sum` function.  

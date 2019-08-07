@@ -114,11 +114,12 @@ def add_mp_inputs(unit):
         (not multiplied by the synaptic weight) inputs at port i. The inputs include 
         transmision delays."
 
-        THIS METHOD CAN BE UNSAFE, because mp_inputs could be updated AFTER the
-        requirements that use it.
+        Since mp_inputs is used by other requirements, it has a priority of 1 so
+        it gets updated before them.
+
+        The update function is part of the `unit` class, and consists of the line:
+        self.mp_inputs = self.get_mp_inputs(time)
     """
-    # TODO: add a time stamp in upd_mp_inputs, and use this time stamp to see if
-    # mp_inputs has been updated before using it.
     if not hasattr(unit,'port_idx'): 
         raise NameError( 'the mp_inputs requirement is for multiport units ' +
                          'with a port_idx list' )
@@ -312,6 +313,8 @@ def add_lpf_slow_mp_inp_sum(unit):
         raise NameError( 'Requirement lpf_slow_mp_inp_sum requires parameter tau_slow, not yet set' )
     if not syn_reqs.mp_inputs in unit.syn_needs:
         raise AssertionError('lpf_slow_mp_inp_sum requires the mp_inputs requirement')
+    if not syn_reqs.mp_weights in unit.syn_needs:
+        raise AssertionError('lpf_slow_mp_inp_sum requires the mp_weights requirement')
     if not hasattr(unit, 'slow_prop'):
         add_propagator(unit, 'slow')
     setattr(unit, 'lpf_slow_mp_inp_sum', [ 0.4 for _ in range(unit.n_ports) ])
@@ -327,7 +330,6 @@ def add_lpf_mid_mp_raw_inp_sum(unit):
         The lpf_mid_mp_raw_inp_sum requirement is used by units of the 
         am_pm_oscillator class.
     """
-    # TODO: ensure upd_mp_inputs is called before upd_lpf_mid_mp_raw_inp_sum
     if not hasattr(unit,'tau_mid'): 
         raise NameError( 'Requirement lpf_mid_mp_raw inp_sum requires ' +
                          'parameter tau_mid, not yet set' )
@@ -790,9 +792,8 @@ def add_lpf_fast_sc_inp_sum_mp(unit):
     """ Add the fast LPF'd scaled sum of inputs for each port separately. 
 
         This requirement was initially used with the input_selection synapse,
-        and its update implementation is currently in the logarithmic unit.
+        and its update implementation is currently in the out_norm_am_sig unit.
     """
-    # TODO: create a safe version with mp_inputs
     if not unit.multiport:
         raise AssertionError('The lpf_fast_sc_inp_sum_mp requirement is for ' +
                              'multiport units')
@@ -801,6 +802,10 @@ def add_lpf_fast_sc_inp_sum_mp(unit):
                          'parameter tau_fast, not yet set' )
     if not hasattr(unit, 'fast_prop'):
         add_propagator(unit, 'fast')
+    if (not syn_reqs.mp_weights in unit.syn_needs or
+        not syn_reqs.mp_inputs in unit.syn_needs):
+        raise AssertionError('Requirement lpf_fast_sc_inp_sum_mp depends on ' +
+                             'the mp_weights and mp_inputs requirements.')
     setattr(unit, 'lpf_fast_sc_inp_sum_mp', [0.2]*unit.n_ports)
 
 
@@ -810,7 +815,6 @@ def add_lpf_mid_sc_inp_sum_mp(unit):
         This requirement was initially used with the input_selection synapse,
         and its update implementation is currently in the logarithmic unit.
     """
-    # TODO: create a safe version with mp_inputs
     if not unit.multiport:
         raise AssertionError('The lpf_mid_sc_inp_sum_mp requirement is for ' +
                              'multiport units')
@@ -819,6 +823,10 @@ def add_lpf_mid_sc_inp_sum_mp(unit):
                          'parameter tau_mid, not yet set' )
     if not hasattr(unit, 'mid_prop'):
         add_propagator(unit, 'mid')
+    if (not syn_reqs.mp_weights in unit.syn_needs or
+        not syn_reqs.mp_inputs in unit.syn_needs):
+        raise AssertionError('Requirement lpf_mid_sc_inp_sum_mp depends on ' +
+                             'the mp_weights and mp_inputs requirements.')
     setattr(unit, 'lpf_mid_sc_inp_sum_mp', [0.2]*unit.n_ports)
 
 
@@ -828,7 +836,6 @@ def add_lpf_slow_sc_inp_sum_mp(unit):
         This requirement was initially used with the act unit, where its
         update implementation currently resides.
     """
-    # TODO: create a safe version with mp_inputs
     if not unit.multiport:
         raise AssertionError('The lpf_slow_sc_inp_sum_mp requirement is for ' +
                              'multiport units')
@@ -837,6 +844,10 @@ def add_lpf_slow_sc_inp_sum_mp(unit):
                          'parameter tau_slow, not yet set' )
     if not hasattr(unit, 'slow_prop'):
         add_propagator(unit, 'slow')
+    if (not syn_reqs.mp_weights in unit.syn_needs or
+        not syn_reqs.mp_inputs in unit.syn_needs):
+        raise AssertionError('Requirement lpf_slow_sc_inp_sum_mp depends on ' +
+                             'the mp_weights and mp_inputs requirements.')
     setattr(unit, 'lpf_slow_sc_inp_sum_mp', [0.2]*unit.n_ports)
 
 
@@ -900,6 +911,19 @@ def add_slow_decay_adapt(unit):
         raise AssertionError('The slow_decay_adapt requirement  needs the ' + 
                              'lpf_slow requirement')
     setattr(unit, 'slow_decay_adapt', 0.)
+
+
+def add_mp_weights(unit):
+    """ Add a list with synaptic weights, as returned by unit.get_mp_weights.
+
+        This implementation lives in the unit model, and has priority 1.
+    """
+    if not hasattr(unit,'port_idx'): 
+        raise NameError( 'the mp_weights requirement is for multiport units ' +
+                         'with a port_idx list' )
+    mp_weights = [np.array([unit.net.syns[unit.ID][idx].w for idx in idx_list])
+                  for idx_list in unit.port_idx]
+    setattr(unit, 'mp_weights', mp_weights)
 
 
 #-------------------------------------------------------------------------------------

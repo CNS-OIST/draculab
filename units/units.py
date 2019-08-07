@@ -675,7 +675,7 @@ class unit():
         Requirements may optionally have a priority number. Requirements with a
         lower priority number will be executed first. This is useful when one 
         requirement uses the value of another for its update. By default all
-        requirements have priority 2. This can be changed in the 'get_priority'
+        requirements have priority 3. This can be changed in the 'get_priority'
         function of the syn_reqs class.
         """
         assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
@@ -817,19 +817,19 @@ class unit():
         self.inp_vector = np.array([ fun(time - dely) for dely,fun in 
                    zip(self.net.delays[self.ID], self.net.act[self.ID]) ])
 
-
     def upd_mp_inputs(self, time):
         """ Update the mp_inputs variable. """
-        # TODO: add a time stamp, and use it to 
-        # see if mp_inputs has been updated before using it.
         self.mp_inputs = self.get_mp_inputs(time)
+
+    def upd_mp_weights(self, time):
+        """ Update the mp_weights variable. """
+        self.mp_weights = self.get_mp_weights(time)
 
 
     def upd_inp_avg_hsn(self, time):
         """ Update the inp_avg_hsn variable. """
         self.inp_avg_hsn = ( sum([u.get_lpf_fast(s) for u,s in self.snorm_list_dels]) 
                              / self.n_hebbsnorm )
-
 
     def upd_pos_inp_avg_hsn(self, time):
         """ Update the pos_inp_avg_hsn variable. """
@@ -907,11 +907,11 @@ class unit():
 
     def upd_lpf_slow_mp_inp_sum(self, time):
         """ Update a list with the slow LPF'd scaled sum of inputs for each port. """
-        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-                                        ' lpf_slow_mp_inp_sum updated backwards in time']
-        inputs = self.mp_inputs    # updated because mp_inputs is a requirement variable
-        weights = self.get_mp_weights(time)
-        dots = [ np.dot(i, w) for i, w in zip(inputs, weights) ]
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_slow_mp_inp_sum updated backwards in time']
+        #inputs = self.mp_inputs    # add_lpf_slow_mp_inp_sum ensures mp_inputs is there
+        #weights = self.get_mp_weights(time)
+        dots = [ np.dot(i, w) for i, w in zip(self.mp_inputs, self.mp_weights) ]
         # same update rule from other upd_lpf_X methods above, put in a list comprehension
         self.lpf_slow_mp_inp_sum = [dots[i] + (self.lpf_slow_mp_inp_sum[i] - dots[i]) * 
                                    self.slow_prop for i in range(self.n_ports)]
