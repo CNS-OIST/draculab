@@ -472,6 +472,7 @@ class syn_reqs(Enum):
     acc_slow = 115 # accumuluator with dynamics acc_slow' = (1 - acc_slow)/tau_slow
     slow_decay_adapt = 116 # adapation factor, decays with tau_slow time constant
     mp_weights = 117 # weights by port, as returned by get_mp_weights()
+    sc_inp_sum_mp = 118 # scaled sum of inputs by port
 
 
     def list_names():
@@ -488,7 +489,7 @@ class syn_reqs(Enum):
         """
         high_priority = {'lpf_fast', 'lpf_mid', 'lpf_slow', 
                          'mp_inputs', 'mp_weights'}
-        mid_priority = {}
+        mid_priority = {'sc_inp_sum'}
         if self.name in high_priority:
             return 1
         elif self.name in mid_priority:

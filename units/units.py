@@ -1087,6 +1087,11 @@ class unit():
                                    for ws in self.get_mp_weights(time)]
 
 
+    def upd_sc_inp_sum_mp(self, time):
+        """ Update the scaled input sum per port. """
+        self.sc_inp_sum_mp = [(i*w).sum() for i,w in zip(self.mp_inputs,
+                              self.mp_weights)]
+
     ##########################################
     # END OF UPDATE METHODS FOR REQUIREMENTS #
     ##########################################

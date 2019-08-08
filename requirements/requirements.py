@@ -635,9 +635,12 @@ def add_inp_deriv_mp(unit):
         inp_deriv_mp[i,j] will contain the derivative of the j-th input at the i-th
         port, following the order in the port_idx list.
 
-        This requirement was created for the rga synapse, and was implemented in the
-        am_pm_oscillator class. Modified versions exist in the variations of the
-        rga units.
+        This requirement was created for the rga synapse, was originally in the
+        am_pm_oscillator class, and then moved to the rga_reqs class in order to
+        consolidate all versions. The optional parameter 'inp_deriv_ports' can
+        be passed to the 'rga_reqs' constructor so that the input derivative is
+        only calculated for the ports whose number is in the inp_deriv_ports
+        list.
 
         Any synapse using this requirement should have the pre_lpf_fast and
         pre_lpf_mid requirements.
@@ -663,6 +666,7 @@ def add_inp_deriv_mp(unit):
     #setattr(unit, 'pre_del_mp', pre_del_mp)
     setattr(unit, 'pre_list_del_mp', pre_list_del_mp)
     setattr(unit, 'inp_deriv_mp', inp_deriv_mp)
+    setattr(unit, 'inp_deriv_ports', list(range(unit.n_ports)))
 
 
 def add_avg_inp_deriv_mp(unit):
@@ -685,8 +689,12 @@ def add_del_inp_deriv_mp(unit):
         del_inp_deriv_mp[i,j] will contain the delayed derivative of the j-th 
         input at the i-th port, following the order in the port_idx list.
 
-        This requirement was created for the rga synapse, and was implemented in the
-        am_pm_oscillator class.
+        This requirement was created for the rga synapse, was originally in the
+        am_pm_oscillator class, and then moved to the rga_reqs class in order to
+        consolidate all versions. The optional parameter 'inp_deriv_ports' can
+        be passed to the 'rga_reqs' constructor so that the input derivative is
+        only calculated for the ports whose number is in the inp_deriv_ports
+        list.
     """
     if not unit.multiport:
         raise AssertionError('The del_inp_deriv_mp requirement is ' + 
@@ -708,6 +716,8 @@ def add_del_inp_deriv_mp(unit):
     # initializing all derivatives with zeros
     del_inp_deriv_mp = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
     setattr(unit, 'del_inp_deriv_mp', del_inp_deriv_mp)
+    if not hasattr(unit, 'inp_deriv_ports'):
+        setattr(unit, 'inp_deriv_ports', list(range(unit.n_ports)))
 
 
 def add_del_avg_inp_deriv_mp(unit):
@@ -925,6 +935,33 @@ def add_mp_weights(unit):
                   for idx_list in unit.port_idx]
     setattr(unit, 'mp_weights', mp_weights)
 
+
+def add_sc_inp_sum_mp(unit):
+    """ Add the scaled sum of inputs for each port.
+
+        sc_inp_sum_mp will be a numpy array whose i-th element is the sum of
+        inputs at the i-th port, each multiplied by its corresponding weight.
+
+        This requirement depends on mp_inputs and mp_weights, but it is also
+        used by other requirements, so it has an intermediate priority: 2.
+        The update implementation is in the 'unit' class.
+    """
+    if not hasattr(unit,'port_idx'): 
+        raise NameError( 'the sc_inp_sum_mp requirement is for multiport units ' +
+                         'with a port_idx list' )
+    if (not syn_reqs.mp_weights in unit.syn_needs or
+        not syn_reqs.mp_inputs in unit.syn_needs):
+        raise AssertionError('Requirement sc_inp_sum_mp depends on ' +
+                             'the mp_weights and mp_inputs requirements.')
+    mp_weights = [np.array([unit.net.syns[unit.ID][idx].w for idx in idx_list])
+                  for idx_list in unit.port_idx]
+    mp_weights = np.array(mp_weights)
+    ia = unit.init_act
+    mp_inputs = [np.array([ia]*len(prt_lst)) for prt_lst in unit.port_idx] 
+    mp_inputs = np.array(mp_inputs) 
+    sc_inp_sum_mp = np.fromiter(map(np.sum, mp_inputs*mp_weights), float)
+    setattr(unit, 'sc_inp_sum_mp', sc_inp_sum_mp)
+    
 
 #-------------------------------------------------------------------------------------
 # Use of the following classes has been deprecated because they slow down execution
