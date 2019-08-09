@@ -329,8 +329,9 @@ class input_selection_synapse(synapse):
             'error_port' : port where the 'error' signals are received in the
                            postsynaptic unit. Default 1.
             'aff_port' : port where the 'afferent' signals are received in the
-                         postsynaptic unit. Default 0.
-                         This port will  be deprecated, and the afferent port
+                         postsynaptic unit. Default is the port of the synapse
+                         (e.g. self.port).
+                         This port may be deprecated, and the afferent port
                          will be considered to be the synapse's port.
             'w_sum' : value of the sum of synaptic weights at the 'aff' synapse.
                       Default is 1.
@@ -349,7 +350,7 @@ class input_selection_synapse(synapse):
         if 'aff_port' in params:
             self.aff_port = params['aff_port']
         else:
-            self.aff_port = 0
+            self.aff_port = self.port
         if self.aff_port != self.port:
             from warnings import warn
             warn("aff_port and port don't coincide in input selection synapse",
@@ -401,15 +402,15 @@ class gated_input_selection_synapse(input_selection_synapse):
             params: same as the parent class, with some additions.
             REQUIRED PARAMETERS
             'lrate' : A scalar value that will multiply the derivative of the weight.
+            'extra_steps' : extra delay steps for presynaptic input.
             OPTIONAL PARAMETERS
             'error_port' : port where the 'error' signals are received in the
                            postsynaptic unit. Default 1.
             'aff_port' : port where the 'afferent' signals are received in the
-                         postsynaptic unit. Default 0.
+                         postsynaptic unit. Default is the port of the synapse
+                         (e.g. self.port).
             'w_sum' : value of the sum of synaptic weights at the 'aff' synapse.
                       Default is 1.
-            'extra_steps' : extra delay steps for presynaptic input.
-
         Raises:
             ValueError, AssertionError.
         """
@@ -421,7 +422,6 @@ class gated_input_selection_synapse(input_selection_synapse):
         u = self.net.units[self.postID]
         err_diff = (u.lpf_fast_sc_inp_sum_mp[self.error_port] -
                     u.lpf_mid_sc_inp_sum_mp[self.error_port]) 
-        #pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps +
                                                       self.extra_steps)
         self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]

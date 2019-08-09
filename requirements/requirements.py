@@ -647,33 +647,43 @@ def add_inp_deriv_mp(unit):
     """
     if not unit.multiport:
         raise AssertionError('The inp_deriv_mp requirement is for multiport units.')
+    if not hasattr(unit, 'inp_deriv_ports'):
+        setattr(unit, 'inp_deriv_ports', list(range(unit.n_ports)))
     # So that the unit can access the LPF'd activities of its presynaptic units
     # it needs a list with the ID's of the presynaptic units, arranged by port.
     # pre_list_mp[i,j] will contain the ID of the j-th input at the i-th port.
     # In addition, we need to know how many delay steps there are for each input.
     # pre_del_mp[i,j] will contain the delay steps of the j-th input at the i-th
-    # port.
+    # port. Both lists will show no inputs in the ports not present in the
+    # optional list inp_deriv_ports.
     syns = unit.net.syns[unit.ID]
     pre_list_mp = []
     pre_del_mp = []
-    for lst in unit.port_idx:
-        pre_list_mp.append([syns[uid].preID for uid in lst])
-        pre_del_mp.append([syns[uid].delay_steps for uid in lst])
+    for p, lst in enumerate(unit.port_idx):
+        if p in unit.inp_deriv_ports:  
+            pre_list_mp.append([syns[uid].preID for uid in lst])
+            pre_del_mp.append([syns[uid].delay_steps for uid in lst])
+        else:
+            pre_list_mp.append([])
+            pre_del_mp.append([])
     pre_list_del_mp = list(zip(pre_list_mp, pre_del_mp)) # prezipping for speed
     # initializing all derivatives with zeros
     inp_deriv_mp = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
-    #setattr(unit, 'pre_list_mp', pre_list_mp)
-    #setattr(unit, 'pre_del_mp', pre_del_mp)
     setattr(unit, 'pre_list_del_mp', pre_list_del_mp)
     setattr(unit, 'inp_deriv_mp', inp_deriv_mp)
-    setattr(unit, 'inp_deriv_ports', list(range(unit.n_ports)))
 
 
 def add_avg_inp_deriv_mp(unit):
     """ Adds the average of the derivatives of all inputs at each port. 
         
-        This requirement was created for the rga synapse, and implemented in the
-        am_pm_oscillator class.
+        This requirement was created for the rga synapse, was originally in the
+        am_pm_oscillator class, and then moved to the rga_reqs class in order to
+        consolidate all versions. Depending on the optional parameter 
+        'inp_deriv_ports' of the unit (used by upd_inp_deriv_mp) the
+        derivatives may come only for some ports.
+
+        The current implementation is in the rga_reqs class.
+
     """
     if not syn_reqs.inp_deriv_mp in unit.syn_needs:
         raise AssertionError('The avg_inp_deriv_mp requirement needs inp_deriv_mp')
@@ -707,25 +717,34 @@ def add_del_inp_deriv_mp(unit):
     if not hasattr(unit, 'custom_inp_del'):
         raise AssertionError('The del_inp_deriv_mp requirement needs units to have ' + 
                               'the attribute custom_inp_del.')
+    # finding ports where the derivative will be calculated
+    if not hasattr(unit, 'inp_deriv_ports'):
+        setattr(unit, 'inp_deriv_ports', list(range(unit.n_ports)))
     syns = unit.net.syns[unit.ID]
     # pre_list_mp[i,j] will contain the ID of the j-th input at the i-th port.
     pre_list_mp = []
     for lst in unit.port_idx:
         pre_list_mp.append([syns[uid].preID for uid in lst])
+    # ports not in inp_deriv_ports will be considered empty
+    pre_list_mp = [pre_list_mp[p] if p in unit.inp_deriv_ports else []
+                   for p in range(unit.n_ports)]
     setattr(unit, 'pre_list_mp', pre_list_mp)
     # initializing all derivatives with zeros
     del_inp_deriv_mp = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
     setattr(unit, 'del_inp_deriv_mp', del_inp_deriv_mp)
-    if not hasattr(unit, 'inp_deriv_ports'):
-        setattr(unit, 'inp_deriv_ports', list(range(unit.n_ports)))
+    
 
 
 def add_del_avg_inp_deriv_mp(unit):
     """ Adds the delayed average of the derivatives of all inputs at each port. 
 
-        This is a version of avg_inp_deriv_mp where the inputs have a custom
-        delay. It was created for the rga synapse, and implemented in the
-        am_pm_oscillator class.
+        This requirement was created for the rga synapse, was originally in the
+        am_pm_oscillator class, and then moved to the rga_reqs class in order to
+        consolidate all versions. Depending on the optional parameter 
+        'inp_deriv_ports' of the unit (used by upd_del_avg_inp_deriv_mp) the
+        derivatives may come only for some ports.
+
+        The current implementation is in the rga_reqs class.
     """
     if not syn_reqs.del_inp_deriv_mp in unit.syn_needs:
         raise AssertionError('The del_avg_inp_deriv_mp requirement ' + 
@@ -868,9 +887,9 @@ def add_acc_mid(unit):
         This was originally used in the rga_sig units as a part of a mechanism
         that stopped learning for a moment whenever the target was changed.
 
-        Currently upd_acc_mid is in the gated_rga_sig unit. The implementation
-        resets the value to 0 if the scaled input sum at port 2 is larger than
-        0.5 .
+        Currently upd_acc_mid is in the acc_sda_reqs class. The implementation
+        resets the value to 0 if the scaled input sum at port 'i' is larger than
+        0.5, where i is the value of the 'acc_port' parameter (0 by default).
     """
     if not hasattr(unit,'tau_mid'): 
         raise NameError( 'Requirement acc_mid requires the ' +
@@ -878,6 +897,10 @@ def add_acc_mid(unit):
     if not hasattr(unit, 'mid_prop'):
         add_propagator(unit, 'mid')
     setattr(unit, 'acc_mid', 0.)
+    if not hasattr(unit, 'acc_mid_port'):
+        from warnings import warn
+        warn('setting the 0 value for the acc_mid reset port')
+        setattr(unit, 'acc_mid_port', 0)
 
 
 def add_acc_slow(unit):
@@ -887,9 +910,9 @@ def add_acc_slow(unit):
         This was originally used in the rga_sig units as a part of a mechanism
         that stopped learning for a moment whenever the target was changed.
 
-        Currently upd_acc_slow is in the gated_rga_sig unit. The implementation
-        resets the value to 0 if the scaled input sum at port 2 is larger than
-        0.5 . Another implementation is in gated_out_norm_am_sig.
+        Currently upd_acc_slow is in the acc_sda_reqs class. The implementation
+        resets the value to 0 if the scaled input sum at port 'i' is larger than
+        0.5, where i is the value of the 'acc_port' parameter (0 by default).
     """
     if not hasattr(unit,'tau_slow'): 
         raise NameError( 'Requirement acc_slow requires the ' +
@@ -897,22 +920,25 @@ def add_acc_slow(unit):
     if not hasattr(unit, 'slow_prop'):
         add_propagator(unit, 'slow')
     setattr(unit, 'acc_slow', 0.)
+    if not hasattr(unit, 'acc_slow_port'):
+        from warnings import warn
+        warn('setting the 0 value for the acc_slow reset port')
+        setattr(unit, 'acc_slow_port', 0)
 
 
 def add_slow_decay_adapt(unit):
     """ Add an adaptation factor that decays with tau_slow time constant.
 
         This requirement was designed to implement gated adaptation in the
-        gated_rga_adap_sig model, where the update implementation is located.
+        gated_rga_adap_sig model. The update implementation is now in the
+        acc_sda_reqs class.
 
-        When the inputs at port 3 are below 0.8, the adaptation will
+        There is one port called the sda_port that resets the adaptation.
+        When the inputs at this port are below 0.8, the adaptation will
         exponentially decay to 0. When the port 3 inputs exceed 0.8 the
         adaptation will be reset to its initial value, which depends on the slow
         LPF'd value of the activity. Afterwards no further reset will be 
         possible until the adaptation falls below 0.2.
-
-        The implementation in the gated_rga_inpsel_adapt_sig model uses inputs
-        at port 4 instead of 3.
     """
     if not hasattr(unit, 'tau_slow'):
         raise NameError( 'Requirement slow_decay_adapt requires the ' +
@@ -921,6 +947,10 @@ def add_slow_decay_adapt(unit):
         raise AssertionError('The slow_decay_adapt requirement  needs the ' + 
                              'lpf_slow requirement')
     setattr(unit, 'slow_decay_adapt', 0.)
+    if not hasattr(unit, 'sda_port'):
+        from warnings import warn
+        warn('setting the 0 value for the slow_decay_adapt reset port')
+        setattr(unit, 'sda_port', 0)
 
 
 def add_mp_weights(unit):

@@ -74,6 +74,7 @@ class unit_types(Enum):
     act = 109
     gated_out_norm_am_sig = 110
     gated_rga_inpsel_adapt_sig = 111
+    inpsel_linear = 112
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -220,6 +221,9 @@ class unit_types(Enum):
         elif self == unit_types.gated_rga_inpsel_adapt_sig:
             from units.spinal_units import gated_rga_inpsel_adapt_sig 
             unit_class = gated_rga_inpsel_adapt_sig 
+        elif self == unit_types.inpsel_linear:
+            from units.spinal_units import inpsel_linear
+            unit_class = inpsel_linear
         else:
             raise NotImplementedError('Attempting to retrieve the class of an ' + 
                                       'unknown unit model')
