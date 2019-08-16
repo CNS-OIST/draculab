@@ -877,7 +877,8 @@ class gated_rga_adapt_sig(sigmoidal, rga_reqs, acc_sda_reqs):
         else:
             self.adapt_amp = 1.
         self.integ_amp = params['integ_amp']
-        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum, syn_reqs.acc_slow,
+        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum_mp, syn_reqs.acc_slow,
+                               syn_reqs.mp_weights, syn_reqs.mp_inputs,
                                syn_reqs.lpf_slow, syn_reqs.slow_decay_adapt])
         params['inp_deriv_ports'] = [0, 1] # ports for inp_deriv_mp
         rga_reqs.__init__(self, params)
@@ -890,17 +891,15 @@ class gated_rga_adapt_sig(sigmoidal, rga_reqs, acc_sda_reqs):
         """ Return the derivative of the activity at time t. """
         sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(t),
                                            self.get_mp_weights(t))]
-        # TODO: replace lpf_slow_sc_inp_sum; it adds the inputs from ports2, 3
         inp = (sums[0] + sums[1] 
-               + self.integ_amp * self.lpf_slow_sc_inp_sum
+               + self.integ_amp * self.lpf_slow_sc_inp_sum[0]
                - self.adapt_amp * self.slow_decay_adapt)
         return ( self.f(inp) - y[0] ) * self.rtau
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
-        # TODO: replace lpf_slow_sc_inp_sum; it adds the inputs from ports2, 3
         inp = (self.mp_inp_sum[0][s] + self.mp_inp_sum[1][s]
-               + self.integ_amp * self.lpf_slow_sc_inp_sum 
+               + self.integ_amp * self.lpf_slow_sc_inp_sum_mp[0]
                - self.adapt_amp * self.slow_decay_adapt)
         return ( self.f(inp) - y ) * self.rtau
 

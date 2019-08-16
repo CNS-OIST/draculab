@@ -411,11 +411,18 @@ class gated_input_selection_synapse(input_selection_synapse):
                          (e.g. self.port).
             'w_sum' : value of the sum of synaptic weights at the 'aff' synapse.
                       Default is 1.
+            'normalize' : Binary value indicating whether the sum of synaptic
+                          weights at the 'aff' synapse should be 'w_sum'.
+                          Default is True.
         Raises:
             ValueError, AssertionError.
         """
         input_selection_synapse.__init__(self, params, network)
         self.extra_steps = params['extra_steps']
+        if 'normalize' in params:
+            self.normalize = params['normalize']
+        else:
+            self.normalize = True
 
     def update(self, time):
         """ Update the weight using the input selection rule. """
@@ -424,7 +431,8 @@ class gated_input_selection_synapse(input_selection_synapse):
                     u.lpf_mid_sc_inp_sum_mp[self.error_port]) 
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps +
                                                       self.extra_steps)
-        self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
+        if self.normalize:
+            self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
         self.w = self.w + u.acc_slow * self.alpha * pre * err_diff
 
 
