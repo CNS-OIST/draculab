@@ -99,10 +99,14 @@ class rga_synapse(synapse):
     
         The particulars are in the 4/11/19 scrap sheet.
 
-        Presynaptic units have the lpf_fast and lpf_mid requirements.
-        Postsynaptic units have the lpf_fast, lpf_mid, inp_deriv_mp, 
-        avg_inp_deriv_mp, l0_norm_factor_mp requirements. The am_pm_oscillator
-        includes the implementation of these last three.
+        Presynaptic units are given the lpf_fast and lpf_mid requirements.
+
+        Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
+        avg_inp_deriv_mp, del_inp_deriv_mp, del_avg_inp_deriv_mp, 
+        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        
+        The update methods for most of these requirements are currently in the
+        rga_reqs class of the spinal_units.py file.        
 
         In addition, units using this type of synapse need to have a
         'custom_inp_del' attribute to indicate the extra delay steps in the 
@@ -192,14 +196,18 @@ class rga_synapse(synapse):
 class gated_rga_synapse(synapse):
     """ A variant of the rga synapse with modulated learning rate.
 
-        In particular, the acc_mid attribute of the postsynaptic unit
-    
-        The particulars are in the 4/11/19 scrap sheet.
+        The RGA rule is described in the 4/11/19 scrap sheet.
 
-        Presynaptic units have the lpf_fast and lpf_mid requirements.
-        Postsynaptic units have the lpf_fast, lpf_mid, inp_deriv_mp, 
-        avg_inp_deriv_mp, l0_norm_factor_mp requirements. The am_pm_oscillator
-        includes the implementation of these last three.
+        Presynaptic units are given the lpf_fast and lpf_mid requirements.
+
+        Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
+        avg_inp_deriv_mp, del_inp_deriv_mp, del_avg_inp_deriv_mp, 
+        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        Postsynaptic units are also expected to include the acc_slow
+        requirement, which is used to modulate the learning rate.
+        
+        The update methods for most of these requirements are currently in the
+        rga_reqs class of the spinal_units.py file.        
 
         In addition, units using this type of synapse need to have a
         'custom_inp_del' attribute to indicate the extra delay steps in the 

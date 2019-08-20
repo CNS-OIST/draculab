@@ -914,7 +914,8 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
         are the "lateral" inputs for the gated_rga synapses. Inputs at port 2
         are the "afferent" inputs for the gated_input_selection synapse. 
         The output of the unit is the sigmoidal function applied to the scaled
-        sum of inputs at ports 0, 1, and 2.
+        sum of inputs at ports 0, 1, and 2, plus an integral component, minus
+        an adaptation component.
 
         The scaled sum of inputs at port 3 is for the signal that resets the 
         acc_slow accumulator, used to gate both rga and input selection synapses.
@@ -1004,14 +1005,16 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
         sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(t),
                                            self.get_mp_weights(t))]
         inp = (sums[0] + sums[1] + sums[2]
-               + self.integ_amp * sum(self.lpf_slow_mp_inp_sum[0:3])
+               #+ self.integ_amp * sum(self.lpf_slow_mp_inp_sum[0:3]) # why 0:3?
+               + self.integ_amp * self.lpf_slow_mp_inp_sum[0]
                - self.adapt_amp * self.slow_decay_adapt)
         return ( self.f(inp) - y[0] ) * self.rtau
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
         inp = (self.mp_inp_sum[0][s] + self.mp_inp_sum[1][s] + self.mp_inp_sum[2][s]
-               + self.integ_amp * sum(self.lpf_slow_mp_inp_sum[0:3])
+               #+ self.integ_amp * sum(self.lpf_slow_mp_inp_sum[0:3]) # why 0:3?
+               + self.integ_amp * self.lpf_slow_mp_inp_sum[0]
                - self.adapt_amp * self.slow_decay_adapt)
         return ( self.f(inp) - y ) * self.rtau
 
