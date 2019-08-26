@@ -996,7 +996,7 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
         rga_reqs.__init__(self, params)
         lpf_sc_inp_sum_mp_reqs.__init__(self, params)
         self.needs_mp_inp_sum = True # to avoid adding signals from ports 3,4
-        params['acc_slow_port'] = 3 # so inputs at port 2 reset acc_slow
+        params['acc_slow_port'] = 3 # so inputs at port 3 reset acc_slow
         params['sda_port'] = 4
         acc_sda_reqs.__init__(self, params)
 

@@ -456,10 +456,14 @@ class anti_covariance_inh_synapse(synapse):
         This synapse type expects to be initialized with a negative weight, and will
         implement soft weight bounding in order to ensure the sign of the weigh  does
         not become positive, so the rule is actually:
-        w' = - lrate * w * (post - theta) * pre,
+        w' = lrate * w * (post - theta) * pre,
+        Notice that the negative sign was removed due to the assumption that w
+        is negative.
     
         Presynaptic units require the 'tau_fast' parameter.
         Postsynaptic units require 'tau_fast' and 'tau_slow'.
+
+        The name of this rule's Enum is 'anticov_inh'.
     """
 
     def __init__(self, params, network):
@@ -496,7 +500,7 @@ class anti_covariance_inh_synapse(synapse):
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the anti-covariance learning rule 
-        self.w = self.w * (1. - self.alpha * (post - avg_post) * pre)
+        self.w = self.w * (1. + self.alpha * (post - avg_post) * pre)
 
 
 class chg_synapse(synapse):
