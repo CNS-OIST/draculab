@@ -781,6 +781,7 @@ class compound_double_pendulum(plant):
                        2.0*tau2)) / (L1**2*L2**2*m2*(4.0*m1 + 9.0*m2*sin(q2)**2 + 3.0*m2))
         return dydt
 
+
 class spring_muscle():
     """ A very simple muscle model with a linear spring. 
     
@@ -856,12 +857,12 @@ class spring_muscle():
         p2 = params['p2']
         # defining an auxiliary function to obtain the muscle length
         if len(p1) == 2 and len(p2) == 2:
-            self.norm = lambda p1,p2: ((p1[0]-p2[0])*(p1[0]-p2[0])+
-                                       (p1[1]-p2[1])*(p1[1]-p2[1]))**(1/2)
+            self.norm = lambda p1,p2: np.sqrt((p1[0]-p2[0])*(p1[0]-p2[0])+
+                                              (p1[1]-p2[1])*(p1[1]-p2[1]))
         elif len(p1) == 3 and len(p2) == 3:
-            self.norm = lambda p1,p2: ((p1[0]-p2[0])*(p1[0]-p2[0])+
-                                       (p1[1]-p2[1])*(p1[1]-p2[1])+
-                                       (p1[2]-p2[2])*(p1[2]-p2[2]))**(1/2)
+            self.norm = lambda p1,p2: np.sqrt((p1[0]-p2[0])*(p1[0]-p2[0])+
+                                              (p1[1]-p2[1])*(p1[1]-p2[1])+
+                                              (p1[2]-p2[2])*(p1[2]-p2[2]))
         else:
             raise ValueError('Insertion points should both be 2 or 3-' +
                              'dimensional arrays')
@@ -907,6 +908,140 @@ class spring_muscle():
         self.affs[0] = self.g2 * (1.+i2) * (self.l - self.l0) / self.l0
         self.affs[1] = self.g3 * (1.+i3) * self.v
         self.affs[2] = self.T
+
+
+class hill_muscle():
+    """ A basic Hill muscle model.
+    
+        This object is to be used by the bouncy_planar_arm plant.
+
+        The model used is described in pg. 99 of: Shadmehr and Wise 2005, "The
+        Computational Neurobiology of Reaching and Pointing", MIT Press.
+        It is also described in:
+        https://storage.googleapis.com/wzukusers/user-31382847/documents/5a72533473440qi0OHG8/musclemodel.pdf
+
+        The muscle provides 3 outputs: its length, its contraction velocity, and
+        its tension. In order to update its state the muscle uses 5 inputs at
+        each simulation step. The first two inputs provide the coordinates of
+        the muscle's insertion points, one input provides the contraction-causing
+        stimulation, and two inputs modulate the length and contraction velocity
+        outputs. See the constructor's docstring for more details.
+    """
+    def __init__(self, params):
+        """ The class constructor.
+
+        Args:
+            params: A parameter dictionary with the following entries:
+            REQUIRED PARAMETERS
+                k_pe: spring constant of the parallel element [N/m]
+                k_se: spring constant of the series element [N/m]
+                b : dampening constant [N s/m]
+                g1: contraction input gain [N].
+                g2: length afferent modulation gain.
+                g3: velocity afferent modulation gain.
+                dt: length of simulation steps [s]
+                p1: array-like with coordinates of proximal insertion point.
+                p2: array-like with coordinates of distal insertion point.
+            OPTIONAL PARAMETERS
+                tau_fast : time constant for fast low-pass filter [s]
+                           Defaults to 0.01 seconds.
+                tau_mid : time constant for medium low-pass filter [s]
+                          Defaults to 0.1 seconds.
+                v_scale : a factor that scales the magnitude of the velocity.
+                          Defaults to 5.
+                l0: resting length of the muscle as a fraction of the distance
+                    between the received p1 and p2 coordinates, which is the
+                    default resting length.
+
+        The spring force of the muscle is obtained as:
+            F = s*(l - l0,0) + g1*i1
+        where F=Force, l=length, and i1=contracting stimulation
+        The afferent outputs come from length, velocity, and tension:
+            affs[0] = g2*(1+i2)*(l-l0)/l0, where l0 = resting length in meters.
+            affs[1] = g3*(1+i3)*v
+            affs[2] = s*max(l - l0,0) + g1*i1
+        where v is the contraction velocity, and i2,i3 are inputs.
+        These output are supposed to represent the Ia, II, and Ib afferents,
+        respectively.
+        The contraction velocity is obtained as:
+            v = v_scale * (L_fast - L_mid)
+        where L_fast=fast LPF length, L_mid=medium LPF length.
+        """
+        self.s = params['s']
+        self.g1 = params['g1']
+        self.g2 = params['g2']
+        self.g3 = params['g3']
+        self.dt = params['dt']
+        if 'tau_fast' in params:
+            self.tau_fast = params['tau_fast']
+        else:
+            self.tau_fast = 0.01
+        if 'tau_mid' in params:
+            self.tau_mid = params['tau_mid']
+        else:
+            self.tau_mid = 0.1
+        if 'v_scale' in params:
+            self.v_scale = params['v_scale']
+        else:
+            self.v_scale = 15.
+        p1 = params['p1']
+        p2 = params['p2']
+        # defining an auxiliary function to obtain the muscle length 
+        if len(p1) == 2 and len(p2) == 2:
+            self.norm = lambda p1,p2: np.sqrt((p1[0]-p2[0])*(p1[0]-p2[0])+
+                                              (p1[1]-p2[1])*(p1[1]-p2[1]))
+        elif len(p1) == 3 and len(p2) == 3:
+            self.norm = lambda p1,p2: np.sqrt((p1[0]-p2[0])*(p1[0]-p2[0])+
+                                              (p1[1]-p2[1])*(p1[1]-p2[1])+
+                                              (p1[2]-p2[2])*(p1[2]-p2[2]))
+        else:
+            raise ValueError('Insertion points should both be 2 or 3-' +
+                             'dimensional arrays')
+        self.l = self.norm(p1,p2) # intializing the length
+        if 'l0' in params: self.l0 = params['l0']*self.l # rest length
+        else: self.l0 = self.l
+        self.l_lpf_fast = self.l # initializing fast lpf'd length
+        self.l_lpf_mid = self.l # initializing medium lpf'd length
+        self.T = self.s*(self.l-self.l0) # initial tension
+        self.v = 0. # initial velocity is zero
+        self.fast_propagator = np.exp(-self.dt/self.tau_fast) # to update l_lpf_fast
+        self.mid_propagator = np.exp(-self.dt/self.tau_mid) # to update l_lpf_mid
+        # initialize vector with afferents
+        self.affs = np.array([self.g2*self.l, self.g3*self.v, self.T])
+
+    def upd_lpf_l(self):
+        """ Update the low-pass filtered lengths. """
+        # Using the approach from unit.upd_lpf_fast
+        self.l_lpf_fast = self.l + (self.l_lpf_fast - self.l) * self.fast_propagator
+        self.l_lpf_mid = self.l + (self.l_lpf_mid - self.l) * self.mid_propagator
+    
+    def update(self, p1, p2, i1, i2, i3):
+        """ Update the length, tension, velocity, afferents, and LPF'd lengths. 
+        
+        Args:
+            p1: array-like with coordinates of proximal insertion point.
+            p2: array-like with coordinates of distal insertion point.
+            i1: stimulation to contract the muscle.
+            i2: stimulation to modulate length afferent.
+            i3: stimulation to modulate velocity afferent.
+            
+        """
+        # find the muscle's length
+        self.l = self.norm(p1, p2)
+        # update the low-pass filtered lengths
+        self.l_lpf_fast = self.l + (self.l_lpf_fast-self.l) * self.fast_propagator
+        self.l_lpf_mid = self.l + (self.l_lpf_mid-self.l) * self.mid_propagator
+        # update the tension
+        self.T = self.s * max(self.l-self.l0, 0.) + self.g1*i1
+        # update the velocity
+        self.v = self.v_scale * (self.l_lpf_fast - self.l_lpf_mid)
+        # update afferents vector
+        self.affs[0] = self.g2 * (1.+i2) * (self.l - self.l0) / self.l0
+        self.affs[1] = self.g3 * (1.+i3) * self.v
+        self.affs[2] = self.T
+
+
+
 
 
 class planar_arm(plant):
