@@ -90,7 +90,7 @@ class plant():
         self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
         self.offset = (self.steps-1)*min_buff # * an index used in the update
                                               # function of derived classes
-        self.buff_width = int(round(self.steps*min_buff)) # * number of state values to store
+        self.buff_width = int(round(self.steps*min_buff)) # * number of state vectors to store
         # keeping with scipy.integrate.odeint, each row in the buffer will
         # correspond to a state
         if hasattr(self, 'init_state'): # if we have initial values to put in the buffer
@@ -913,19 +913,23 @@ class spring_muscle():
 class hill_muscle():
     """ A basic Hill muscle model.
     
-        This object is to be used by the bouncy_planar_arm plant.
+        This object is to be used by the planar_arm plant.
 
         The model used is described in pg. 99 of: Shadmehr and Wise 2005, "The
         Computational Neurobiology of Reaching and Pointing", MIT Press.
         It is also described in:
         https://storage.googleapis.com/wzukusers/user-31382847/documents/5a72533473440qi0OHG8/musclemodel.pdf
 
-        The muscle provides 3 outputs: its length, its contraction velocity, and
-        its tension. In order to update its state the muscle uses 5 inputs at
-        each simulation step. The first two inputs provide the coordinates of
-        the muscle's insertion points, one input provides the contraction-causing
-        stimulation, and two inputs modulate the length and contraction velocity
-        outputs. See the constructor's docstring for more details.
+        The state of the muscle at any given time can be characterized by 2
+        variables: its length and its tension. The derivative of the tension can
+        be obtained from these two, plus the length's derivative, which the
+        muscle object will obtain by itself.
+        
+        The main function of this object is to provide the derivative of the
+        tension given the muscle's insertion points, and the derivative of its
+        length. A second function is to provide "afferent outputs" given the
+        muscle's contraction velocity, insertion points, and tension.
+        See the constructor's docstring for more details.
     """
     def __init__(self, params):
         """ The class constructor.
@@ -939,7 +943,6 @@ class hill_muscle():
                 g1: contraction input gain [N].
                 g2: length afferent modulation gain.
                 g3: velocity afferent modulation gain.
-                dt: length of simulation steps [s]
                 p1: array-like with coordinates of proximal insertion point.
                 p2: array-like with coordinates of distal insertion point.
             OPTIONAL PARAMETERS
@@ -947,25 +950,24 @@ class hill_muscle():
                            Defaults to 0.01 seconds.
                 tau_mid : time constant for medium low-pass filter [s]
                           Defaults to 0.1 seconds.
-                v_scale : a factor that scales the magnitude of the velocity.
-                          Defaults to 5.
-                l0: resting length of the muscle as a fraction of the distance
-                    between the received p1 and p2 coordinates, which is the
-                    default resting length.
+                v_scale : a factor that scales the magnitude of the mid and fast
+                          low-pass filtered lengths, so velocity can be obtained
+                          as their difference. Defaults to 5.
+                l0: sum of the rest lengths of the two elastic elements given as
+                    a fraction of the distance between the received p1 and p2
+                    coordinates. If l0 is not given, the default resting length
+                    will be the distance between p1 and p2.
 
-        The spring force of the muscle is obtained as:
-            F = s*(l - l0,0) + g1*i1
-        where F=Force, l=length, and i1=contracting stimulation
-        The afferent outputs come from length, velocity, and tension:
+        The first two afferent outputs come from length, and velocity: 
             affs[0] = g2*(1+i2)*(l-l0)/l0, where l0 = resting length in meters.
             affs[1] = g3*(1+i3)*v
-            affs[2] = s*max(l - l0,0) + g1*i1
         where v is the contraction velocity, and i2,i3 are inputs.
-        These output are supposed to represent the Ia, II, and Ib afferents,
+        These output are supposed to represent the Ia, and II afferents,
         respectively.
-        The contraction velocity is obtained as:
-            v = v_scale * (L_fast - L_mid)
-        where L_fast=fast LPF length, L_mid=medium LPF length.
+        The third afferent output is the tension, which comes from integrating
+        the tension derivative provided by the Hill model. This derivative is
+        implemented in the tension_deriv function, and is integrated by the arm
+        object.
         """
         self.s = params['s']
         self.g1 = params['g1']
@@ -1014,6 +1016,22 @@ class hill_muscle():
         # Using the approach from unit.upd_lpf_fast
         self.l_lpf_fast = self.l + (self.l_lpf_fast - self.l) * self.fast_propagator
         self.l_lpf_mid = self.l + (self.l_lpf_mid - self.l) * self.mid_propagator
+
+    def tension_deriv(self, inp):
+        """ Derivative of the tension using the Hill model. 
+        
+            This function is used to simplify the muscle's update function.
+
+            Args:
+                inp : input to the active, force-producing element.
+        """
+        # notice that self.l and self.v should be updated at this point
+        dT = (self.k_se/self.b) * (self.g1*inp + 
+                                   self.k_pe*(self.l - self.l0) +
+                                   self.b * self.v -
+                                   (1. + (self.k_pe/self.k_se))*self.T)
+        return dT
+
     
     def update(self, p1, p2, i1, i2, i3):
         """ Update the length, tension, velocity, afferents, and LPF'd lengths. 
@@ -1031,17 +1049,15 @@ class hill_muscle():
         # update the low-pass filtered lengths
         self.l_lpf_fast = self.l + (self.l_lpf_fast-self.l) * self.fast_propagator
         self.l_lpf_mid = self.l + (self.l_lpf_mid-self.l) * self.mid_propagator
-        # update the tension
-        self.T = self.s * max(self.l-self.l0, 0.) + self.g1*i1
         # update the velocity
         self.v = self.v_scale * (self.l_lpf_fast - self.l_lpf_mid)
+        # update the tension
+
+        #self.T = 
         # update afferents vector
         self.affs[0] = self.g2 * (1.+i2) * (self.l - self.l0) / self.l0
         self.affs[1] = self.g3 * (1.+i3) * self.v
         self.affs[2] = self.T
-
-
-
 
 
 class planar_arm(plant):
@@ -1279,6 +1295,9 @@ class planar_arm(plant):
         #self.q1_min = -np.pi/12. # currently not used
         #self.q1_max = np.pi/12.
         # create the muscles
+        # TODO: move muscle creation to a separate function so we may have one
+        # option for linear muscles, and one for Hill muscles
+        #-----------------------------------------------------
         mus_pars = {'l0': 1., # resting length
                 's' : self.spring, # spring constant
                 'g1': self.m_gain,  # contraction input gain
@@ -1293,6 +1312,7 @@ class planar_arm(plant):
             mus_pars['p1'] = self.ip[2*i]
             mus_pars['p2'] = self.ip[2*i+1]
             self.muscles.append(spring_muscle(mus_pars))
+        #-----------------------------------------------------
         ##  initialize the state vector.
         self.init_state = np.zeros(self.dim)
         # initializing double pendulum state variables
@@ -1300,6 +1320,12 @@ class planar_arm(plant):
                                          params['init_q2'], params['init_q2p']])
         self.buffer = np.array([self.init_state]*self.buff_width) 
         # initializing muscle state variables in the buffer
+        # TODO: this function should also be specialized for the muscle type
+        # e.g. upd_muscl_buff_linear vs. upd_muscl_buff_hill. The latter version
+        # would only update the afferent values, as the tension values would be
+        # updated by planar_arm.update, which means that either
+        # planar_arm.update or planar_arm.derivtives must be specialized.
+        # OR MAYBE NOT
         self.upd_muscle_buff(0.)
         # one variable used in the update method
         self.mbs = self.net.min_buff_size
@@ -1391,7 +1417,7 @@ class planar_arm(plant):
     	return tau
 	
     def elbow_torque(self, i_prox, i_dist, T):
-    	""" Obtain the torque produced by a muscle wrt the shoulder joint.
+    	""" Obtain the torque produced by a muscle wrt the elbow joint.
     	
         	Args:
             	i_prox : coordinates of proximal insertion point (tuple)
@@ -1514,5 +1540,5 @@ class planar_arm(plant):
         self.upd_muscle_buff(time, flat=True)
 
 
-            
+           
 
