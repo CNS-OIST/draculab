@@ -366,6 +366,7 @@ class plant_models(Enum):
     planar_arm = 6
     bouncy_pendulum = 7
     bouncy_planar_arm = 8
+    planar_arm_v2 = 9
 
     def get_class(self):
         """ Return the class object corresponding to a given plant enum. 
@@ -402,6 +403,9 @@ class plant_models(Enum):
         elif self == plant_models.bouncy_planar_arm:
             from plants.spinal_plants import bouncy_planar_arm
             plant_class = bouncy_planar_arm
+        elif self == plant_models.planar_arm_v2:
+            from plants.plants import planar_arm_v2
+            plant_class = planar_arm_v2
         else:
             raise NotImplementedError('Attempting to retrieve the class for an unknown plant model')
         return plant_class
