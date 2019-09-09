@@ -1607,8 +1607,6 @@ class planar_arm_v2(plant):
         """
         # This is the stuff that goes into all model constructors. Adjust accordingly.
         #-------------------------------------------------------------------------------
-        #assert params['type'] is plant_models.planar_arm, ['Plant ' +
-        #                         str(self.ID) + ' instantiated with the wrong type']
         params['dimension'] = 28 # notifying dimensionality of model to parent constructor
         params['inp_dim'] = 18 # notifying there are eighteen input ports
         plant.__init__(self, ID, params, network) # calling parent constructor
@@ -1751,6 +1749,8 @@ class planar_arm_v2(plant):
         self.buffer = np.array([self.init_state]*self.buff_width) 
         # transpose of matrix to rotate 90 degrees, used for muscle kinematics
         self.rot90_trp = np.array([[0., 1.], [-1., 0.]])
+        # update the coordinates of all insertion points
+        self.upd_ip()
         # initializing muscle state afferents in the buffer
         self.upd_muscle_buff(0.)
         # one variable used in the update method
@@ -1817,6 +1817,16 @@ class planar_arm_v2(plant):
     def upd_ip_impl(self, q1, q2):
         """ Contains the computations of the upd_ip method below.
 
+            Args:
+                q1 : shoulder angle [rads]
+                q2 : elbow angle [rads]
+
+            Returns: A 3-tuple (c_elbow, c_hand, ip)
+                c_elbow: numpy array with elbow coordinates
+                c_hand: numpy array with hand coordinates
+                ip: numpy array with the coordinates for the 12 insertion
+                    points.
+
             A good candidate for Cython optimization.
         """
         q12 = q1+q2
@@ -1880,10 +1890,9 @@ class planar_arm_v2(plant):
             The 'flat' argument indicates whether the network is flattened,
             which means that the buffer has the indexes reversed.
         """
-        self.upd_ip() # update the coordinates of all insertion points
         m_lengths, m_speeds = self.muscle_kinematics(
-                              self.buffer[1],
-                              self.buffer[3],
+                              self.buffer[-1,1],
+                              self.buffer[-1,3],
                               self.c_elbow,
                               self.ip )
         for musc_idx in range(6):
@@ -1892,8 +1901,13 @@ class planar_arm_v2(plant):
                         self.get_input_sum(time, 3*musc_idx+2), 
                         m_lengths[musc_idx],
                         m_speeds[musc_idx],
-                        self.buffer[4+musc_idx])
-            self.buffer[10+musc_idx*3:12+musc_idx*3] = affs
+                        self.buffer[-1, 4+musc_idx])
+            # to reduce computations, all buffer entries for this time step will
+            # be the same.
+            if not flat:
+                self.buffer[:, 10+musc_idx*3:13+musc_idx*3] = affs
+            else:
+                self.buffer[10+musc_idx*3:13+musc_idx*3, :] = affs.reshape(3,1)
             
         """
         for idx, musc in enumerate(self.muscles):
@@ -1934,11 +1948,11 @@ class planar_arm_v2(plant):
     	""" Obtain the torque produced by a muscle wrt the elbow joint.
     	
         	Args:
-            	i_prox : coordinates of proximal insertion point (tuple)
-            	i_dist : coordinates of distal insertion point (tuple)
-            	T : muscle tension
+            	    i_prox : coordinates of proximal insertion point (tuple)
+                    i_dist : coordinates of distal insertion point (tuple)
+            	    T : muscle tension
         	Returns:
-            	float
+            	    float
     	"""
     	v = np.array([i_prox[0] - i_dist[0], i_prox[1] - i_dist[1]])
     	v_norm = (sum(v*v))**(1./2.)
@@ -2032,145 +2046,18 @@ class planar_arm_v2(plant):
                 dydt[9] : derivative of tension for muscle 6 [N/s]
         """
         dydt = np.zeros_like(y)
-        #~~~ Obtaining geometry information corresponding to current angles
+        #*** Obtaining geometry information corresponding to current angles
         c_elbow, c_hand, ips = self.upd_ip_impl(y[0], y[2])
-        #~~~ Obtaining muscle velocities given the angular velocities, 
-        #~~~ and obtaining tension derivatives from these.
-        """
-        #######################################################################
-        # For each muscle, the speed is the projection of the distal endpoint's
-        # velocity on the muscle line, minus the projection of the proximal
-        # endpoint's velocity on the muscle line.
-        #######################################################################
-        ## Produce a matrix where each row has the coordinates of an
-        ## insertion point, for insertion points on the arm (humerus)
-        arm_ips = np.stack((c_elbow, ips[3], ips[5], ips[8], ips[10]),
-                           axis=0)
-        ## Rotate the vectors in this matrix by 90 degress and multiply times
-        ## the shoulder angular velocity to obtain their velocities
-        arm_vels = y[1] * np.matmul(arm_ips, self.rot90_trp)
-        ## Produce a matrix where each row has the coordinates of an
-        ## insertion point on the forearm, with the origin at the elbow
-        farm_ips = np.stack((ips[1], ips[7], ips[9], ips[11]), axis=0)
-        farm_ips = farm_ips - c_elbow
-        ## Rotate these insertion points 90 degrees and multiply times the
-        ## elbow angular velocity to obtain their velocity wrt the elbow;
-        ## add elbow velocity to obtain velocity wrt the shoulder
-        farm_vels = (y[3] * np.matmul(farm_ips, self.rot90_trp) +
-                     arm_vels[0, :])
-        ## Produce a matrix where row i is the velocity of ips[i]
-        ips_vels = np.stack((np.zeros(2), farm_vels[0], np.zeros(2), arm_vels[1],
-                           np.zeros(2), arm_vels[2], np.zeros(2), farm_vels[1],
-                          arm_vels[3], farm_vels[2], arm_vels[4], farm_vels[3]),
-                          axis = 0)
-        ## Produce a matrix where row i is the vector going from the proximal
-        ## to the distal insertion point of muscle i+1 (muscle lines or vectors)
-        m_vecs = ips[1::2] - ips[0:-1:2] # distal ips minus proximal ips
-        ## Obtain muscle lengths, normalize the rows of m_vecs
-        self.m_lengths = np.linalg.norm(m_vecs, axis=1) # muscle lengths
-        m_vec_norml = m_vecs / self.m_lengths.reshape(6,1)
-        ## Obtain the muscle speeds
-        self.m_speeds = (np.sum(ips_vels[1::2] * m_vec_norml, axis=1) -
-                    np.sum(ips_vels[0:-1:2]*m_vec_norml, axis=1))
-        print('m_lengths')
-        print(self.m_lengths)
-        print('self.m_speeds')
-        print(self.m_speeds)
-        """
+        #*** Obtaining muscle velocities given the angular velocities
         m_lengths, m_speeds = self.muscle_kinematics(y[1],y[3], c_elbow, ips)
-        ## Obtain the tension derivatives
+        #*** Obtaining tension derivatives
         for musc_idx in range(6):
             dydt[4+musc_idx] = self.muscles[musc_idx].tension_deriv(
                                     self.get_input_sum(t, 3*musc_idx),
                                     m_lengths[musc_idx],
                                     m_speeds[musc_idx],
                                     y[4+musc_idx])
-
-        """
-        ### MUSCLE 1
-        ### Velocity of ips[1] projected on unit vector from ips[0] to ips[1]
-        length = np.linalg.norm(ips[1] - ips[0]) # ip1 = ips[0] :(
-        musc_vel = np.dot(farm_vels[0,:], (ips[1]-ips[0])/length)
-        dydt[4] = self.muscles[0].tension_deriv(self.get_input_sum(t, 0),
-                                                length, musc_vel, y[4])
-        ### MUSCLE 2
-        ### Velocity of ips[3] projected on unit vector from ips[2] to ips[3]
-        length = np.linalg.norm(ips[3] - ips[2]) 
-        musc_vel = np.dot(arm_vels[1,:], (ips[3]-ips[2])/length)
-        dydt[5] = self.muscles[1].tension_deriv(self.get_input_sum(t, 3),
-                                                length, musc_vel, y[5])
-        ### MUSCLE 3
-        ### Velocity of ips[5] projected on unit vector from ips[4] to ips[5]
-        length = np.linalg.norm(ips[5] - ips[4]) 
-        musc_vel = np.dot(arm_vels[2,:], (ips[5]-ips[4])/length)
-        dydt[6] = self.muscles[2].tension_deriv(self.get_input_sum(t, 6),
-                                                length, musc_vel, y[6])
-        ### MUSCLE 4
-        ### Velocity of ips[7] projected on unit vector from ips[6] to ips[7]
-        length = np.linalg.norm(ips[7] - ips[6]) 
-        musc_vel = np.dot(farm_vels[1,:], (ips[7]-ips[6])/length)
-        dydt[7] = self.muscles[3].tension_deriv(self.get_input_sum(t, 9),
-                                                length, musc_vel, y[7])
-        ### MUSCLE 5
-        ### Velocity of ips[9] projected on unit vector from ips[8] to ips[9]
-        ### minus velocity of ips[8] projected on the same vector.
-        length = np.linalg.norm(ips[9] - ips[8]) 
-        musc_vel1 = np.dot(farm_vels[2,:], (ips[9]-ips[8])/length)
-        musc_vel2 = np.dot(arm_vels[2,:], (ips[9]-ips[8])/length)
-
-        ## Velocity of elbow. Assuming shoulder is at the origin.
-        elbow_vel = y[1] * np.array([-c_elbow[1], c_elbow[0]]) 
-        # MUSCLE 1 (biarticular biceps)
-        ## The velocity is the projection of the ip2 velocity on the unit vector
-        ## along the muscle 1 (e.g. the unit vector from ip1 to ip2)
-        length = np.linalg.norm(ips[1] - ips[0]) # ip1 = ips[0] :(
-        musc_u_vec = (ips[1] - ips[0]) / length
-        ### The velocity of ip2 is the sum of the elbow velocity wrt the
-        ### shoulder plus the ip2 velocity with respect to the elbow
-        elbow_2_ip2 = ips[1] - c_elbow
-        ip2_vel_wrt_elbow = y[3] * np.array([-elbow_2_ip2[1], elbow_2_ip2[0]])
-        ip2_vel = elbow_vel + ip2_vel_wrt_elbow
-        musc_vel = np.dot(musc_u_vec, ip2_vel)
-        dydt[4] = self.muscles[0].tension_deriv(self.get_input_sum(t, 0),
-                                                length, musc_vel, y[4])
-        # MUSCLE 2 (anterior deltoid)
-        ## The velocity is the projection of the ip4 velocity on the unit vector
-        ## along muscle 2 (e.g. the unit vector from ip3 to ip4).
-        length = np.linalg.norm(ips[3] - ips[2]) # muscle length
-        musc_u_vec = (ips[3] - ips[2]) / length # unit vector along muscle
-        ip4_vel = y[1] * np.array([-ips[3][1], ips[3][0]]) 
-        musc_vel = np.dot(musc_u_vec, ip4_vel)
-        dydt[5] = self.muscles[1].tension_deriv(self.get_input_sum(t, 3),
-                                                length, musc_vel, y[5])
-        # MUSCLE 3 (posterior deltoid)
-        ## Same procedure as muscle 2
-        length = np.linalg.norm(ips[5] - ips[4]) # muscle length
-        musc_u_vec = (ips[5] - ips[4]) / length # unit vector along muscle
-        ip6_vel = y[1] * np.array([-ips[5][1], ips[5][0]]) 
-        musc_vel = np.dot(ip6_vel, musc_u_vec)
-        dydt[6] = self.muscles[2].tension_deriv(self.get_input_sum(t, 6),
-                                                length, musc_vel, y[6])
-        # MUSCLE 4 (biarticular triceps)
-        ## Similar to muscle 1, but there is a change of sign in the orthogonal
-        ## vector at ip12 because it is on the opposite side of the elbow joint.
-        length = np.linalg.norm(ips[7] - ips[6])
-        musc_u_vec = (ips[7] - ips[6]) / length
-        elbow_2_ip8 = ips[7] - c_elbow
-        ip8_vel_wrt_elbow = y[3] * np.array([-elbow_2_ip8[1], elbow_2_ip8[0]])
-        ip8_vel = elbow_vel + ip8_vel_wrt_elbow
-        musc_vel = np.dot(ip8_vel, musc_u_vec)
-        dydt[7] = self.muscles[3].tension_deriv(self.get_input_sum(t, 9),
-                                                length, musc_vel, y[7])
-        # MUSCLE 5
-        ## For muscle 5 the velocity is the projection of the velocity of ip10
-        ## on the muscle line minus the projection of the velocity of ip9 on
-        ## the muscle line. The projection on the muscle line is the dot product
-        ## with the unit vector pointing from ip9 to ip10.
-        length = np.linalg.norm(ips[9] - ips[8])
-        musc_u_vec = (ips[9] - ips[8]) / length
-        """
-
-	# obtaining the muscle torques
+	#*** obtaining the muscle torques
         #~~ muscle 1 wrt shouler
         tau1s = self.shoulder_torque(ips[0], ips[1], y[4])
         #~~ muscle 1 wrt elbow
@@ -2190,7 +2077,7 @@ class planar_arm_v2(plant):
         tau1 = tau1s + tau2s + tau3s + tau4s # shoulder torque
         tau2 = tau1e + tau4e + tau5e + tau6e # elbow torque
 
-	# setting shorter names for the variables
+	#*** setting shorter names for the variables
         q1 = y[0]
         q1p = y[1]
         q2 = y[2]
@@ -2202,7 +2089,7 @@ class planar_arm_v2(plant):
         g = self.g
         mu1 = self.mu1
         mu2 = self.mu2
-        # equations
+        #*** angular acceleration equations
         dydt[0] = q1p
         dydt[1] = 3.0*(-2.0*L2*(-2.0*L1*L2*m2*q1p*q2p*sin(q2) - L1*L2*m2*q2p**2*sin(q2) +
                        L1*g*m1*cos(q1) + 2.0*L1*g*m2*cos(q1) + L2*g*m2*cos(q1 + q2) +
@@ -2218,7 +2105,6 @@ class planar_arm_v2(plant):
                        (L1*L2*m2*q1p**2*sin(q2) + L2*g*m2*cos(q1 + q2) + 2.0*mu2*q2p -
                        2.0*tau2)) / (L1**2*L2**2*m2*(4.0*m1 + 9.0*m2*sin(q2)**2 + 3.0*m2))
         return dydt
-
            
     def update(self, time):
         """ This function advances the state for net.min_delay time units. 
