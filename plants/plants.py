@@ -2225,6 +2225,7 @@ class planar_arm_v3(plant):
                 b_d : b for dynamic bag fibers 
                 tau_g : time constant for the GTO response [s] (default .01)
                 T_0 : base tension for the GTO [N]
+                fs : fraction of static bag output in Ia (default 0.3)
             network: the network where the plant instance lives.
 
         Raises:
@@ -2323,6 +2324,8 @@ class planar_arm_v3(plant):
         else: self.tau_g = np.array([.01]*6)
         if 'T_0' in params: self.T_0 = self.param_vector(params['T_0'])
         else: self.T_0 = np.array([1.]*6)
+        if 'fs' in params: self.fs = self.param_vector(params['fs'])
+        else: self.fs = np.array([.3]*6)
         # extract geometry information from the coordinates
         #~~ arm and forearm lengths
         self.l_arm = self.c_elbow[0]  # length of the upper arm
@@ -2367,19 +2370,19 @@ class planar_arm_v3(plant):
         self.create_hill_muscles(params)
         # create the intrafusal muscles
         self.create_intrafusals(params)
-        self.fs = 0.3 # fraction of static bag output in Ia afferent
-        #  initialize the state vector.
+        ###  initial the state vector.
         self.init_state = np.zeros(self.dim)
         # initializing double pendulum state variables
         self.init_state[0:4] = np.array([params['init_q1'], params['init_q1p'],
                                          params['init_q2'], params['init_q2p']])
-        # initializing the tensions and afferent outputs
-        self.init_state[4:28] = np.zeros(24) # TODO: this can be improved
-        self.buffer = np.array([self.init_state]*self.buff_width) 
         # transpose of matrix to rotate 90 degrees, used for muscle kinematics
         self.rot90_trp = np.array([[0., 1.], [-1., 0.]])
         # update the coordinates of all insertion points
         self.upd_ip()
+        # initialize init_state for tensions, afferents
+        self.init_muscles()
+        #### initialize buffer
+        self.buffer = np.array([self.init_state]*self.buff_width) 
         # one variable used in the update method
         self.mbs = self.net.min_buff_size
 
@@ -2391,10 +2394,13 @@ class planar_arm_v3(plant):
         """
         p_type = type(par)
         if p_type in [float, int, np.float_, np.int_]:
-            return [par]*6
+            return np.array([par]*6)
         elif p_type in [list, np.ndarray]:
             if len(par) == 6:
-                return par
+                if p_type is list:
+                    return np.array(par)
+                else:
+                    return par
             else:
                 raise ValueError("Found parameter list of the wrong size while"+
                                   " creating muscles.")
@@ -2479,6 +2485,34 @@ class planar_arm_v3(plant):
                 dynamic_dict[d_entry] = dynamic_pars[d_entry][idx]
             self.static_bags.append(hill_muscle(static_dict))
             self.dynamic_bags.append(hill_muscle(dynamic_dict))
+
+    def init_muscles(self):
+        """ Set the initial tensions and afferent outputs. """
+        # obtain initial muscle lengths and velocities 
+        m_lengths, m_speeds = self.muscle_kinematics(self.init_state[1],
+                                                     self.init_state[3], 
+                                                     self.c_elbow, 
+                                                     self.ip)
+        # Assuming Tp=0, no inputs
+        # initialize muscle tensions
+        k_se = np.array([m.k_se for m in self.muscles])
+        k_pe = np.array([m.k_pe for m in self.muscles])
+        b = np.array([m.b for m in self.muscles])
+        l0 = np.array([m.l0 for m in self.muscles])
+        self.init_state[4:10] = (k_se/(k_se+k_pe)) * (k_pe *
+                                 (m_lengths - l0) + b*m_speeds)
+        # initialize Ia and II afferents
+        k_se_d = np.array([m.k_se for m in self.dynamic_bags])
+        k_pe_d = np.array([m.k_pe for m in self.dynamic_bags])
+        k_se_s = np.array([m.k_se for m in self.static_bags])
+        k_pe_s = np.array([m.k_pe for m in self.static_bags])
+        bag1_T = (k_se_d/(k_se_d+k_pe_d) * k_pe_d * m_lengths)
+        bag2_T = (k_se_s/(k_se_s+k_pe_s) * k_pe_s * m_lengths)
+        self.init_state[10:16] = self.Ia_gain * (self.fs*bag2_T/k_se_s + 
+                                                 (1.-self.fs)*bag1_T/k_se_d)
+        self.init_state[16:22] = self.II_gain * (m_lengths - bag2_T/k_se_s)
+        self.init_state[22:28] = self.Ib_gain * np.log(
+                        np.maximum(self.init_state[4:10], 0.) / self.T_0 + 1.)
 
     def upd_ip_impl(self, q1, q2):
         """ Contains the computations of the upd_ip method below.
@@ -2726,27 +2760,19 @@ class planar_arm_v3(plant):
             bag_s = self.static_bags[idx]
             bag_d = self.dynamic_bags[idx]
             Ts = bag_s.k_se * (m_lengths[idx] - y[16+idx]/self.II_gain[idx])
-            Td = (bag_d.k_se / (1.-self.fs)) * (y[10+idx]/self.Ia_gain[idx] -
-                                                 self.fs*Ts/bag_s.k_se)
+            Td = (bag_d.k_se / (1.-self.fs[idx])) * (y[10+idx]/self.Ia_gain[idx] -
+                                                     self.fs[idx]*Ts/bag_s.k_se)
             # Then we get the tension derivatives
-            Ts_p = self.static_bags[idx].tension_deriv(
-                                    self.get_input_sum(t, idx+6),
-                                    m_lengths[idx],
-                                    m_speeds[idx], Ts)
-            Td_p = self.dynamic_bags[idx].tension_deriv(
-                                    self.get_input_sum(t, idx+12),
-                                    m_lengths[idx],
-                                    m_speeds[idx], Td)
+            Ts_p = bag_s.tension_deriv(self.get_input_sum(t, idx+6),
+                                       m_lengths[idx],
+                                       m_speeds[idx], Ts)
+            Td_p = bag_d.tension_deriv(self.get_input_sum(t, idx+12),
+                                       m_lengths[idx],
+                                       m_speeds[idx], Td)
             # and from tension derivatives we get afferent derivatives
-            #print(idx)
-            #print(Ts_p)
-            #print(m_lengths[idx])
-            #print(m_speeds[idx])
-            #print(y[16+idx])
-            #print(Ts)
             dydt[16+idx] = self.II_gain[idx] * (m_speeds[idx] - Ts_p/bag_s.k_se)
-            dydt[10+idx] = self.Ia_gain[idx] * (self.fs*Ts_p/bag_s.k_se + 
-                                                (1.-self.fs) * Td_p/bag_d.k_se)
+            dydt[10+idx] = self.Ia_gain[idx] * (self.fs[idx]*Ts_p/bag_s.k_se + 
+                                            (1.-self.fs[idx]) * Td_p/bag_d.k_se)
         #*** Tension derivatives for the GTOs
         r_ss = self.Ib_gain * np.log(np.maximum(y[4:10], 0.) / self.T_0 + 1.)
         dydt[22:28] = (r_ss - y[22:28]) / self.tau_g
