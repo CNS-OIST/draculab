@@ -2206,26 +2206,29 @@ class planar_arm_v3(plant):
                 The following parameters are for the muscle class, and can
                 either be a scalar, or a 6-element array:
                 g1 : gain for the muscle inputs (default 1).
-                k_pe : muscle parallel elastic element constant (Default 1)
-                k_se : muscle series elastic element constant (Default 1)
-                b : muscle dampening constant (Default 1)
+                k_pe : muscle parallel elastic element constant (Default 2)
+                k_se : muscle series elastic element constant (Default 5)
+                b : muscle dampening constant (Default 5)
                 The following parameters are for the intrafusal afferents, and
-                can either be a scalar, or a 6-element array. Default is 1,
-                unless explicitly noted.
-                Ia_gain : output gain for muscle Ia afferents 
-                II_gain : output gain for muscle II afferents 
-                Ib_gain : output gain for GTO afferents 
-                g1_s : input gain for static bag fibers 
-                g1_d : input gain for dynamic bag fibers 
-                k_pe_s : k_pe for static bag fibers 
-                k_pe_d : k_pe for dynamic bag fibers 
-                k_se_s : k_se for static fibers 
-                k_se_d : k_se for dynamic bag fibers 
-                b_s : b for dynamic bag fibers 
+                can either be a scalar, or a 6-element array. 
+                Ia_gain : output gain for muscle Ia afferents. 
+                          Default is [60,200,200,60,200,200].
+                II_gain : output gain for muscle II afferents.
+                          Default is [2,6,6,2,6,6].
+                Ib_gain : output gain for GTO afferents. Default is 5.
+                g1_s : input gain for static bag fibers. Default is 1. 
+                g1_d : input gain for dynamic bag fibers. Default is 1.
+                k_pe_s : k_pe for static bag fibers. Default is 1. 
+                k_pe_d : k_pe for dynamic bag fibers. Default is 0.1. 
+                k_se_s : k_se for static fibers. Default is 10. 
+                k_se_d : k_se for dynamic bag fibers. Default is 10. 
+                b_s : b for dynamic bag fibers. Default is 5. 
                 b_d : b for dynamic bag fibers 
-                tau_g : time constant for the GTO response [s] (default .01)
-                T_0 : base tension for the GTO [N]
-                fs : fraction of static bag output in Ia (default 0.3)
+                tau_g : time constant for the GTO response [s]. Default is 0.05.
+                T_0 : base tension for the GTO [N]. Default is 0.5.
+                fs : fraction of static bag output in Ia (default 0.1)
+                l_0_s : rest lengths for static bag fibers. Default 0.01.
+                l_0_d : rest lengths for dynamic bag fibers. Default 0.01.
             network: the network where the plant instance lives.
 
         Raises:
@@ -2309,23 +2312,6 @@ class planar_arm_v3(plant):
         for i in [5, 7]:
             assert self.ip[i][1] < 0, ['Insertion point ' + str(i) +
                    ' is expected to have a negative y coordinate']
-        # intialize rest lengths
-        if 'rest_l' in params:
-            self.rest_l = params['rest_l']
-        else:
-            self.rest_l = np.ones(6)
-        if 'Ia_gain' in params: self.Ia_gain = self.param_vector(params['Ia_gain'])
-        else: self.Ia_gain = np.array([1.]*6)
-        if 'II_gain' in params: self.II_gain = self.param_vector(params['II_gain'])
-        else: self.II_gain = np.array([1.]*6)
-        if 'Ib_gain' in params: self.Ib_gain = self.param_vector(params['Ib_gain'])
-        else: self.Ib_gain = np.array([1.]*6)
-        if 'tau_g' in params: self.tau_g = self.param_vector(params['tau_g'])
-        else: self.tau_g = np.array([.01]*6)
-        if 'T_0' in params: self.T_0 = self.param_vector(params['T_0'])
-        else: self.T_0 = np.array([1.]*6)
-        if 'fs' in params: self.fs = self.param_vector(params['fs'])
-        else: self.fs = np.array([.3]*6)
         # extract geometry information from the coordinates
         #~~ arm and forearm lengths
         self.l_arm = self.c_elbow[0]  # length of the upper arm
@@ -2421,10 +2407,13 @@ class planar_arm_v3(plant):
                  dist(self.p9,self.p10), dist(self.p11, self.p12)]
         if 'rest_l' in params:
             lrest = [a*b for a,b in zip(lrest, params['rest_l'])]
+            self.rest_l = params['rest_l']
+        else:
+            self.rest_l = np.ones(6)
         # default muscle parameters combined with entries in params 
-        defaults = {'k_pe' : [1.]*6,
-                    'k_se' : [1.]*6,
-                    'b' : [1.]*6,
+        defaults = {'k_pe' : [2.]*6,
+                    'k_se' : [5.]*6,
+                    'b' : [5.]*6,
                     'g1' : [1.]*6,
                     'g2' : [1.]*6,
                     'g3' : [1.]*6 }
@@ -2447,19 +2436,29 @@ class planar_arm_v3(plant):
         
             params is the parameters dictionary given to __init__ 
         """
-        # Default rest lengths are 1 cm
-        lrest = [0.01]*6
+        if 'Ia_gain' in params: self.Ia_gain = self.param_vector(params['Ia_gain'])
+        else: self.Ia_gain = 20.*np.array([3., 10., 10., 3., 10., 10.])
+        if 'II_gain' in params: self.II_gain = self.param_vector(params['II_gain'])
+        else: self.II_gain = np.array([2., 6., 6., 2., 6., 6.])
+        if 'Ib_gain' in params: self.Ib_gain = self.param_vector(params['Ib_gain'])
+        else: self.Ib_gain = np.array([5.]*6)
+        if 'tau_g' in params: self.tau_g = self.param_vector(params['tau_g'])
+        else: self.tau_g = np.array([.05]*6)
+        if 'T_0' in params: self.T_0 = self.param_vector(params['T_0'])
+        else: self.T_0 = np.array([.5]*6)
+        if 'fs' in params: self.fs = self.param_vector(params['fs'])
+        else: self.fs = np.array([.1]*6)
         # default parameters 
-        static_bag = {'l0' : lrest,
-                      'k_pe' : [1.]*6,
-                      'k_se' : [1.]*6,
-                      'b' : [1.]*6,
-                      'g1' : [1.]*6 }
-        dynamic_bag = {'l0' : lrest,
-                      'k_pe' : [1.]*6,
-                      'k_se' : [1.]*6,
-                      'b' : [1.]*6,
-                      'g1' : [1.]*6 }
+        static_bag = {'l0' : self.param_vector(0.01),
+                      'k_pe' : self.param_vector(1.),
+                      'k_se' : self.param_vector(10.),
+                      'b' : self.param_vector(5.),
+                      'g1' : self.param_vector(1.)}
+        dynamic_bag = {'l0' : self.param_vector(0.01),
+                       'k_pe' : self.param_vector(.1),
+                       'k_se' : self.param_vector(10.),
+                       'b' : self.param_vector(5.),
+                       'g1' : self.param_vector(1.)}
         # creating parameter dictionaries
         static_pars = {}
         dynamic_pars = {}
