@@ -2154,8 +2154,8 @@ class planar_arm_v3(plant):
 
     Inputs to the model organize by type and muscle:
         ports 0-5: alpha stimulation to muscles 1-6
-        port 6-11: gamma static stimulation to muscles 1-6
-        port 12-17: gamma dynamic stimulation to muscles 1-6
+        port 6-11: gamma dynamic stimulation to muscles 1-6
+        port 12-17: gamma static stimulation to muscles 1-6
     Outputs from the model consist of the 4-dimensional state of the double
     pendulum, the 6 muscle tensions, 6 tensions for the dynamic bag fibers, 6
     tensions for the static bag fibers, 6 Ia outputs, 6 II outputs, and 6 Ib
@@ -2167,9 +2167,9 @@ class planar_arm_v3(plant):
         ports 4-9: tensions for muscles 1-6 [N]
         ports 10-15: tensions for dynamic bag fibers 1-6
         ports 16-21: tensions for static bag fibers 1-6
-        ports 22-27: group Ia afferent outputs for muscles 1-6 
-        ports 28-33: group II afferent outputs for muscles 1-6
-        ports 34-39: group Ib afferent outputs for muscles 1-6
+        ports 22-27: group Ib afferent outputs for muscles 1-6 
+        ports 28-33: group Ia afferent outputs for muscles 1-6
+        ports 34-39: group II afferent outputs for muscles 1-6
 
     See planar_arm_v3.ipynb in the tests folder for an example.
     """
@@ -2208,28 +2208,28 @@ class planar_arm_v3(plant):
                 p12: distal insertion point of muscle 6 (2-element array-like).
                 c_elbow: coordinates of the elbow in the reference position.
                 c_hand: coordinates of the hand in the reference position.
-                rest_l: a 6-element array-like with the rest lengths for the 6
+                ** The following parameters are for the extrafusal muscles, and can
+                either be a scalar, or a 6-element array:
+                l0_e : a 6-element array-like with the rest lengths for the 6
                         muscles. The default value is the length of the muscle
                         when the arm is at the reference position (shoulder at 0
                         radians, elbow at pi/2 radians). The units of length
-                        used in rest_l are the lengths in the reference
-                        position; e.g. the default value of rest_l is an array
+                        used in l0 are the lengths in the reference
+                        position; e.g. the default value of l0 is an array
                         like [1, 1, 1, 1, 1, 1].
-                The following parameters are for the muscle class, and can
-                either be a scalar, or a 6-element array:
-                g1 : gain for the muscle inputs (default 1).
-                k_pe : muscle parallel elastic element constant (Default 2)
-                k_se : muscle series elastic element constant (Default 5)
-                b : muscle dampening constant (Default 5)
-                The following parameters are for the intrafusal afferents, and
+                g_e : gain for the muscle inputs (default 1).
+                k_pe_e : muscle parallel elastic element constant (Default 2)
+                k_se_e : muscle series elastic element constant (Default 5)
+                b_e : muscle dampening constant (Default 5)
+                ** The following parameters are for the intrafusal afferents, and
                 can either be a scalar, or a 6-element array. 
                 Ia_gain : output gain for muscle Ia afferents. 
                           Default is [60,200,200,60,200,200].
                 II_gain : output gain for muscle II afferents.
                           Default is [2,6,6,2,6,6].
                 Ib_gain : output gain for GTO afferents. Default is 5.
-                g1_s : input gain for static bag fibers. Default is 1. 
-                g1_d : input gain for dynamic bag fibers. Default is 1.
+                g_s : input gain for static bag fibers. Default is 1. 
+                g_d : input gain for dynamic bag fibers. Default is 1.
                 k_pe_s : k_pe for static bag fibers. Default is 1. 
                 k_pe_d : k_pe for dynamic bag fibers. Default is 0.1. 
                 k_se_s : k_se for static fibers. Default is 10. 
@@ -2238,11 +2238,14 @@ class planar_arm_v3(plant):
                 b_d : b for dynamic bag fibers 
                 tau_g : time constant for the GTO response [s]. Default is 0.05.
                 T_0 : base tension for the GTO [N]. Default is 0.5.
-                fs : fraction of static bag output in Ia (default 0.1)
-                l0_s : rest lengths for static bag fibers. As with rest_l,
+                fs : fraction of static bag output in Ia (default 0.2)
+                l0_s : rest lengths for static bag fibers. As with l0,
                         lenghts are normalized wrt the reference position.
                         Default is 0.9 .
                 l0_d : rest lengths for dynamic bag fibers. Default is 0.9 .
+                se_II: Activation of the II afferent comes from  se_II times the
+                       excess length of the series element, plus (1-se_II) times
+                       the excess length of the parallel element. Default 0.5 .
             network: the network where the plant instance lives.
 
         Raises:
@@ -2251,7 +2254,7 @@ class planar_arm_v3(plant):
         """
         # This is the stuff that goes into all model constructors. Adjust accordingly.
         #-------------------------------------------------------------------------------
-        params['dimension'] = 28 #TODO: 40 # notifying dimensionality of model to parent constructor
+        params['dimension'] = 40  # notifying dimensionality of model to parent constructor
         params['inp_dim'] = 18 # notifying there are eighteen input ports
         plant.__init__(self, ID, params, network) # calling parent constructor
         # Initialization of the buffer is done below.
@@ -2373,10 +2376,8 @@ class planar_arm_v3(plant):
         #~~ insertion point 12
         self.l_i12 = np.sqrt((self.p12[0]-self.c_elbow[0])**2 + self.p12[1]**2)
         self.a_i12 = np.arctan(abs((self.c_elbow[0]-self.p12[0])/self.p12[1]))
-        # create the muscles
-        self.create_hill_muscles(params)
-        # create the intrafusal muscles
-        self.create_intrafusals(params)
+        # create the parameters used for muscle dynamics
+        self.create_muscle_parameters(params)
         ###  initial the state vector.
         self.init_state = np.zeros(self.dim)
         # initializing double pendulum state variables
@@ -2413,125 +2414,87 @@ class planar_arm_v3(plant):
             raise ValueError("Found parameter of the wrong type while creating"+
                              " muscles.")
 
-    def create_hill_muscles(self, params):
-        """ Create Hill-type muscle objects for the arm. 
+    def create_muscle_parameters(self, params):
+        """ Create parameter arrays used in the Hill muscle dynamics.
         
             params is the parameters dictionary given to __init__ 
         """
-        # Default rest lengths come from the muscle lengths at rest position
-        if 'rest_l' in params: self.rest_l = self.param_vector(params['rest_l'])
-        else: self.rest_l = np.ones(6)
-        lrest = self.ref_lengths * self.rest_l
-        # default muscle parameters combined with entries in params 
-        defaults = {'k_pe' : [2.]*6,
-                    'k_se' : [5.]*6,
-                    'b' : [5.]*6,
-                    'g1' : [1.]*6,
-                    'g2' : [1.]*6,
-                    'g3' : [1.]*6 }
-        mus_pars = { 'l0' : lrest }
-        for p_str in ['k_pe', 'k_se', 'b', 'g1', 'g2', 'g3',]:
+        # default muscle parameters
+        self.m_params = {'k_pe_e' : self.param_vector(2.),
+                         'k_se_e' : self.param_vector(5.),
+                         'b_e' : self.param_vector(5.),
+                         'g_e' : self.param_vector(1.),
+                         'l0_s' : self.ref_lengths, 
+                         'k_pe_s' : self.param_vector(1.),
+                         'k_se_s' : self.param_vector(10.),
+                         'b_s' : self.param_vector(5.),
+                         'g_s' : self.param_vector(1.),
+                         'l0_d' : self.ref_lengths,
+                         'k_pe_d' : self.param_vector(.1),
+                         'k_se_d' : self.param_vector(10.),
+                         'b_d' : self.param_vector(5.),
+                         'g_d' : self.param_vector(1.),
+                         'Ia_gain' : 20.*np.array([3., 10., 10., 3., 10., 10.]),
+                         'II_gain' : np.array([2., 6., 6., 2., 6., 6.]),
+                         'Ib_gain' : self.param_vector(5.),
+                         'tau_g' : self.param_vector(0.05),
+                         'T_0' : self.param_vector(0.5),
+                         'fs' : self.param_vector(.2),
+                         'se_II' : self.param_vector(0.5)
+                        }
+        # combine defaults with values in params
+        for p_str in self.m_params:
             if p_str in params:
-                mus_pars[p_str] = self.param_vector(params[p_str])
+                self.m_params[p_str] = self.param_vector(params[p_str])
+        l_str = ['_e', '_d', '_s']
+        for s in l_str:  # l0 needs a change of units
+            if 'l0'+s in params:
+                self.m_params['l0'+s] = (self.param_vector(params['l0'+s]) *
+                                         self.ref_lengths)
             else:
-                mus_pars[p_str] = defaults[p_str]
-        # create muscles
-        self.muscles = []
-        for mus_idx in range(6):
-            init_dict = {}
-            for entry in mus_pars:
-                init_dict[entry] = mus_pars[entry][mus_idx]
-            self.muscles.append(hill_muscle(init_dict))
-            
-    def create_intrafusals(self, params):
-        """ Create Hill-type intrafusal models for the arm. 
-        
-            params is the parameters dictionary given to __init__ 
-        """
-        if 'Ia_gain' in params: self.Ia_gain = self.param_vector(params['Ia_gain'])
-        else: self.Ia_gain = 20.*np.array([3., 10., 10., 3., 10., 10.])
-        if 'II_gain' in params: self.II_gain = self.param_vector(params['II_gain'])
-        else: self.II_gain = np.array([2., 6., 6., 2., 6., 6.])
-        if 'Ib_gain' in params: self.Ib_gain = self.param_vector(params['Ib_gain'])
-        else: self.Ib_gain = np.array([5.]*6)
-        if 'tau_g' in params: self.tau_g = self.param_vector(params['tau_g'])
-        else: self.tau_g = np.array([.05]*6)
-        if 'T_0' in params: self.T_0 = self.param_vector(params['T_0'])
-        else: self.T_0 = np.array([.5]*6)
-        if 'fs' in params: self.fs = self.param_vector(params['fs'])
-        else: self.fs = np.array([.1]*6)
-        if 'l0_s' in params: 
-            self.l0_s = self.param_vector(params['l0_s']) * self.ref_lengths
-        else: self.l0_s = self.ref_lengths
-        if 'l0_d' in params: 
-            self.l0_d = self.param_vector(params['l0_d']) * self.ref_lengths
-        else: self.l0_d = self.ref_lengths
-        params['l0_s'] = self.l0_s
-        params['l0_d'] = self.l0_d
-        # default parameters 
-        static_bag = {'l0' : self.ref_lengths, # this is redundant
-                      'k_pe' : self.param_vector(1.),
-                      'k_se' : self.param_vector(10.),
-                      'b' : self.param_vector(5.),
-                      'g1' : self.param_vector(1.)}
-        dynamic_bag = {'l0' : self.ref_lengths,
-                       'k_pe' : self.param_vector(.1),
-                       'k_se' : self.param_vector(10.),
-                       'b' : self.param_vector(5.),
-                       'g1' : self.param_vector(1.)}
-        # creating parameter dictionaries
-        static_pars = {}
-        dynamic_pars = {}
-        for name in static_bag.keys():
-            s_name = name+'_s'
-            d_name = name+'_d'
-            if s_name in params:
-                static_pars[name] = self.param_vector(params[s_name])
-            else:
-                static_pars[name] = static_bag[name]
-            if d_name in params:
-                dynamic_pars[name] = self.param_vector(params[d_name])
-            else:
-                dynamic_pars[name] = dynamic_bag[name]
-        # create muscles
-        self.static_bags = []
-        self.dynamic_bags = []
-        for idx in range(6): # loop ranging over the 6 muscles
-            static_dict = {} # parameter dict for individual muscle
-            dynamic_dict = {}
-            for s_entry, d_entry in zip(static_pars, dynamic_pars):
-                static_dict[s_entry] = static_pars[s_entry][idx]
-                dynamic_dict[d_entry] = dynamic_pars[d_entry][idx]
-            self.static_bags.append(hill_muscle(static_dict))
-            self.dynamic_bags.append(hill_muscle(dynamic_dict))
-
+                self.m_params['l0'+s] = self.ref_lengths
+        # concatenate values for extrafusal and intrafusals
+        self.cat_p = {}  # dictionary of concatenated parameters
+        p_str = ['k_pe', 'k_se', 'g', 'l0', 'b']
+        for s in p_str:
+           self.cat_p[s] = np.concatenate([self.m_params[s+'_e'],
+                                           self.m_params[s+'_d'],
+                                           self.m_params[s+'_s']],
+                                           axis=0)
+        # some commonly used arrays (see tension_diff)
+        self.cat_p['f_a'] = self.cat_p['k_se'] / self.cat_p['b']
+        self.cat_p['f_b'] = 1. + self.cat_p['k_se'] / self.cat_p['k_pe']
+           
     def init_muscles(self):
         """ Set the initial tensions and afferent outputs. """
         # obtain initial muscle lengths and velocities 
-        m_lengths, m_speeds = self.muscle_kinematics(self.init_state[1],
-                                                     self.init_state[3], 
-                                                     self.c_elbow, 
-                                                     self.ip)
+        l, v = self.muscle_kinematics(self.init_state[1],
+                                      self.init_state[3], 
+                                      self.c_elbow, 
+                                      self.ip)
         # Assuming T'=0, no inputs
         # initialize muscle tensions
-        k_se = np.array([m.k_se for m in self.muscles])
-        k_pe = np.array([m.k_pe for m in self.muscles])
-        b = np.array([m.b for m in self.muscles])
-        l0 = np.array([m.l0 for m in self.muscles])
-        self.init_state[4:10] = (k_se/(k_se+k_pe)) * (k_pe *
-                                 (m_lengths - l0) + b*m_speeds)
-        # initialize Ia and II afferents
-        k_se_d = np.array([m.k_se for m in self.dynamic_bags])
-        k_pe_d = np.array([m.k_pe for m in self.dynamic_bags])
-        k_se_s = np.array([m.k_se for m in self.static_bags])
-        k_pe_s = np.array([m.k_pe for m in self.static_bags])
-        bag1_T = (k_se_d/(k_se_d+k_pe_d) * k_pe_d * (m_lengths-self.l0_d))
-        bag2_T = (k_se_s/(k_se_s+k_pe_s) * k_pe_s * (m_lengths-self.l0_s))
-        self.init_state[10:16] = self.Ia_gain * (self.fs*bag2_T/k_se_s + 
-                                                 (1.-self.fs)*bag1_T/k_se_d)
-        self.init_state[16:22] = self.II_gain * (m_lengths - bag2_T/k_se_s)
+        l = np.concatenate([lengths,lengths,lengths], axis=0)
+        v = np.concatenate([speeds,speeds,speeds], axis=0)
+        A = np.array([self.get_input_sum(time, i) for i in range(18)])
+        self.init_state[4:22] = ((self.cat_p['k_se'] / 
+                (self.cat_p['k_pe'] + self.cat_p['k_se'])) *
+                 (self.cat_p['k_pe']*(l - self.cat_p['l0']) +
+                  self.cat_p['b'] * v + A))
+        # initialize Ib afferents
         self.init_state[22:28] = self.Ib_gain * np.log(
-                        np.maximum(self.init_state[4:10], 0.) / self.T_0 + 1.)
+                                 np.maximum(self.init_state[4:10], 0.) /
+                                 self.m_params['T_0'] + 1.)
+        # initialize Ia and II afferents
+        Ts = self.init_state[16:22]
+        Td = self.init_state[10:16]
+        self.init_state[28:33] = self.Ia_gain * (
+                    self.m_params['fs'] * Ts / self.m_params['k_se_s'] +
+                    (1.-self.m_params['fs']) * Td / self.m_params['k_se_d'])
+        self.init_state[34:40] = self.II_gain * (
+                    self.m_params['se_II'] * Ts / self.m_params['k_se_s'] +
+                    (1.-self.m_params['se_II']) * 
+                             (Ts - self.m_params['b_s']*l + A[12:18])
 
     def upd_ip_impl(self, q1, q2):
         """ Contains the computations of the upd_ip method below.
@@ -2681,6 +2644,32 @@ class planar_arm_v3(plant):
         m_speeds = (np.sum(ips_vels[1::2] * m_vec_norml, axis=1) -
                     np.sum(ips_vels[0:-1:2]*m_vec_norml, axis=1))
         return m_lengths, m_speeds 
+
+    def tension_diff(self, lengths, speeds, T, time):
+        """ Obtain the derivative of the Hill muscle models.
+
+            This function implements a vectorized version of equation 3 in the
+            Shadmehr and Wise derivation of tension (also in Pg. 102 of the
+            book).
+
+            Args:
+                lenghts : numpy array with the muscle lenghts
+                speeds: numpy array with the muscle speeds
+                T : numpy array
+                  T[0]-T[5] : muscle tensions
+                  T[6]-T[11] : dynamic bag tensions
+                  T[12]-T[17] : static bag tensions
+                time : time used to retrieve the inputs
+            Returns: numpy array with T'
+        """
+        l = np.concatenate([lengths,lengths,lengths], axis=0)
+        v = np.concatenate([speeds,speeds,speeds], axis=0)
+        A = np.array([self.get_input_sum(time, i) for i in range(18)])
+        Tp = self.cat_p['f_a'] * (self.cat_p['k_pe'] * (l-self.cat_p['l_0']) +
+                                  self.cat_p['b'] * v -
+                                  self.cat_p['f_b'] * T + A )
+        return Tp
+        
         
     def derivatives(self, y, t):
         """ Returns the derivatives of the state variables at time t. 
