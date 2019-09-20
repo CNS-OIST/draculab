@@ -2114,12 +2114,12 @@ class planar_arm_v3(plant):
     """ 
     Model of a planar arm with six muscles, version three.
     
-    In this version all of the muscle afferent outputs are dynamic variables
-    handled by the arm's 'derivatives' function.  The original planar_arm 
-    expects that the muscle can update its own dynamics by calling its 
-    `update` method. In planar_arm_v2 the muscles' tensions are handled
-    dynamically byt planar_arm_v2.derivatives, but the afferents are still
-    static functions of the tensions, lengths, and velocities.   
+    In this version the afferent outputs come from models of the bag 1 and
+    bag 2 fibers. The 'derivatives' function updates the tensions of these
+    fibers, whereas the Ia and II outputs are written in new buffer entries byt
+    the upd_muscle_buff function. The Ib output is also handled by the
+    'derivatives' function, using a simplified version of the Lin and Crago 2002
+    mdoel.
 
     The inputs to this model are the stimulations to each one of the muscles;
     each muscle can receive 3 types of stimuli, representing 3 different
@@ -2127,9 +2127,8 @@ class planar_arm_v3(plant):
     motoneurons, and causes muscle contraction. The other two types represent
     inputs from dynamic and static gamma interneurons, respectively
     representing inputs to the dynamic bag fibers and to the static bag fibers
-    and nuclear chain fibers. The effect of the gamma interneuron stimulation
-    depends on the afferent models. Details are in the derivatives function.
-
+    and nuclear chain fibers (which are not explicitly modelled). 
+    
     Geometry of the muscles is specified through 14 2-dimensional
     coordinates. Two coordinates are for the elbow and hand, whereas the
     remaining 12 are for the insertion points of the 6 muscles. The script in
@@ -2140,24 +2139,37 @@ class planar_arm_v3(plant):
     Afferent outputs are calculated by modeling the static and dynamic
     intrafusal bag fibers using Hill muscles. The Ia output is proportional to a
     linear combination of the lengths for the serial elements in both  dynamic
-    and static bag fibers. The II output is proportional to the length of the
-    parallel element in the static bag fiber.
+    and static bag fibers. The II output is has two components, one proportional
+    to the length of the serial element, and one proportional to the length of
+    the parallel element, both in the static bag fiber.
+
+    Gamma dynamic stimulation has several effects:
+    * Casuse contraction in the dynamic bag fiber, 
+    * increse the viscosity of the parallel element,
+    * change the effective values of the k_se, k_pe, b, and Ia_gain
+      parameters. k_se, b, and Ia_gain increase, whereas k_pe decreases.
+    Gamma static stimulation:
+    * Casuses contraction in the dynamic bag fiber, 
+    * Changes the effective values of b, II_gain for the static bag fiber.
 
     Inputs to the model organize by type and muscle:
         ports 0-5: alpha stimulation to muscles 1-6
         port 6-11: gamma static stimulation to muscles 1-6
         port 12-17: gamma dynamic stimulation to muscles 1-6
     Outputs from the model consist of the 4-dimensional state of the double
-    pendulum, the 6 muscle tensions, and a 3-dimensional output coming from each
-    one of the muscles.
+    pendulum, the 6 muscle tensions, 6 tensions for the dynamic bag fibers, 6
+    tensions for the static bag fibers, 6 Ia outputs, 6 II outputs, and 6 Ib
+    outputs.
         port 0: shoulder angle [radians]
         port 1: angular velocity of shoulder [radians / s]
         port 2: angle of elbow [radians]
         port 3: angular velocity of elbow [radians / s]
         ports 4-9: tensions for muscles 1-6 [N]
-        ports 10-15: group Ia afferent outputs for muscles 1-6 
-        ports 16-21: group II afferent outputs for muscles 1-6
-        ports 22-27: group Ib afferent outputs for muscles 1-6
+        ports 10-15: tensions for dynamic bag fibers 1-6
+        ports 16-21: tensions for static bag fibers 1-6
+        ports 22-27: group Ia afferent outputs for muscles 1-6 
+        ports 28-33: group II afferent outputs for muscles 1-6
+        ports 34-39: group Ib afferent outputs for muscles 1-6
 
     See planar_arm_v3.ipynb in the tests folder for an example.
     """
@@ -2227,8 +2239,10 @@ class planar_arm_v3(plant):
                 tau_g : time constant for the GTO response [s]. Default is 0.05.
                 T_0 : base tension for the GTO [N]. Default is 0.5.
                 fs : fraction of static bag output in Ia (default 0.1)
-                l_0_s : rest lengths for static bag fibers. Default 0.01.
-                l_0_d : rest lengths for dynamic bag fibers. Default 0.01.
+                l0_s : rest lengths for static bag fibers. As with rest_l,
+                        lenghts are normalized wrt the reference position.
+                        Default is 0.9 .
+                l0_d : rest lengths for dynamic bag fibers. Default is 0.9 .
             network: the network where the plant instance lives.
 
         Raises:
@@ -2237,7 +2251,7 @@ class planar_arm_v3(plant):
         """
         # This is the stuff that goes into all model constructors. Adjust accordingly.
         #-------------------------------------------------------------------------------
-        params['dimension'] = 28 # notifying dimensionality of model to parent constructor
+        params['dimension'] = 28 #TODO: 40 # notifying dimensionality of model to parent constructor
         params['inp_dim'] = 18 # notifying there are eighteen input ports
         plant.__init__(self, ID, params, network) # calling parent constructor
         # Initialization of the buffer is done below.
@@ -2313,6 +2327,13 @@ class planar_arm_v3(plant):
             assert self.ip[i][1] < 0, ['Insertion point ' + str(i) +
                    ' is expected to have a negative y coordinate']
         # extract geometry information from the coordinates
+        #~~ muscle lengths at the reference position
+        #   transpose of matrix to rotate 90 degrees, used for muscle kinematics
+        self.rot90_trp = np.array([[0., 1.], [-1., 0.]])
+        self.ref_lengths, _  = self.muscle_kinematics(params['init_q1p'],
+                                                      params['init_q2p'],
+                                                      self.c_elbow,
+                                                      np.array(self.ip))
         #~~ arm and forearm lengths
         self.l_arm = self.c_elbow[0]  # length of the upper arm
         self.l_farm = self.c_hand[1] - self.c_elbow[1] # length of forearm
@@ -2361,8 +2382,6 @@ class planar_arm_v3(plant):
         # initializing double pendulum state variables
         self.init_state[0:4] = np.array([params['init_q1'], params['init_q1p'],
                                          params['init_q2'], params['init_q2p']])
-        # transpose of matrix to rotate 90 degrees, used for muscle kinematics
-        self.rot90_trp = np.array([[0., 1.], [-1., 0.]])
         # update the coordinates of all insertion points
         self.upd_ip()
         # initialize init_state for tensions, afferents
@@ -2374,7 +2393,7 @@ class planar_arm_v3(plant):
 
 
     def param_vector(self, par):
-        """ Returns a parameter vector given its value in the params dictionary. 
+        """ Returns a numpy array given a value in the params dictionary. 
 
             This is an auxiliary function for create_hill_muscles.
         """
@@ -2400,16 +2419,9 @@ class planar_arm_v3(plant):
             params is the parameters dictionary given to __init__ 
         """
         # Default rest lengths come from the muscle lengths at rest position
-        dist = lambda p,q: np.sqrt((p[0]-q[0])*(p[0]-q[0]) +
-                                     (p[1]-q[1])*(p[1]-q[1]))
-        lrest = [dist(self.p1, self.p2), dist(self.p3, self.p4),
-                 dist(self.p5, self.p6), dist(self.p7, self.p8), 
-                 dist(self.p9,self.p10), dist(self.p11, self.p12)]
-        if 'rest_l' in params:
-            lrest = [a*b for a,b in zip(lrest, params['rest_l'])]
-            self.rest_l = params['rest_l']
-        else:
-            self.rest_l = np.ones(6)
+        if 'rest_l' in params: self.rest_l = self.param_vector(params['rest_l'])
+        else: self.rest_l = np.ones(6)
+        lrest = self.ref_lengths * self.rest_l
         # default muscle parameters combined with entries in params 
         defaults = {'k_pe' : [2.]*6,
                     'k_se' : [5.]*6,
@@ -2448,13 +2460,21 @@ class planar_arm_v3(plant):
         else: self.T_0 = np.array([.5]*6)
         if 'fs' in params: self.fs = self.param_vector(params['fs'])
         else: self.fs = np.array([.1]*6)
+        if 'l0_s' in params: 
+            self.l0_s = self.param_vector(params['l0_s']) * self.ref_lengths
+        else: self.l0_s = self.ref_lengths
+        if 'l0_d' in params: 
+            self.l0_d = self.param_vector(params['l0_d']) * self.ref_lengths
+        else: self.l0_d = self.ref_lengths
+        params['l0_s'] = self.l0_s
+        params['l0_d'] = self.l0_d
         # default parameters 
-        static_bag = {'l0' : self.param_vector(0.01),
+        static_bag = {'l0' : self.ref_lengths, # this is redundant
                       'k_pe' : self.param_vector(1.),
                       'k_se' : self.param_vector(10.),
                       'b' : self.param_vector(5.),
                       'g1' : self.param_vector(1.)}
-        dynamic_bag = {'l0' : self.param_vector(0.01),
+        dynamic_bag = {'l0' : self.ref_lengths,
                        'k_pe' : self.param_vector(.1),
                        'k_se' : self.param_vector(10.),
                        'b' : self.param_vector(5.),
@@ -2492,7 +2512,7 @@ class planar_arm_v3(plant):
                                                      self.init_state[3], 
                                                      self.c_elbow, 
                                                      self.ip)
-        # Assuming Tp=0, no inputs
+        # Assuming T'=0, no inputs
         # initialize muscle tensions
         k_se = np.array([m.k_se for m in self.muscles])
         k_pe = np.array([m.k_pe for m in self.muscles])
@@ -2505,8 +2525,8 @@ class planar_arm_v3(plant):
         k_pe_d = np.array([m.k_pe for m in self.dynamic_bags])
         k_se_s = np.array([m.k_se for m in self.static_bags])
         k_pe_s = np.array([m.k_pe for m in self.static_bags])
-        bag1_T = (k_se_d/(k_se_d+k_pe_d) * k_pe_d * m_lengths)
-        bag2_T = (k_se_s/(k_se_s+k_pe_s) * k_pe_s * m_lengths)
+        bag1_T = (k_se_d/(k_se_d+k_pe_d) * k_pe_d * (m_lengths-self.l0_d))
+        bag2_T = (k_se_s/(k_se_s+k_pe_s) * k_pe_s * (m_lengths-self.l0_s))
         self.init_state[10:16] = self.Ia_gain * (self.fs*bag2_T/k_se_s + 
                                                  (1.-self.fs)*bag1_T/k_se_d)
         self.init_state[16:22] = self.II_gain * (m_lengths - bag2_T/k_se_s)
