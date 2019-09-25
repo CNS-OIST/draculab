@@ -2396,8 +2396,6 @@ class planar_arm_v3(plant):
         self.buffer = np.array([self.init_state]*self.buff_width) 
         # one variable used in the update method
         self.mbs = self.net.min_buff_size
-        self.idx_II = self.offset + int(round(self.net.min_buff_size/2.))
-
 
     def param_vector(self, par):
         """ Returns a numpy array given a value in the params dictionary. 
@@ -2459,6 +2457,16 @@ class planar_arm_v3(plant):
                                          self.ref_lengths)
             else:
                 self.m_params['l0'+s] = self.ref_lengths
+        # some constants used when updating the afferent activities
+        self.m_params['f_Ia_s'] = (self.m_params['Ia_gain'] * 
+                    self.m_params['fs'] / self.m_params['k_se_s'])
+        self.m_params['f_Ia_d'] = (self.m_params['Ia_gain'] * 
+                    (1.-self.m_params['fs']) / self.m_params['k_se_s'])
+        self.m_params['f_II_s'] = (self.m_params['II_gain'] * 
+                   self.m_params['se_II'] * self.m_params['k_se_s'])
+        self.m_params['f_II_p'] = (self.m_params['II_gain'] * 
+                                  (1.-self.m_params['se_II']) /
+                                  self.m_params['k_pe_s'])
         # concatenate values for extrafusal and intrafusals
         self.cat_p = {}  # dictionary of concatenated parameters
         p_str = ['k_pe', 'k_se', 'g', 'l0', 'b']
@@ -2677,12 +2685,14 @@ class planar_arm_v3(plant):
                                   self.cat_p['f_b'] * T + A )
         return Tp
 
-    def tension_diff_II(self, l, v, T, time):
+    def tension_diff_II(self, l, v, T, time, A):
         """ Obtain the tension derivative for the static bag fibers only.
 
             This function implements a vectorized version of equation 3 in the
             Shadmehr and Wise derivation of tension (also in Pg. 102 of the
             book). Tension derivatives are only for static fibers.
+
+            This is an auxiliary method for update and flat_update.
 
             Args:
                 l : numpy array with the muscle lenghts
@@ -2690,9 +2700,10 @@ class planar_arm_v3(plant):
                 T : numpy array
                   T[0]-T[5] : static bag tensions
                 time : time used to retrieve the inputs
+                A : The 6 inputs to the static fibers.
             Returns: numpy array with T'
         """
-        A = np.array([self.get_input_sum(time, i) for i in range(12,18)])
+        #A = np.array([self.get_input_sum(time, i) for i in range(12,18)])
         Tp = self.cat_p['f_a'][12:18] * (self.m_params['k_pe_s'] * 
                                         (l-self.m_params['l0_s']) +
                                   self.m_params['b_s'] * v -
@@ -2788,7 +2799,6 @@ class planar_arm_v3(plant):
         r_ss = self.m_params['Ib_gain'] * np.log(
                           np.maximum(y[4:10], 0.) / self.m_params['T_0'] + 1.)
         dydt[22:28] = (r_ss - y[22:28]) / self.m_params['tau_g']
-
         return dydt
            
     def update(self, time):
@@ -2811,25 +2821,23 @@ class planar_arm_v3(plant):
         Td = self.buffer[self.offset:,10:16]
         Ts = self.buffer[self.offset:,16:22]
         # updating the Ia afferents
-        self.buffer[self.offset:,28:34] = self.m_params['Ia_gain'] * (
-                    self.m_params['fs'] * Ts / self.m_params['k_se_s'] +
-                    (1.-self.m_params['fs']) * Td / self.m_params['k_se_d'])
+        self.buffer[self.offset:,28:34] = (self.m_params['f_Ia_s'] * Ts +
+                                           self.m_params['f_Ia_d'] * Td)
         # updating the II afferents
         #   In this case we would need to obtain the muscle speeds and tension
         #   derivatives for each substep. To avoid all that compuatation, we
         #   obtain speeds and tension derivatives only at one intermediate point.
-        c_elbow, c_hand, ips = self.upd_ip_impl(self.buffer[self.idx_II,0],
-                                                self.buffer[self.idx_II,2])
-        l, v = self.muscle_kinematics(self.buffer[self.idx_II,1],
-                                      self.buffer[self.idx_II,3], c_elbow, ips)
-        Tsp = self.tension_diff_II(l, v, Ts, self.times[self.idx_II])
-        A = np.array([self.get_input_sum(self.times[self.idx_II], i) 
+        idx_II = self.offset + int(round(self.net.min_buff_size/2.))
+        c_elbow, c_hand, ips = self.upd_ip_impl(self.buffer[idx_II,0],
+                                                self.buffer[idx_II,2])
+        l, v = self.muscle_kinematics(self.buffer[idx_II,1],
+                                      self.buffer[idx_II,3], c_elbow, ips)
+        A = np.array([self.get_input_sum(self.times[idx_II], i) 
                       for i in range(12,18)])
-        self.buffer[self.offset:,34:40] = self.m_params['II_gain'] * (
-                   self.m_params['se_II'] * Ts / self.m_params['k_se_s'] +
-                   (1.-self.m_params['se_II']) *
-                    (Ts-self.m_params['b_s']*(v-Tsp/self.m_params['k_se_s']) - 
-                    A))
+        Tsp = self.tension_diff_II(l, v, Ts, self.times[idx_II], A)
+        self.buffer[self.offset:,34:40] = (self.m_params['f_II_s'] * Ts +
+                self.m_params['f_II_p']*
+                (Ts - self.m_params['b_s']*(v-Tsp/self.m_params['k_se_s']) - A))
         # with the updated buffer, update the muscle insertion points
         # probably don't need this for anything other than animations
         self.upd_ip()
@@ -2850,27 +2858,23 @@ class planar_arm_v3(plant):
         Td = self.buffer[10:16, self.offset:].transpose()
         Ts = self.buffer[16:22, self.offset:].transpose()
         # updating the Ia afferents
-        self.buffer[28:34, self.offset:] = (self.m_params['Ia_gain'] * (
-                    self.m_params['fs'] * Ts / self.m_params['k_se_s'] +
-                    (1.-self.m_params['fs']) * 
-                    Td / self.m_params['k_se_d'])).transpose()
+        self.buffer[28:34, self.offset:] = (self.m_params['f_Ia_s'] * Ts +
+                                 self.m_params['f_Ia_d'] * Td).transpose()
         # updating the II afferents
         # In this case we would need to obtain the muscle speeds and tension
         # derivatives for each substep. To avoid all that compuatation, we
         # obtain speeds and tension derivatives only at one intermediate point.
-        c_elbow, c_hand, ips = self.upd_ip_impl(self.buffer[self.idx_II,0],
-                                                self.buffer[self.idx_II,2])
-        l, v = self.muscle_kinematics(self.buffer[1,self.idx_II],
-                                      self.buffer[3,self.idx_II], c_elbow, ips)
-        Tsp = self.tension_diff_II(l, v, Ts, self.times[self.idx_II])
-        A = np.array([self.get_input_sum(self.times[self.idx_II], i) 
+        idx_II = self.offset + int(round(self.net.min_buff_size/2.))
+        c_elbow, c_hand, ips = self.upd_ip_impl(self.buffer[0,idx_II],
+                                                self.buffer[2,idx_II])
+        l, v = self.muscle_kinematics(self.buffer[1,idx_II],
+                                      self.buffer[3,idx_II], c_elbow, ips)
+        A = np.array([self.get_input_sum(self.times[idx_II], i) 
                       for i in range(12,18)])
-        self.buffer[34:40, self.offset:] = (self.m_params['II_gain'] * (
-                   self.m_params['se_II'] * Ts / self.m_params['k_se_s'] +
-                   (1.-self.m_params['se_II']) *
-                    (Ts-self.m_params['b_s']*(v-Tsp/self.m_params['k_se_s']) - 
-                    A))).transpose()
- 
+        Tsp = self.tension_diff_II(l, v, Ts, self.times[idx_II], A)
+        self.buffer[34:40, self.offset:] = (self.m_params['f_II_s'] * Ts +
+                self.m_params['f_II_p'] * (Ts - self.m_params['b_s']*
+                (v-Tsp/self.m_params['k_se_s']) - A)).transpose()
         # with the updated buffer, update the muscle insertion points
         # probably don't need this for anything other than animations
         self.upd_ip()
