@@ -41,7 +41,8 @@ class plant():
             REQUIRED PARAMETERS
                 'dimension' : dimensionality of the state vector. 
                 'type' : an enum identifying the type of plant being instantiated.
-                'inp_dim' : input dimensionality; number of qualitatively different input types.
+                'inp_dim' : input dimensionality; number of qualitatively different
+                            input types.
             OPTIONAL PARAMETERS
                 'delay' : maximum delay in the outputs sent by the plant. Set by
                           network.set_plant_outputs.
@@ -2250,6 +2251,8 @@ class planar_arm_v3(plant):
                 se_II: Activation of the II afferent comes from  se_II times the
                        excess length of the series element, plus (1-se_II) times
                        the excess length of the parallel element. Default 0.5 .
+                ad_b, gd_k, gd_gain, gs_b, gs_gain : partially implemented
+                        parameters that control how gamma inputs affect afferents.
                 ---------------------------------------------------------------
             network: the network where the plant instance lives.
 
@@ -2444,7 +2447,12 @@ class planar_arm_v3(plant):
                          'tau_g' : self.param_vector(0.05),
                          'T_0' : self.param_vector(0.5),
                          'fs' : self.param_vector(.2),
-                         'se_II' : self.param_vector(0.5)
+                         'se_II' : self.param_vector(0.5),
+                         'gd_b' : self.param_vector(2.),
+                         'gd_k' : self.param_vector(2.),
+                         'gd_gain' : self.param_vector(0.5),
+                         'gs_b' : self.param_vector(-1.),
+                         'gs_gain' : self.param_vector(0.5)
                         }
         # combine defaults with values in params
         for p_str in self.m_params:
@@ -2491,21 +2499,28 @@ class planar_arm_v3(plant):
         l = np.concatenate([lengths,lengths,lengths], axis=0)
         v = np.concatenate([speeds,speeds,speeds], axis=0)
         A = np.array([self.get_input_sum(0., i) for i in range(18)])
+        b, k_se, k_pe = self.mod_params(A[6:18]) 
+        self.init_state[4:22] = ((k_se / (k_pe + k_se)) *
+                 (k_pe*(l - self.cat_p['l0']) + b*v + A))
+        # Code used when inputs don't modify parameters
+        """
         self.init_state[4:22] = ((self.cat_p['k_se'] / 
                 (self.cat_p['k_pe'] + self.cat_p['k_se'])) *
                  (self.cat_p['k_pe']*(l - self.cat_p['l0']) +
                   self.cat_p['b'] * v + A))
+        """
         # initialize Ib afferents
         self.init_state[22:28] = self.m_params['Ib_gain'] * np.log(
                                  np.maximum(self.init_state[4:10], 0.) /
                                  self.m_params['T_0'] + 1.)
         # initialize Ia and II afferents
+        Ia_gain, II_gain = self.mod_gains(A[6:18])
         Td = self.init_state[10:16]
         Ts = self.init_state[16:22]
-        self.init_state[28:34] = self.m_params['Ia_gain'] * (
+        self.init_state[28:34] = Ia_gain * (
                     self.m_params['fs'] * Ts / self.m_params['k_se_s'] +
                     (1.-self.m_params['fs']) * Td / self.m_params['k_se_d'])
-        self.init_state[34:40] = self.m_params['II_gain'] * (
+        self.init_state[34:40] = II_gain * (
                    self.m_params['se_II'] * Ts / self.m_params['k_se_s'] +
                    (1.-self.m_params['se_II']) *
                    (Ts-self.m_params['b_s']*speeds + A[12:18]))
@@ -2664,7 +2679,8 @@ class planar_arm_v3(plant):
 
             This function implements a vectorized version of equation 3 in the
             Shadmehr and Wise derivation of tension (also in Pg. 102 of the
-            book). Tension derivatives for all extrafusal and intrafusal fibers
+            book), but parameters are also affected by the gamma inputs.
+            Tension derivatives for all extrafusal and intrafusal fibers
             are calculated.
 
             Args:
@@ -2680,17 +2696,20 @@ class planar_arm_v3(plant):
         l = np.concatenate([lengths,lengths,lengths], axis=0)
         v = np.concatenate([speeds,speeds,speeds], axis=0)
         A = np.array([self.get_input_sum(time, i) for i in range(18)])
+        # obtain parameters modified by gamma inputs
+        b, k_se, k_pe = self.mod_params(A[6:18]) 
+        Tp = (k_se / b)* (k_pe * (l-self.cat_p['l0']) +
+                         b * v - (1. + k_pe/k_se) * T + A )
+        # Code used when inputs don't modify parameters
+        """
         Tp = self.cat_p['f_a'] * (self.cat_p['k_pe'] * (l-self.cat_p['l0']) +
                                   self.cat_p['b'] * v -
                                   self.cat_p['f_b'] * T + A )
+        """
         return Tp
 
     def tension_diff_II(self, l, v, T, time, A):
         """ Obtain the tension derivative for the static bag fibers only.
-
-            This function implements a vectorized version of equation 3 in the
-            Shadmehr and Wise derivation of tension (also in Pg. 102 of the
-            book). Tension derivatives are only for static fibers.
 
             This is an auxiliary method for update and flat_update.
 
@@ -2703,13 +2722,21 @@ class planar_arm_v3(plant):
                 A : The 6 inputs to the static fibers.
             Returns: numpy array with T'
         """
-        #A = np.array([self.get_input_sum(time, i) for i in range(12,18)])
+        A_extra = np.concatenate([np.zeros(6), A], axis=0)
+        b, k_se, k_pe = self.mod_params(A_extra)
+        b_s = b[12:18]
+        k_se_s = k_se[12:18]
+        k_pe_s = k_pe[12:18]
+        Tp = (k_se_s/b_s) * (k_pe_s * (l-self.m_params['l0_s']) +
+                            b_s * v - (1. + k_pe_s/k_se_s) * T + A )
+        # Code used when inputs don't modify parameters
+        """
         Tp = self.cat_p['f_a'][12:18] * (self.m_params['k_pe_s'] * 
                                         (l-self.m_params['l0_s']) +
                                   self.m_params['b_s'] * v -
                                   self.cat_p['f_b'][12:18] * T + A )
+        """
         return Tp
-        
         
     def derivatives(self, y, t):
         """ Returns the derivatives of the state variables at time t. 
@@ -2800,6 +2827,39 @@ class planar_arm_v3(plant):
                           np.maximum(y[4:10], 0.) / self.m_params['T_0'] + 1.)
         dydt[22:28] = (r_ss - y[22:28]) / self.m_params['tau_g']
         return dydt
+
+    def mod_params(self, A):
+        """ Returns some parameter vectors that are modified by gamma inputs.
+
+            Args:
+                A : numpy array with gamma inputs
+                  A[0]-A[5] : inputs to dynamic fibers
+                  A[6]-A[11] : inputs to static fibers
+            Returns:
+                (b, k_se, k_pe), which are modified versions of the corresponding
+                entries in self.cat_p
+        """
+        b = self.cat_p['b']
+        b[6:12] += self.m_params['gd_b']*A[0:6]
+        b[12:18] += self.m_params['gs_b']*A[6:12]
+        k_se = self.cat_p['k_se']
+        k_pe = self.cat_p['k_pe']
+        #k_se[6:12] = self.m_params['k_se_d'] * (1.+ self.m_params['gd_k']*A[6:12])
+        #k_pe[6:12] = self.m_params['k_pe_d'] / (1.+ self.m_params['gd_k']*A[6:12])
+        return b, k_se, k_pe
+
+    def mod_gains(self, A):
+        """ Returns the gains of the afferents as modified by the inputs.
+
+            Args:
+                A : numpy array with gamma inputs
+                  A[0]-A[5] : inputs to dynamic fibers
+                  A[6]-A[11] : inputs to static fibers
+        """
+        Ia_gains = (1. + self.m_params['gd_gain']*A[0:6])*self.m_params['Ia_gain']
+        II_gains = (1. + self.m_params['gs_gain']*A[6:12])*self.m_params['II_gain']
+        return Ia_gains, II_gains
+
            
     def update(self, time):
         """ This function advances the state for net.min_delay time units. 
@@ -2820,24 +2880,47 @@ class planar_arm_v3(plant):
         # extract the tensions from the buffer
         Td = self.buffer[self.offset:,10:16]
         Ts = self.buffer[self.offset:,16:22]
+        # obtain parameters modified by inputs
+        idx_II = self.offset + int(round(self.net.min_buff_size/2.))
+        Ad = np.array([self.get_input_sum(self.times[idx_II], i) 
+                       for i in range(6,12)])
+        As = np.array([self.get_input_sum(self.times[idx_II], i) 
+                      for i in range(12,18)])
+        Ag = np.concatenate([Ad,As], axis=0)
+        b, k_se, k_pe = self.mod_params(Ag)
+        Ia_gains, II_gains = self.mod_gains(Ag)
         # updating the Ia afferents
-        self.buffer[self.offset:,28:34] = (self.m_params['f_Ia_s'] * Ts +
-                                           self.m_params['f_Ia_d'] * Td)
+        self.buffer[self.offset:,28:34] = Ia_gains * (
+                         (self.m_params['fs']/k_se[12:18]) * Ts +
+                         ((1.-self.m_params['fs'])/k_se[6:12]) * Td)
+        # Code used when inputs don't modify parameters
+        """
+        self.buffer[self.offset:,28:34] = ((self.m_params['f_Ia_s'] * Ts +
+                                           self.m_params['f_Ia_d'] * Td) *
+                                       (1. + self.m_params['gd_gain']*Ad))
+        """
         # updating the II afferents
         #   In this case we would need to obtain the muscle speeds and tension
         #   derivatives for each substep. To avoid all that compuatation, we
         #   obtain speeds and tension derivatives only at one intermediate point.
-        idx_II = self.offset + int(round(self.net.min_buff_size/2.))
         c_elbow, c_hand, ips = self.upd_ip_impl(self.buffer[idx_II,0],
                                                 self.buffer[idx_II,2])
         l, v = self.muscle_kinematics(self.buffer[idx_II,1],
                                       self.buffer[idx_II,3], c_elbow, ips)
-        A = np.array([self.get_input_sum(self.times[idx_II], i) 
-                      for i in range(12,18)])
-        Tsp = self.tension_diff_II(l, v, Ts, self.times[idx_II], A)
-        self.buffer[self.offset:,34:40] = (self.m_params['f_II_s'] * Ts +
+        Tsp = self.tension_diff_II(l, v, Ts, self.times[idx_II], As)
+        self.buffer[self.offset:,34:40] = II_gains * (
+                (self.m_params['se_II'] / k_se[12:18]) * Ts +
+                ((1.- self.m_params['se_II'])/k_pe[12:18]) * 
+                (Ts - b[12:18]*(v-Tsp/k_se[12:18]) - As))
+        # Code used when inputs don't modify parameters
+
+        """
+        self.buffer[self.offset:,34:40] = ((self.m_params['f_II_s'] * Ts +
                 self.m_params['f_II_p']*
-                (Ts - self.m_params['b_s']*(v-Tsp/self.m_params['k_se_s']) - A))
+                (Ts - self.m_params['b_s']*(v-Tsp/self.m_params['k_se_s']) - As))*
+                (1. + self.m_params['gs_gain']*As))
+        """
+
         # with the updated buffer, update the muscle insertion points
         # probably don't need this for anything other than animations
         self.upd_ip()
@@ -2857,24 +2940,43 @@ class planar_arm_v3(plant):
         # extract the tensions from the buffer
         Td = self.buffer[10:16, self.offset:].transpose()
         Ts = self.buffer[16:22, self.offset:].transpose()
+        # obtain parameters modified by inputs
+        idx_II = self.offset + int(round(self.net.min_buff_size/2.))
+        Ad = np.array([self.get_input_sum(self.times[idx_II], i) 
+                       for i in range(6,12)])
+        As = np.array([self.get_input_sum(self.times[idx_II], i) 
+                      for i in range(12,18)])
+        Ag = np.concatenate([Ad,As], axis=0)
+        b, k_se, k_pe = self.mod_params(Ag)
+        Ia_gains, II_gains = self.mod_gains(Ag)
         # updating the Ia afferents
+        self.buffer[28:34, self.offset:] = (Ia_gains * (
+                         (self.m_params['fs']/k_se[12:18]) * Ts +
+                    ((1.-self.m_params['fs'])/k_se[6:12]) * Td)).transpose()
+        # Code used when inputs don't modify parameters
+        """
         self.buffer[28:34, self.offset:] = (self.m_params['f_Ia_s'] * Ts +
                                  self.m_params['f_Ia_d'] * Td).transpose()
+        """
         # updating the II afferents
         # In this case we would need to obtain the muscle speeds and tension
         # derivatives for each substep. To avoid all that compuatation, we
         # obtain speeds and tension derivatives only at one intermediate point.
-        idx_II = self.offset + int(round(self.net.min_buff_size/2.))
         c_elbow, c_hand, ips = self.upd_ip_impl(self.buffer[0,idx_II],
                                                 self.buffer[2,idx_II])
         l, v = self.muscle_kinematics(self.buffer[1,idx_II],
                                       self.buffer[3,idx_II], c_elbow, ips)
-        A = np.array([self.get_input_sum(self.times[idx_II], i) 
-                      for i in range(12,18)])
-        Tsp = self.tension_diff_II(l, v, Ts, self.times[idx_II], A)
+        Tsp = self.tension_diff_II(l, v, Ts, self.times[idx_II], As)
+        self.buffer[34:40, self.offset:] = (II_gains * (
+                (self.m_params['se_II'] / k_se[12:18]) * Ts +
+                ((1.- self.m_params['se_II'])/k_pe[12:18]) * 
+                (Ts - b[12:18]*(v-Tsp/k_se[12:18]) - As))).transpose()
+        # Code used when inputs don't modify parameters
+        """
         self.buffer[34:40, self.offset:] = (self.m_params['f_II_s'] * Ts +
                 self.m_params['f_II_p'] * (Ts - self.m_params['b_s']*
-                (v-Tsp/self.m_params['k_se_s']) - A)).transpose()
+                (v-Tsp/self.m_params['k_se_s']) - As)).transpose()
+        """
         # with the updated buffer, update the muscle insertion points
         # probably don't need this for anything other than animations
         self.upd_ip()
