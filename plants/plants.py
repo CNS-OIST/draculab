@@ -2144,14 +2144,18 @@ class planar_arm_v3(plant):
     to the length of the serial element, and one proportional to the length of
     the parallel element, both in the static bag fiber.
 
-    Gamma dynamic stimulation has several effects:
-    * Cause contraction in the dynamic bag fiber, 
-    * increse the viscosity of the parallel element,
-    * change the effective values of the k_se, k_pe, b, and Ia_gain
-      parameters. k_se, b, and Ia_gain increase, whereas k_pe decreases.
-    Gamma static stimulation:
-    * Casuses contraction in the dynamic bag fiber, 
-    * Changes the effective values of b, II_gain for the static bag fiber.
+    Both dynamic and static gamma stimulation have a double effect. The first
+    effect is to cause contraction in the bag fiber, reducing the length of the
+    parallel element. The second effect is to change the parameters of the Hill
+    model. There are three parameter sets; the first one (P1) contains the 
+    effective values of the parameters when there is no gamma stimulation; the
+    second one (P2) has the parameters for full dynamic gamma stimulation and no
+    static gamma stimulation; the third one (P3) is for full static gamma
+    stimulation with no dynamic gamma input. The effective value of the
+    parameters (P) comes from the formula:
+    P = P1 + (P2 - P1)*S(Gd) + (P3 - P1)*S(Gs),
+    where Gd is the dynamic gamma input, Gs is the static gamma input, and S(.)
+    is the input normalization function S(x) = x/(c + x).
 
     Inputs to the model organize by type and muscle:
         ports 0-5: alpha stimulation to muscles 1-6
@@ -2220,7 +2224,7 @@ class planar_arm_v3(plant):
                         used in l0 are the lengths in the reference
                         position; e.g. the default value of l0 is an array
                         like [1, 1, 1, 1, 1, 1].
-                g_e : gain for the muscle inputs (default 1).
+                g_e : gain for the muscle inputs (default 1). NOT IN USE!!!
                 k_pe_e : muscle parallel elastic element constant (Default 2)
                 k_se_e : muscle series elastic element constant (Default 5)
                 b_e : muscle dampening constant (Default 5)
@@ -2232,8 +2236,8 @@ class planar_arm_v3(plant):
                         lenghts are normalized wrt the reference position.
                         Default is 0.9 .
                 l0_d : rest lengths for dynamic bag fibers. Default is 0.9 .
-                g_s : input gain for static bag fibers. Default is 1. 
-                g_d : input gain for dynamic bag fibers. Default is 1.
+                g_s : input gain for static bag fibers. Default 1. NOT IN USE!
+                g_d : input gain for dynamic bag fibers. Default 1.NOT IN USE!
                 Ia_gain : output gain for muscle Ia afferents. 
                           Default is [60,200,200,60,200,200].
                 k_pe_s : parallel elasticity constant,static fibers (Default 1)
@@ -2403,7 +2407,7 @@ class planar_arm_v3(plant):
     def param_vector(self, par):
         """ Returns a numpy array given a value in the params dictionary. 
 
-            This is an auxiliary function for create_hill_muscles.
+            This is an auxiliary function for create_muscle_parameters.
         """
         p_type = type(par)
         if p_type in [float, int, np.float_, np.int_]:
@@ -2486,6 +2490,23 @@ class planar_arm_v3(plant):
         # some commonly used constant arrays (see tension_diff)
         self.cat_p['f_a'] = self.cat_p['k_se'] / self.cat_p['b']
         self.cat_p['f_b'] = 1. + self.cat_p['k_pe'] / self.cat_p['k_se']
+        # parameters used under full dynamic gamma stimualtion
+        self.pd_params = {'k_pe_d' : self.param_vector(0.1),
+                          'k_se_d' : self.param_vector(2.),
+                          'b_d' : self.param_vector(5.),
+                          'fs' : self.param_vector(0.1),
+                          'gd_gain' : self.param_vector(5.)
+                         }
+        # parameters used under full static gamma stimualtion
+        self.ps_params = {'gs_gain' : self.param_vector(5.),
+                          'fs' : self.param_vector(0.3),
+                          'se_II' : 0.7
+                         }
+        self.pd_p = {} # p2 - p1 from the documentation
+        for entry in self.pd_params:
+            self.pd_p[entry] = self.pd_params[entry] - self.m_params[entry]
+        for entry in self.pd_params:
+            self.pd_p[entry] = self.pd_params[entry] - self.m_params[entry]
            
     def init_muscles(self):
         """ Set the initial tensions and afferent outputs. """
@@ -2517,13 +2538,27 @@ class planar_arm_v3(plant):
         Ia_gain, II_gain = self.mod_gains(A[6:18])
         Td = self.init_state[10:16]
         Ts = self.init_state[16:22]
+        k_se_d = k_se[6:12]
+        k_se_s = k_se[12:18]
+        k_pe_s = k_pe[12:18]
+        b_s = b[12:18]
         self.init_state[28:34] = Ia_gain * (
+                    self.m_params['fs'] * Ts / k_se_s +
+                    (1.-self.m_params['fs']) * Td / k_se_d)
+        self.init_state[34:40] = II_gain * (
+                   self.m_params['se_II'] * Ts / k_se_s +
+                   ((1.-self.m_params['se_II'])/k_pe_s) *
+                   (Ts-b_s*speeds + A[12:18]))
+        # Code used when input doesn't modify parameters
+        """
+        self.init_state[28:34] = self.m_params['Ia_gain'] * (
                     self.m_params['fs'] * Ts / self.m_params['k_se_s'] +
                     (1.-self.m_params['fs']) * Td / self.m_params['k_se_d'])
-        self.init_state[34:40] = II_gain * (
+        self.init_state[34:40] = self.m_params['II_gain'] * (
                    self.m_params['se_II'] * Ts / self.m_params['k_se_s'] +
-                   (1.-self.m_params['se_II']) *
+                   ((1.-self.m_params['se_II'])/self.m_params['k_pe_s']) *
                    (Ts-self.m_params['b_s']*speeds + A[12:18]))
+        """
 
     def upd_ip_impl(self, q1, q2):
         """ Contains the computations of the upd_ip method below.
@@ -2839,13 +2874,13 @@ class planar_arm_v3(plant):
                 (b, k_se, k_pe), which are modified versions of the corresponding
                 entries in self.cat_p
         """
-        b = self.cat_p['b']
-        b[6:12] += self.m_params['gd_b']*A[0:6]
-        b[12:18] += self.m_params['gs_b']*A[6:12]
-        k_se = self.cat_p['k_se']
-        k_pe = self.cat_p['k_pe']
-        #k_se[6:12] = self.m_params['k_se_d'] * (1.+ self.m_params['gd_k']*A[6:12])
-        #k_pe[6:12] = self.m_params['k_pe_d'] / (1.+ self.m_params['gd_k']*A[6:12])
+        b = self.cat_p['b'].copy()
+        k_se = self.cat_p['k_se'].copy()
+        k_pe = self.cat_p['k_pe'].copy()
+        #b[6:12] += self.m_params['gd_b']*A[0:6]
+        #b[12:18] += self.m_params['gs_b']*A[6:12]
+        k_se[6:12] = self.m_params['k_se_d'] * (1.+ self.m_params['gd_k']*A[0:6])
+        k_pe[6:12] = self.m_params['k_pe_d'] / (1.+ self.m_params['gd_k']*A[0:6])
         return b, k_se, k_pe
 
     def mod_gains(self, A):
