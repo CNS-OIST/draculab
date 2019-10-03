@@ -2127,7 +2127,7 @@ class planar_arm_v3(plant):
     represents inputs from alpha motoneurons, and causes muscle contraction.
     The other two types represent inputs from dynamic and static gamma 
     interneurons, respectively representing inputs to the dynamic bag fibers
-    and to the static bag fibers and nuclear chain fibers (which are not 
+    and to the static bag fibers and nuclear chain fibers (these last are not
     explicitly modeled). 
     
     Geometry of the muscles is specified through 14 2-dimensional
@@ -2215,7 +2215,9 @@ class planar_arm_v3(plant):
                 c_hand: coordinates of the hand in the reference position.
 
                 ** The following parameters are for the extrafusal muscles, and can
-                   either be a scalar, or a 6-element array:
+                   either be a scalar, or a 6-element array. Default values can
+                   be consulted in the create_muscle_parameters method, or by
+                   printing the m_params dictionary.
                 ---------------------------------------------------------------
                 l0_e : a 6-element array-like with the rest lengths for the 6
                         muscles. The default value is the length of the muscle
@@ -2224,37 +2226,36 @@ class planar_arm_v3(plant):
                         used in l0 are the lengths in the reference
                         position; e.g. the default value of l0 is an array
                         like [1, 1, 1, 1, 1, 1].
-                g_e : gain for the muscle inputs (default 1). NOT IN USE!!!
-                k_pe_e : muscle parallel elastic element constant (Default 2)
-                k_se_e : muscle series elastic element constant (Default 5)
-                b_e : muscle dampening constant (Default 5)
+                g_e : gain for the muscle inputs.
+                k_pe_e : muscle parallel elastic element constant. 
+                k_se_e : muscle series elastic element constant. 
+                b_e : muscle dampening constant. 
                 ---------------------------------------------------------------
                 ** The following parameters are for the intrafusal afferents, and
-                   can either be a scalar, or a 6-element array. 
+                   can either be a scalar, or a 6-element array. Default values can
+                   be consulted in the create_muscle_parameters method, or by
+                   printing the m_params dictionary.
                 ---------------------------------------------------------------
                 l0_s : rest lengths for static bag fibers. As with l0_e,
                         lenghts are normalized wrt the reference position.
-                        Default is 0.9 .
                 l0_d : rest lengths for dynamic bag fibers. Default is 0.9 .
-                g_s : input gain for static bag fibers. Default 1. NOT IN USE!
-                g_d : input gain for dynamic bag fibers. Default 1.NOT IN USE!
+                g_s : input gain for static bag fibers in the tension equation.
+                g_d : input gain for dynamic bag fibers in the tension equation.
                 Ia_gain : output gain for muscle Ia afferents. 
-                          Default is [60,200,200,60,200,200].
-                k_pe_s : parallel elasticity constant,static fibers (Default 1)
-                k_pe_d : parallel elasticity constant, dynamic fibers (Def. 0.1) 
-                k_se_s : series elasticity constant, static fibers. Def. is 10. 
-                k_se_d : series elasticity constant, dynamic fibers. Def. is 10. 
-                b_s : dampening for dynamic bag fibers. Default is 5. 
-                b_d : dampening for dynamic bag fibers. Default is 5.
+                k_pe_s : parallel elasticity constant,static fibers.
+                k_pe_d : parallel elasticity constant, dynamic fibers.
+                k_se_s : series elasticity constant, static fibers.
+                k_se_d : series elasticity constant, dynamic fibers.
+                b_s : dampening for dynamic bag fibers.
+                b_d : dampening for dynamic bag fibers.
                 II_gain : output gain for muscle II afferents.
-                          Default is [2,6,6,2,6,6].
-                Ib_gain : output gain for GTO afferents. Default is 5.
-                tau_g : time constant for the GTO response [s]. Default is 0.05.
-                T_0 : base tension for the GTO [N]. Default is 0.5.
-                fs : fraction of static bag output in Ia (default 0.2)
+                Ib_gain : output gain for GTO afferents.
+                tau_g : time constant for the GTO response [s].
+                T_0 : base tension for the GTO [N].
+                fs : fraction of static bag output in Ia.
                 se_II: Activation of the II afferent comes from  se_II times the
                        excess length of the series element, plus (1-se_II) times
-                       the excess length of the parallel element. Default 0.5 .
+                       the excess length of the parallel element.
                 cd : The normalization constant for dynamic gamma inputs. Inputs
                      are normalized as I/(cd + I).
                 cs : The normalization constant for static gamma inputs. Inputs
@@ -2266,7 +2267,6 @@ class planar_arm_v3(plant):
             AssertionError.
 
         """
-        # This is the stuff that goes into all model constructors. Adjust accordingly.
         #-------------------------------------------------------------------------------
         params['dimension'] = 40  # notifying dimensionality of model to parent constructor
         params['inp_dim'] = 18 # notifying there are eighteen input ports
