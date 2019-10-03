@@ -583,7 +583,7 @@ class network():
         """ Connect the outputs of a plant to the units in a list.
 
         Args:
-            plantID: ID of the plant sending the outpus.
+            plantID: ID of the plant sending the outpus (an integer).
 
             unitIDs: a list with the IDs of the units receiving inputs from the plant.
 
@@ -1144,13 +1144,16 @@ class network():
         """
         if self.flat:
             raise AssertionError('The run method is not used with flattened networks')
-        Nsteps = int(total_time/self.min_delay)  # total number of simulation steps
-        unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # arrays to store unit activities
-        plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # arrays to store plant steps
-        times = np.zeros(Nsteps) + self.sim_time # array to store initial time of simulation steps
+        Nsteps = int(total_time/self.min_delay) # total number of simulation steps
+        unit_store = [np.zeros(Nsteps) for i in range(self.n_units)] # arrays to
+                                                          #store unit activities
+        plant_store = [np.zeros((Nsteps,p.dim)) for p in self.plants] # arrays to
+                                                             # store plant states
+        times = np.zeros(Nsteps) + self.sim_time # array to store initial time of
+                                                 # simulation steps
 
         for step in range(Nsteps):
-            times[step] = self.sim_time # self.sim_time persists between calls to network.run()
+            times[step] = self.sim_time # sim_time persists between calls to network.run()
             
             # store current unit activities
             for uid, unit in enumerate(self.units):

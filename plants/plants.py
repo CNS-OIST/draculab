@@ -41,7 +41,8 @@ class plant():
             REQUIRED PARAMETERS
                 'dimension' : dimensionality of the state vector. 
                 'type' : an enum identifying the type of plant being instantiated.
-                'inp_dim' : input dimensionality; number of qualitatively different input types.
+                'inp_dim' : input dimensionality; number of qualitatively different
+                            input types.
             OPTIONAL PARAMETERS
                 'delay' : maximum delay in the outputs sent by the plant. Set by
                           network.set_plant_outputs.
@@ -76,19 +77,21 @@ class plant():
 
 
     def init_buffers(self):
-        """ This method (re)initializes the buffer variables according to the current parameters.
+        """ This method nitializes the buffer variables with the current parameters.  
 
-        It is useful because new connections may increase self.delay, and thus the size of the buffers.
+        It is useful because new connections may increase self.delay, and thus
+        the size of the buffers.
         """
     
-        assert self.net.sim_time == 0., 'Plant buffers were reset when the simulation time is not zero'
+        assert self.net.sim_time == 0., 'Plant buffers were reset when ' + \
+                                        'the simulation time is not zero'
         # variables with '*' become redefined for flat networks (see network.flatten)
         min_del = self.net.min_delay  # just to have shorter lines below
         min_buff = self.net.min_buff_size
         self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
         self.offset = (self.steps-1)*min_buff # * an index used in the update
                                               # function of derived classes
-        self.buff_width = int(round(self.steps*min_buff)) # * number of state values to store
+        self.buff_width = int(round(self.steps*min_buff)) # * number of state vectors to store
         # keeping with scipy.integrate.odeint, each row in the buffer will
         # correspond to a state
         if hasattr(self, 'init_state'): # if we have initial values to put in the buffer
@@ -779,6 +782,7 @@ class compound_double_pendulum(plant):
                        2.0*tau2)) / (L1**2*L2**2*m2*(4.0*m1 + 9.0*m2*sin(q2)**2 + 3.0*m2))
         return dydt
 
+
 class spring_muscle():
     """ A very simple muscle model with a linear spring. 
     
@@ -819,13 +823,13 @@ class spring_muscle():
                     between the received p1 and p2 coordinates, which is the
                     default resting length.
 
-        The tension of the muscle is obtained as:
-            T = s*(l - l0) + g1*i1
-        where T=tension, l=length, and i1=contracting stimulation
+        The spring force of the muscle is obtained as:
+            F = s*(l - l0,0) + g1*i1
+        where F=Force, l=length, and i1=contracting stimulation
         The afferent outputs come from length, velocity, and tension:
-            affs[0] = g2*(1+i2)*l/l0, where l0 = resting length in meters.
+            affs[0] = g2*(1+i2)*(l-l0)/l0, where l0 = resting length in meters.
             affs[1] = g3*(1+i3)*v
-            affs[2] = T
+            affs[2] = s*max(l - l0,0) + g1*i1
         where v is the contraction velocity, and i2,i3 are inputs.
         These output are supposed to represent the Ia, II, and Ib afferents,
         respectively.
@@ -854,12 +858,12 @@ class spring_muscle():
         p2 = params['p2']
         # defining an auxiliary function to obtain the muscle length
         if len(p1) == 2 and len(p2) == 2:
-            self.norm = lambda p1,p2: ((p1[0]-p2[0])*(p1[0]-p2[0])+
-                                       (p1[1]-p2[1])*(p1[1]-p2[1]))**(1/2)
+            self.norm = lambda p1,p2: np.sqrt((p1[0]-p2[0])*(p1[0]-p2[0])+
+                                              (p1[1]-p2[1])*(p1[1]-p2[1]))
         elif len(p1) == 3 and len(p2) == 3:
-            self.norm = lambda p1,p2: ((p1[0]-p2[0])*(p1[0]-p2[0])+
-                                       (p1[1]-p2[1])*(p1[1]-p2[1])+
-                                       (p1[2]-p2[2])*(p1[2]-p2[2]))**(1/2)
+            self.norm = lambda p1,p2: np.sqrt((p1[0]-p2[0])*(p1[0]-p2[0])+
+                                              (p1[1]-p2[1])*(p1[1]-p2[1])+
+                                              (p1[2]-p2[2])*(p1[2]-p2[2]))
         else:
             raise ValueError('Insertion points should both be 2 or 3-' +
                              'dimensional arrays')
@@ -898,13 +902,14 @@ class spring_muscle():
         self.l_lpf_fast = self.l + (self.l_lpf_fast-self.l) * self.fast_propagator
         self.l_lpf_mid = self.l + (self.l_lpf_mid-self.l) * self.mid_propagator
         # update the tension
-        self.T = self.s*(self.l-self.l0) + self.g1*i1
+        self.T = self.s * max(self.l-self.l0, 0.) + self.g1*i1
         # update the velocity
         self.v = self.v_scale * (self.l_lpf_fast - self.l_lpf_mid)
         # update afferents vector
-        self.affs[0] = self.g2 * (1.+i2) * self.l / self.l0
+        self.affs[0] = self.g2 * (1.+i2) * (self.l - self.l0) / self.l0
         self.affs[1] = self.g3 * (1.+i3) * self.v
         self.affs[2] = self.T
+
 
 
 class planar_arm(plant):
@@ -950,7 +955,7 @@ class planar_arm(plant):
         port 5: group Ia afferent output for muscle 1 (see muscle model)
         port 6: group II afferent output for muscle 1
         port 7: group Ib afferent output for muscle 1
-        port 8-11: same, for muscle 2
+        port 8-11: same as ports 4-7, but for muscle 2
         port 12-15: same, for muscle 3
         port 16-19: same, for muscle 4
         port 20-23: same, for muscle 5
@@ -979,18 +984,18 @@ class planar_arm(plant):
                 'g' : gravitational acceleration constant. [m/s^2] (Default: 9.81)
                 'mu1' : Viscous friction coefficient at shoulder joint. (Default: 0)
                 'mu2' : Viscous friction coefficient at elbow joint. (Default: 0)
-                i1: proximal insertion point of muscle 1 (2-element array-like).
-                i2: distal insertion point of muscle 1 (2-element array-like).
-                i3: proximal insertion point of muscle 2 (2-element array-like).
-                i4: distal insertion point of muscle 2 (2-element array-like).
-                i5: proximal insertion point of muscle 3 (2-element array-like).
-                i6: distal insertion point of muscle 3 (2-element array-like).
-                i7: proximal insertion point of muscle 4 (2-element array-like).
-                i8: distal insertion point of muscle 4 (2-element array-like).
-                i9: proximal insertion point of muscle 5 (2-element array-like).
-                i10: distal insertion point of muscle 5 (2-element array-like).
-                i11: proximal insertion point of muscle 6 (2-element array-like).
-                i12: distal insertion point of muscle 6 (2-element array-like).
+                p1: proximal insertion point of muscle 1 (2-element array-like).
+                p2: distal insertion point of muscle 1 (2-element array-like).
+                p3: proximal insertion point of muscle 2 (2-element array-like).
+                p4: distal insertion point of muscle 2 (2-element array-like).
+                p5: proximal insertion point of muscle 3 (2-element array-like).
+                p6: distal insertion point of muscle 3 (2-element array-like).
+                p7: proximal insertion point of muscle 4 (2-element array-like).
+                p8: distal insertion point of muscle 4 (2-element array-like).
+                p9: proximal insertion point of muscle 5 (2-element array-like).
+                p10: distal insertion point of muscle 5 (2-element array-like).
+                p11: proximal insertion point of muscle 6 (2-element array-like).
+                p12: distal insertion point of muscle 6 (2-element array-like).
                 c_elbow: coordinates of the elbow in the reference position.
                 c_hand: coordinates of the hand in the reference position.
                 rest_l: a 6-element array-like with the rest lengths for the 6
@@ -1000,7 +1005,10 @@ class planar_arm(plant):
                         used in rest_l are the lengths in the reference
                         position; e.g. the default value of rest_l is an array
                         like [1, 1, 1, 1, 1, 1].
-                m_gain: gain for the muscle forces (default 1).
+                m_gain: gain for the muscle inputs (default 1).
+                l_gain : gain for muscle II (length) afferents (default 1)
+                v_gain : gain for muscle Ia (velocity) afferents (default 1)
+                spring : muscle spring constant (Default 1)
             network: the network where the plant instance lives.
 
         Raises:
@@ -1009,8 +1017,8 @@ class planar_arm(plant):
         """
         # This is the stuff that goes into all model constructors. Adjust accordingly.
         #-------------------------------------------------------------------------------
-        assert params['type'] is plant_models.planar_arm, ['Plant ' +
-                                 str(self.ID) + ' instantiated with the wrong type']
+        #assert params['type'] is plant_models.planar_arm, ['Plant ' +
+        #                         str(self.ID) + ' instantiated with the wrong type']
         params['dimension'] = 28 # notifying dimensionality of model to parent constructor
         params['inp_dim'] = 18 # notifying there are eighteen input ports
         plant.__init__(self, ID, params, network) # calling parent constructor
@@ -1089,6 +1097,12 @@ class planar_arm(plant):
             self.rest_l = np.ones(6)
         if 'm_gain' in params: self.m_gain = params['m_gain']
         else: self.m_gain = 1.
+        if 'l_gain' in params: self.l_gain = params['l_gain']
+        else: self.l_gain = 1.
+        if 'v_gain' in params: self.v_gain = params['v_gain']
+        else: self.v_gain = 1.
+        if 'spring' in params: self.spring = params['spring']
+        else: self.spring = 1.
         # extract geometry information from the coordinates
         #~~ arm and forearm lengths
         self.l_arm = self.c_elbow[0]  # length of the upper arm
@@ -1130,14 +1144,14 @@ class planar_arm(plant):
         self.l_i12 = np.sqrt((self.p12[0]-self.c_elbow[0])**2 + self.p12[1]**2)
         self.a_i12 = np.arctan(abs((self.c_elbow[0]-self.p12[0])/self.p12[1]))
         # set limit rotation angles for shoulder insertion points (see upd_ip)
-        self.q1_min = -np.pi/12.
-        self.q1_max = np.pi/12.
+        #self.q1_min = -np.pi/12. # currently not used
+        #self.q1_max = np.pi/12.
         # create the muscles
         mus_pars = {'l0': 1., # resting length
                 's' : 0.5, # spring constant (original value: 5.)
                 'g1': self.m_gain,  # contraction input gain
-                'g2': 1., # length afferent gain
-                'g3': 1., # velocity afferent gain
+                'g2': self.l_gain, # length afferent gain
+                'g3': self.v_gain, # velocity afferent gain
                 'dt': self.net.min_delay, # time step length
                 'p1': [], # proximal insertion point
                 'p2': [] } # distal insertion point
@@ -1147,6 +1161,7 @@ class planar_arm(plant):
             mus_pars['p1'] = self.ip[2*i]
             mus_pars['p2'] = self.ip[2*i+1]
             self.muscles.append(spring_muscle(mus_pars))
+        #-----------------------------------------------------
         ##  initialize the state vector.
         self.init_state = np.zeros(self.dim)
         # initializing double pendulum state variables
@@ -1155,6 +1170,8 @@ class planar_arm(plant):
         self.buffer = np.array([self.init_state]*self.buff_width) 
         # initializing muscle state variables in the buffer
         self.upd_muscle_buff(0.)
+        # one variable used in the update method
+        self.mbs = self.net.min_buff_size
 
     def upd_ip(self):
         """ Update the coordinates of all the insertion points (self.ip).
@@ -1169,7 +1186,7 @@ class planar_arm(plant):
             q1 = self.buffer[-1, 0] 
             q2 = self.buffer[-1, 2] 
         q12 = q1+q2
-        q1_clip = max(min(q1, self.q1_max), self.q1_min)
+        #q1_clip = max(min(q1, self.q1_max), self.q1_min)
         # update coordinates of the elbow and hand
         self.c_elbow = (self.l_arm*np.cos(q1), self.l_arm*np.sin(q1)) 
         self.c_hand = (self.c_elbow[0] + self.l_farm*np.cos(q12),
@@ -1202,7 +1219,7 @@ class planar_arm(plant):
         """ Update the buffer entries for the muscle variables. 
         
             'time' is the time for which the muscle inputs will be retrieved.
-            Notice that regardles of the value of 'time', the muscle
+            Notice that regardless of the value of 'time', the muscle
             insertion points used will be the latest ones.
             
             The 'flat' argument indicates whether the network is flattened,
@@ -1243,7 +1260,7 @@ class planar_arm(plant):
     	return tau
 	
     def elbow_torque(self, i_prox, i_dist, T):
-    	""" Obtain the torque produced by a muscle wrt the shoulder joint.
+    	""" Obtain the torque produced by a muscle wrt the elbow joint.
     	
         	Args:
             	i_prox : coordinates of proximal insertion point (tuple)
@@ -1268,6 +1285,7 @@ class planar_arm(plant):
         step the muscle tensions are considered to be constant.
 
         The muscle variables are handled by the custom update methods.
+        Inputs to the muscles are appliead in upd_muscle_buffs.
         These equations were copy-pasted from double_pendulum_validation.ipynb .
 
         Args:
@@ -1346,12 +1364,10 @@ class planar_arm(plant):
         '''
         # updating the double pendulum state variables
         new_times = self.times[-1] + self.times_grid
-        self.times = np.roll(self.times, -self.net.min_buff_size)
-        self.times[self.offset:] = new_times[1:] 
-        new_buff = odeint(self.derivatives, self.buffer[-1,0:4], new_times, 
-                          rtol=self.rtol, atol=self.atol)
-        self.buffer = np.roll(self.buffer, -self.net.min_buff_size, axis=0)
-        self.buffer[self.offset:,0:4] = new_buff[1:,:] 
+        self.times += self.net.min_delay
+        self.buffer[:self.offset,:] = self.buffer[self.mbs:,:]
+        self.buffer[self.offset:,0:4] = odeint(self.derivatives, self.buffer[-1,0:4],
+                                    new_times, rtol=self.rtol, atol=self.atol)[1:,:]
         # updating the muscles
         self.upd_muscle_buff(time)
 
@@ -1367,5 +1383,1557 @@ class planar_arm(plant):
         self.upd_muscle_buff(time, flat=True)
 
 
+class hill_muscle():
+    """ A basic Hill muscle model.
+    
+        This object is to be used by the planar_arm_v2(3) plants.
+
+        The model used is described in pg. 99 of: Shadmehr and Wise 2005, "The
+        Computational Neurobiology of Reaching and Pointing", MIT Press.
+        It is also described in:
+        https://storage.googleapis.com/wzukusers/user-31382847/documents/5a72533473440qi0OHG8/musclemodel.pdf
+
+        The state of the muscle at any given time can be characterized by 2
+        variables: its length and its tension. The derivative of the tension can
+        be obtained from these two, plus the length's derivative.
+        
+        The main function of this object is to provide the derivative of the
+        tension given the muscle's insertion points, the derivative of its
+        length, and its tension. A second function is to provide "afferent 
+        outputs" given the muscle's contraction velocity, insertion points, 
+        and tension. See the constructor's docstring for more details.
+
+        When the muscle is used to model intrafusal muscle fibers, as is done by
+        the planar_arm_v3 plant, then the afferent outputs are not given by the
+        'afferents' method, which uses non-dynamical models. Instead, the
+        afferent outputs are calculated in the planar_arm_v3.derivatives
+        function using the tension and length of the intrafusal muscle fiber.
+    """
+    def __init__(self, params):
+        """ The class constructor.
+
+        Args:
+            params: A parameter dictionary with the following entries:
+            REQUIRED PARAMETERS
+                k_pe: spring constant of the parallel element [N/m]
+                k_se: spring constant of the series element [N/m]
+                b : dampening constant [N s/m]
+                g1: contraction input gain [N]
+                l0: Resting length of the muscle. This is the sum of the rest
+                    lengths of the serieas and parallel elastic elements [m] 
+            OPTIONAL PARAMETERS
+                g2: length afferent modulation gain (default 1)
+                g3: velocity afferent modulation gain (default 1)
+
+        The first two afferent outputs come from length, and velocity: 
+            affs[0] = g2*(1+i2)*(l-l0)/l0, where l0 = resting length in meters.
+            affs[1] = g3*(1+i3)*v
+        where v is the contraction velocity, and i2,i3 are inputs.
+        These output are supposed to represent the II, and Ia afferents,
+        respectively.
+        The third afferent output is the tension, which comes from integrating
+        the tension derivative provided by the Hill model. This derivative is
+        implemented in the tension_deriv function, and is integrated by the arm
+        object.
+        """
+        self.k_pe = params['k_pe']
+        self.k_se = params['k_se']
+        self.b = params['b']
+        self.g1 = params['g1']
+        if 'g2' in params: self.g2 = params['g2']
+        else: self.g2 = 1.
+        if 'g3' in params: self.g3 = params['g3']
+        else: self.g3 = 1.
+        self.l0 = params['l0']
+
+    def tension_deriv(self, A, l, lp, T):
+        """ Derivative of the tension using the Hill model. 
+        
+            This function is used to simplify the arm's derivatives function.
+
+            Args:
+                A: input to the active, force-producing element.
+                l: muscle length
+                lp: derivative of muscle length
+                T: muscle tension
+        """
+        dT = (self.k_se/self.b) * (self.g1 * A + 
+                                   self.k_pe * (l - self.l0) +
+                                   self.b * lp -
+                                   (1. + (self.k_pe/self.k_se))*T)
+        return dT
+
+    def afferents(self, i_II, i_Ia, l, lp, T):
+        """ Returns the afferent outputs as an array [Ia, II, Ib].
+
+         Args:
+                i_Ia: input to modulate the Ia afferent
+                i_II: input to modulate the II afferent
+                l: muscle length
+                lp: derivative of muscle length
+                T: muscle tension
+        """
+        affs = np.zeros(3)
+        affs[0] = self.g2 * (1.+ i_II) * (l - self.l0)/self.l0
+        affs[1] = self.g3 * (1.+ i_Ia) * lp
+        affs[2] = T
+        return affs
+
+
+class planar_arm_v2(plant):
+    """ 
+    Model of a planar arm with six muscles, version two.
+    
+    The difference with the planar_arm class is that this version has been
+    modified to incorporate the dynamics of the muscles in the derivatives
+    function of the arm class. The original planar_arm expects that the muscle
+    can update its own dynamics by calling its `update` method. This, however,
+    decouples the muscles from the arm, resulting in the arm's ODE solver using
+    constant values of the muscle variables at each update step. In order to
+    implement the hill_muscle model with the best possible accuracy, all of
+    the dynamics are incorporated into the arm's derivatives function.
+    
+    The planar arm consists of a compound double pendulum together with six
+    muscle objects that produce torques on its two joints.
+
+    The inputs to this model are the stimulations to each one of the muscles;
+    each muscle can receive 3 types of stimuli, representing 3 different
+    sources. The first type of stimulus represents inputs from alpha
+    motoneurons, and causes muscle contraction. The other two types represent
+    inputs from dynamic and static gamma interneurons, respectively
+    representing inputs to the dynamic bag fibers and to the static bag fibers
+    and nuclear chain fibers. The effect of the gamma interneuron stimulation
+    depends on the muscle model.
+
+    Geometry of the muscle model is specified through 14 2-dimensional
+    coordinates. Two coordinates are for the elbow and hand, whereas the
+    remaining 12 are for the insertion points of the 6 muscles. The script in
+    planar_arm.ipynb permits to visualize the geometric configuration that
+    results from particular values of the coordinates, and explains the
+    reference position used to specify these coordinates.
+
+    Inputs to the model organize in triplets, with 3 consecutive inputs being
+    received by the same muscle:
+        port 0: alpha stimulation to muscle 1
+        port 1: gamma static stimulation to muscle 1
+        port 2: gamma dynamic stimulation to muscle 1
+        port 3,4,5: same, for muscle 2
+        port 6,7,8: same, for muscle 3
+        port 9,10,11: same, for muscle 4
+        port 12,13,14: same, for muscle 5
+        port 15,16,17: same, for muscle 6
+    Outputs from the model consist of the 4-dimensional state of the double
+    pendulum, the 6 muscle tensions, and a 3-dimensional output coming from each
+    one of the muscles.
+        port 0: shoulder angle [radians]
+        port 1: angular velocity of shoulder [radians / s]
+        port 2: angle of elbow [radians]
+        port 3: angular velocity of elbow [radians / s]
+        port 4: tension for muscle 1 [N]
+        port 5: tension for muscle 2 [N]
+        port 6: tension for muscle 3 [N]
+        port 7: tension for muscle 4 [N]
+        port 8: tension for muscle 5 [N]
+        port 9: tension for muscle 6 [N]
+        port 10: group Ia afferent output for muscle 1 (see muscle model)
+        port 11: group II afferent output for muscle 1
+        port 12: group Ib afferent output for muscle 1
+        port 13-15: same as ports 10-12, but for muscle 2
+        port 16-18: same, for muscle 3
+        port 19-21: same, for muscle 4
+        port 22-24: same, for muscle 5
+        port 25-27: same, for muscle 6
+
+    See planar_arm_v2.ipynb in the tests folder for an example.
+    """
+    def __init__(self, ID, params, network):
+        """ The class constructor, called by network.create.
+
+        See planar_arm.ipynb for a reference on how to specify the arm geometry.
+        All length units are in meters.
+
+        Args:
+            ID: An integer serving as a unique identifier in the network.
+            params: A dictionary with parameters to initialize the model.
+                REQUIRED PARAMETERS
+                'type' : The enum 'plant_models.planar_arm'.
+                'mass1' : mass of the rod1 [kg]
+                'mass2' : mass of the rod2 [kg]
+                'init_q1 : initial angle of the first joint (shoulder) [rad]
+                'init_q2' : initial angle of the second joint (elbow) [rad]
+                'init_q1p' : initial angular velocity of the first joint (shoulder) [rad/s]
+                'init_q2p' : initial angular velocity of the second joint (elbow) [rad/s]
+                OPTIONAL PARAMETERS
+                'g' : gravitational acceleration constant. [m/s^2] (Default: 9.81)
+                'mu1' : Viscous friction coefficient at shoulder joint. (Default: 0)
+                'mu2' : Viscous friction coefficient at elbow joint. (Default: 0)
+                p1: proximal insertion point of muscle 1 (2-element array-like).
+                p2: distal insertion point of muscle 1 (2-element array-like).
+                p3: proximal insertion point of muscle 2 (2-element array-like).
+                p4: distal insertion point of muscle 2 (2-element array-like).
+                p5: proximal insertion point of muscle 3 (2-element array-like).
+                p6: distal insertion point of muscle 3 (2-element array-like).
+                p7: proximal insertion point of muscle 4 (2-element array-like).
+                p8: distal insertion point of muscle 4 (2-element array-like).
+                p9: proximal insertion point of muscle 5 (2-element array-like).
+                p10: distal insertion point of muscle 5 (2-element array-like).
+                p11: proximal insertion point of muscle 6 (2-element array-like).
+                p12: distal insertion point of muscle 6 (2-element array-like).
+                c_elbow: coordinates of the elbow in the reference position.
+                c_hand: coordinates of the hand in the reference position.
+                rest_l: a 6-element array-like with the rest lengths for the 6
+                        muscles. The default value is the length of the muscle
+                        when the arm is at the reference position (shoulder at 0
+                        radians, elbow at pi/2 radians). The units of length
+                        used in rest_l are the lengths in the reference
+                        position; e.g. the default value of rest_l is an array
+                        like [1, 1, 1, 1, 1, 1].
+                The following parameters are for the muscle class, and can
+                either be a scalar, or a 6-element array:
+                g1 : gain for the muscle inputs (default 1).
+                g2 : gain for muscle II (length) afferents (default 1)
+                g3 : gain for muscle Ia (velocity) afferents (default 1)
+                k_pe : muscle parallel elastic element constant (Default 1)
+                k_se : muscle series elastic element constant (Default 1)
+                b : muscle dampening constant (Default 1)
+            network: the network where the plant instance lives.
+
+        Raises:
+            AssertionError.
+
+        """
+        # This is the stuff that goes into all model constructors. Adjust accordingly.
+        #-------------------------------------------------------------------------------
+        params['dimension'] = 28 # notifying dimensionality of model to parent constructor
+        params['inp_dim'] = 18 # notifying there are eighteen input ports
+        plant.__init__(self, ID, params, network) # calling parent constructor
+        # Initialization of the buffer is done below.
+        #-------------------------------------------------------------------------------
+        # Initialize the double pendulum's parameters
+        self.mass1 = params['mass1']   # mass of the rod1 [kg]
+        self.mass2 = params['mass2']   # mass of the rod2 [kg]
+        if 'g' in params: # gravitational force per kilogram
+            self.g = params['g']
+        else: 
+            self.g = 9.81  # [m/s^2]
+        if 'mu1' in params: # shoulder viscous friction coefficient
+            self.mu1 = params['mu1'] 
+        else:
+            self.mu1 = 0.
+        if 'mu2' in params: # elbow viscous friction coefficient
+            self.mu2 = params['mu2']
+        else:
+            self.mu2 = 0.
+        # Initialize the muscle insertion points
+        #~~ biarticular biceps
+        if 'p1' in params: self.p1 = params['p1']
+        else: self.p1 = (0.,0.04) # proximal insertion point
+        if 'p2' in params: self.p2 = params['p2']
+        else: self.p2 = (0.29, 0.04) # distal insertion point
+        #~~ anterior deltoid, pectoral (muscle 2)
+        if 'p3' in params: self.p3 = params['p3']
+        else: self.p3 = (0., 0.04)
+        if 'p4' in params: self.p4 = params['p4']
+        else: self.p4 = (.1, 0.02)
+        #~~ posterior deltoid (muscle 3)
+        if 'p5' in params: self.p5 = params['p5']
+        else: self.p5 = (0., -.04)
+        if 'p6' in params: self.p6 = params['p6']
+        else: self.p6 = (.1, -0.02)
+        #~~ biarticular triceps (muscle 4)
+        if 'p7' in params: self.p7 = params['p7']
+        else: self.p7 = (0., -0.04)
+        if 'p8' in params: self.p8 = params['p8']
+        else: self.p8 = (.3, -0.03)
+        #~~ brachialis (muscle 5)
+        if 'p9' in params: self.p9 = params['p9']
+        else: self.p9 = (0.2, 0.02)
+        if 'p10' in params: self.p10 = params['p10']
+        else: self.p10 = (0.29, 0.04)
+        #~~ monoarticular triceps (muscle 6)
+        if 'p11' in params: self.p11 = params['p11']
+        else: self.p11 = (0.2, -0.02)
+        if 'p12' in params: self.p12 = params['p12']
+        else: self.p12 = (0.3, -0.03)
+        # elbow and hand coordinates
+        if 'c_elbow' in params: self.c_elbow = np.array(params['c_elbow'])
+        else: self.c_elbow = (0.3, 0.)
+        if 'c_hand' in params: self.c_hand = np.array(params['c_hand'])
+        else: self.c_hand = np.array((0.3, 0.3))
+        # converting insertion points to numpy arrays
+        for p_str in ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 
+                      'p7', 'p8', 'p9', 'p10', 'p11', 'p12']:
+            exec('self.'+p_str+'=np.array(self.'+p_str+')')
+        # some basic tests with the coordinates
+        self.ip = [self.p1, self.p2, self.p3, self.p4, self.p5,self.p6,
+                  self.p7, self.p8, self.p9, self.p10, self.p11, self.p12]
+        assert (self.c_hand[0] == self.c_elbow[0] and 
+                self.c_hand[1] > self.c_elbow[1]), ['Hand and'+
+                            ' elbow coordinates not in reference position']
+        for i in range(6):
+            assert self.ip[2*i][0] < self.ip[2*i+1][0], ['Distal insertion ' +
+                   'point not right of proximal one for muscle' + str(i+1)]
+        for i in [1, 3]:
+            assert self.ip[i][1] > 0, ['Insertion point ' + str(i) +
+                   ' is expected to have a positive y coordinate']
+        for i in [5, 7]:
+            assert self.ip[i][1] < 0, ['Insertion point ' + str(i) +
+                   ' is expected to have a negative y coordinate']
+        # intialize rest lengths
+        if 'rest_l' in params:
+            self.rest_l = params['rest_l']
+        else:
+            self.rest_l = np.ones(6)
+        # extract geometry information from the coordinates
+        #~~ arm and forearm lengths
+        self.l_arm = self.c_elbow[0]  # length of the upper arm
+        self.l_farm = self.c_hand[1] - self.c_elbow[1] # length of forearm
+        #~~ insertion point 1
+        self.l_i1 = np.sqrt(self.p1[0]**2 + self.p1[1]**2)
+        self.a_i1 = np.arctan2(self.p1[1], self.p1[0])
+        #~~ insertion point 2
+        self.l_i2 = np.sqrt((self.p2[0]-self.c_elbow[0])**2 + self.p2[1]**2)
+        self.a_i2 = np.arctan2(self.c_elbow[0]-self.p2[0], self.p2[1])
+        #~~ insertion point 3
+        self.l_i3 = np.sqrt(self.p3[0]**2 + self.p3[1]**2)
+        self.a_i3 = np.arctan2(self.p3[1], self.p3[0])
+        #~~ insertion point 4
+        self.l_i4 = np.sqrt(self.p4[0]**2 + self.p4[1]**2)
+        self.a_i4 = np.arctan2(self.p4[1], self.p4[0])
+        #~~ insertion point 5
+        self.l_i5 = np.sqrt(self.p5[0]**2 + self.p5[1]**2)
+        self.a_i5 = np.arctan2(self.p5[1], self.p5[0])
+        #~~ insertion point 6
+        self.l_i6 = np.sqrt(self.p6[0]**2 + self.p6[1]**2)
+        self.a_i6 = np.arctan2(self.p6[1], self.p6[0])
+        #~~ insertion point 7
+        self.l_i7 = np.sqrt(self.p7[0]**2 + self.p7[1]**2)
+        self.a_i7 = np.arctan2(self.p7[1], self.p7[0])
+        #~~ insertion point 8
+        self.l_i8 = np.sqrt((self.p8[0]-self.c_elbow[0])**2 + self.p8[1]**2)
+        self.a_i8 = np.arctan(abs((self.c_elbow[0]-self.p8[0])/self.p8[1]))
+        #~~ insertion point 9
+        self.l_i9 = np.sqrt(self.p9[0]**2 + self.p9[1]**2)
+        self.a_i9 = np.arctan2(self.p9[1], self.p9[0])
+        #~~ insertion point 10
+        self.l_i10 = np.sqrt((self.p10[0]-self.c_elbow[0])**2 + self.p10[1]**2)
+        self.a_i10 = np.arctan2(self.c_elbow[0]-self.p10[0], self.p10[1])
+        #~~ insertion point 11
+        self.l_i11 = np.sqrt(self.p11[0]**2 + self.p11[1]**2)
+        self.a_i11 = np.arctan2(self.p11[1], self.p11[0])
+        #~~ insertion point 12
+        self.l_i12 = np.sqrt((self.p12[0]-self.c_elbow[0])**2 + self.p12[1]**2)
+        self.a_i12 = np.arctan(abs((self.c_elbow[0]-self.p12[0])/self.p12[1]))
+        # create the muscles
+        ## It is important to call this muscle creator before upd_muscle_buff so
+        ## the rest lengths come from the defaults above.
+        self.create_hill_muscles(params)
+        #  initialize the state vector.
+        self.init_state = np.zeros(self.dim)
+        # initializing double pendulum state variables
+        self.init_state[0:4] = np.array([params['init_q1'], params['init_q1p'],
+                                         params['init_q2'], params['init_q2p']])
+        # initializing the tensions
+        self.init_state[5:11] = np.zeros(6)
+        self.buffer = np.array([self.init_state]*self.buff_width) 
+        # transpose of matrix to rotate 90 degrees, used for muscle kinematics
+        self.rot90_trp = np.array([[0., 1.], [-1., 0.]])
+        # update the coordinates of all insertion points
+        self.upd_ip()
+        # initializing muscle state afferents in the buffer
+        self.upd_muscle_buff(0.)
+        # one variable used in the update method
+        self.mbs = self.net.min_buff_size
+
+
+    def param_vector(self, par):
+        """ Returns a parameter vector given its value in the params dictionary. 
+
+            This is an auxiliary function for create_hill_muscles.
+        """
+        p_type = type(par)
+        if p_type in [float, int, np.float_, np.int_]:
+            return [par]*6
+        elif p_type in [list, np.ndarray]:
+            if len(par) == 6:
+                return par
+            else:
+                raise ValueError("Found parameter list of the wrong size while"+
+                                  " creating muscles.")
+        else:
+            raise ValueError("Found parameter of the wrong type while creating"+
+                             " muscles.")
+
+    def create_hill_muscles(self, params):
+        """ Create Hill-type muscle objects for the arm. 
+        
+            params is the parameters dictionary given to __init__ 
+        """
+        # Default rest lengths come from the muscle lengths at rest position
+        dist = lambda p,q: np.sqrt((p[0]-q[0])*(p[0]-q[0]) +
+                                     (p[1]-q[1])*(p[1]-q[1]))
+        lrest = [dist(self.p1, self.p2), dist(self.p3, self.p4),
+                 dist(self.p5, self.p6), dist(self.p7, self.p8), 
+                 dist(self.p9,self.p10), dist(self.p11, self.p12)]
+        if 'rest_l' in params:
+            lrest = [a*b for a,b in zip(lrest, params['rest_l'])]
+        # default muscle parameters combined with entries in params 
+        defaults = {'k_pe' : [1.]*6,
+                    'k_se' : [1.]*6,
+                    'b' : [1.]*6,
+                    'g1' : [1.]*6,
+                    'g2' : [1.]*6,
+                    'g3' : [1.]*6 }
+        mus_pars = { 'l0' : lrest }
+        for p_str in ['k_pe', 'k_se', 'b', 'g1', 'g2', 'g3',]:
+            if p_str in params:
+                mus_pars[p_str] = self.param_vector(params[p_str])
+            else:
+                mus_pars[p_str] = defaults[p_str]
+        # create muscles
+        self.muscles = []
+        for mus_idx in range(6):
+            init_dict = {}
+            for entry in mus_pars:
+                init_dict[entry] = mus_pars[entry][mus_idx]
+            self.muscles.append(hill_muscle(init_dict))
             
+
+    def upd_ip_impl(self, q1, q2):
+        """ Contains the computations of the upd_ip method below.
+
+            Args:
+                q1 : shoulder angle [rads]
+                q2 : elbow angle [rads]
+
+            Returns: A 3-tuple (c_elbow, c_hand, ip)
+                c_elbow: numpy array with elbow coordinates
+                c_hand: numpy array with hand coordinates
+                ip: numpy array with the coordinates for the 12 insertion
+                    points.
+
+            A good candidate for Cython optimization.
+        """
+        q12 = q1+q2
+        # update coordinates of the elbow and hand
+        c_elbow = np.array((self.l_arm*np.cos(q1), self.l_arm*np.sin(q1)))
+        c_hand = np.array((c_elbow[0] + self.l_farm*np.cos(q12),
+                       c_elbow[1] + self.l_farm*np.sin(q12)))
+        #~~ muscle 1
+        ip1 = self.p1 # if this point doesn't rotate
+        ip2 = np.array((c_elbow[0] + self.l_i2*np.cos(q12+self.a_i2),
+               c_elbow[1] + self.l_i2*np.sin(q12+self.a_i2)))
+        #~~ muscle 2
+        ip3 = self.p3  # if this point doesn't rotate
+        ip4 = np.array((self.l_i4*np.cos(q1+self.a_i4),
+                        self.l_i4*np.sin(q1+self.a_i4)))
+        #~~ muscle 3
+        ip5 = self.p5 # if this point doesn't rotate
+        ip6 = np.array((self.l_i6*np.cos(q1+self.a_i6),
+                        self.l_i6*np.sin(q1+self.a_i6)))
+        #~~ muscle 4
+        ip7 = self.p7 # if this point doesn't rotate
+        ip8 = np.array((c_elbow[0] - self.l_i8*np.cos(q12-self.a_i8),
+                        c_elbow[1] - self.l_i8*np.sin(q12-self.a_i8)))
+        #~~ muscle 5
+        ip9 = np.array((self.l_i9*np.cos(q1+self.a_i9),
+                        self.l_i9*np.sin(q1+self.a_i9)))
+        ip10 = np.array((c_elbow[0] + self.l_i10*np.cos(q12+self.a_i10),
+                         c_elbow[1] + self.l_i10*np.sin(q12+self.a_i10)))
+        #~~ muscle 6
+        ip11 = np.array((self.l_i11*np.cos(q1+self.a_i11),
+                         self.l_i11*np.sin(q1+self.a_i11)))
+        ip12 = np.array((c_elbow[0] - self.l_i12*np.cos(q12-self.a_i12),
+                         c_elbow[1] - self.l_i12*np.sin(q12-self.a_i12)))
+        return (c_elbow, c_hand, 
+                np.array([ip1, ip2, ip3, ip4, ip5, ip6, 
+                          ip7, ip8, ip9, ip10, ip11, ip12]))
+
+
+    def upd_ip(self):
+        """ Update the coordinates of all the insertion points (self.ip).
+
+            This method also updates the coordinates of the elbow and the hand.
+        """
+        # retrieve current angles
+        if self.net.flat:
+            q1 = self.buffer[0, -1] # shoulder angle
+            q2 = self.buffer[2, -1] # elbow angle
+        else:
+            q1 = self.buffer[-1, 0] 
+            q2 = self.buffer[-1, 2] 
+        self.c_elbow, self.c_hand, self.ip = self.upd_ip_impl(q1, q2) 
+
+
+    def upd_muscle_buff(self, time, flat=False):
+        """ Update the buffer entries for the muscle afferent variables. 
+        
+            'time' is the time for which the muscle inputs will be retrieved.
+            Notice that regardless of the value of 'time', the muscle
+            insertion points used will be the latest ones.
+            
+            The 'flat' argument indicates whether the network is flattened,
+            which means that the buffer has the indexes reversed.
+        """
+        m_lengths, m_speeds = self.muscle_kinematics(
+                              self.buffer[-1,1],
+                              self.buffer[-1,3],
+                              self.c_elbow,
+                              self.ip )
+        for musc_idx in range(6):
+            affs = self.muscles[musc_idx].afferents(
+                        self.get_input_sum(time, 3*musc_idx+1), 
+                        self.get_input_sum(time, 3*musc_idx+2), 
+                        m_lengths[musc_idx],
+                        m_speeds[musc_idx],
+                        self.buffer[-1, 4+musc_idx])
+            # to reduce computations, all buffer entries for this time step will
+            # be the same.
+            if not flat:
+                self.buffer[:, 10+musc_idx*3:13+musc_idx*3] = affs
+            else:
+                self.buffer[10+musc_idx*3:13+musc_idx*3, :] = affs.reshape(3,1)
+            
+    def shoulder_torque(self, i_prox, i_dist, T):
+    	""" Obtain the torque produced by a muscle wrt the shoulder joint.
+    	
+        	Args:
+            	i_prox : coordinates of proximal insertion point (tuple)
+            	i_dist : coordinates of distal insertion point (tuple)
+            	T : muscle tension
+        	Returns:
+            	float
+    	"""
+    	v = np.array([i_prox[0] - i_dist[0], i_prox[1] - i_dist[1]])
+    	v_norm = (sum(v*v))**(1./2.)
+    	F = (T/v_norm) * v
+    	tau = i_dist[0] * F[1] - i_dist[1] * F[0]
+    	return tau
+	
+    def elbow_torque(self, i_prox, i_dist, T):
+    	""" Obtain the torque produced by a muscle wrt the elbow joint.
+    	
+        	Args:
+            	    i_prox : coordinates of proximal insertion point (tuple)
+                    i_dist : coordinates of distal insertion point (tuple)
+            	    T : muscle tension
+        	Returns:
+            	    float
+    	"""
+    	v = np.array([i_prox[0] - i_dist[0], i_prox[1] - i_dist[1]])
+    	v_norm = (sum(v*v))**(1./2.)
+    	F = (T/v_norm) * v
+        # notice c_elbow is currently updated by upd_ip()
+    	tau = ((i_dist[0]-self.c_elbow[0]) * F[1] - 
+               (i_dist[1]-self.c_elbow[1]) * F[0])
+    	return tau
+
+    def muscle_kinematics(self, sh_vel, elb_vel, c_elbow, ips):
+        """ Returns the muscle lengths and speeds. 
+
+            Args:
+                sh_vel = angular speed at shoulder joint.
+                elb_vel = angular speed at elbow joint.
+                c_elbow : numpy array with coordiantes of the elbow.
+                ips : numpy array with the 12 insertion points.
+            Returns:
+                The 2-tuple (m_lengths, m_speeds):
+                    m_lengths : 6-element numpy array with muscle lengths
+                    m_speeds : 6-element numpy array with muscle lengths
+        """
+        #######################################################################
+        # For each muscle, the speed is the projection of the distal endpoint's
+        # velocity on the muscle line, minus the projection of the proximal
+        # endpoint's velocity on the muscle line.
+        #######################################################################
+        ## Produce a matrix where each row has the coordinates of an
+        ## insertion point, for insertion points on the arm (humerus)
+        arm_ips = np.stack((c_elbow, ips[3], ips[5], ips[8], ips[10]),
+                           axis=0)
+        ## Rotate the vectors in this matrix by 90 degress and multiply times
+        ## the shoulder angular velocity to obtain their velocities
+        arm_vels = sh_vel * np.matmul(arm_ips, self.rot90_trp)
+        ## Produce a matrix where each row has the coordinates of an
+        ## insertion point on the forearm, with the origin at the elbow
+        farm_ips = np.stack((ips[1], ips[7], ips[9], ips[11]), axis=0)
+        farm_ips = farm_ips - c_elbow
+        ## Rotate these insertion points 90 degrees and multiply times the
+        ## elbow angular velocity to obtain their velocity wrt the elbow;
+        ## add elbow velocity to obtain velocity wrt the shoulder
+        farm_vels = (elb_vel * np.matmul(farm_ips, self.rot90_trp) +
+                     arm_vels[0, :])
+        ## Produce a matrix where row i is the velocity of ips[i]
+        ips_vels = np.stack((np.zeros(2), farm_vels[0], np.zeros(2), arm_vels[1],
+                           np.zeros(2), arm_vels[2], np.zeros(2), farm_vels[1],
+                          arm_vels[3], farm_vels[2], arm_vels[4], farm_vels[3]),
+                          axis = 0)
+        ## Produce a matrix where row i is the vector going from the proximal
+        ## to the distal insertion point of muscle i+1 (muscle lines or vectors)
+        m_vecs = ips[1::2] - ips[0:-1:2] # distal ips minus proximal ips
+        ## Obtain muscle lengths, normalize the rows of m_vecs
+        m_lengths = np.linalg.norm(m_vecs, axis=1) # muscle lengths
+        m_vec_norml = m_vecs / m_lengths.reshape(6,1)
+        ## Obtain the muscle speeds
+        m_speeds = (np.sum(ips_vels[1::2] * m_vec_norml, axis=1) -
+                    np.sum(ips_vels[0:-1:2]*m_vec_norml, axis=1))
+        return m_lengths, m_speeds 
+        
+    def derivatives(self, y, t):
+        """ Returns the derivatives of the state variables at a given point in time. 
+
+        At present, the hill_muscle has differential dynamics for one variable
+        per muscle (the tension).  With the first 4 state variables
+        corresponding to the planar arm angles, we have 10 variables to update. 
+
+        Args:
+            y : state vector (list-like) ...
+                y[0] : angle of shoulder [radians]
+                y[1] : angular speed of shoulder [radians / s]
+                y[2] : angle of elbow [radians]
+                y[3] : angular speed of elbow [radians / s]
+                y[4] : tension for muscle 1 [N]
+                y[5] : tension for muscle 2 [N]
+                y[6] : tension for muscle 3 [N]
+                y[7] : tension for muscle 4 [N]
+                y[8] : tension for muscle 5 [N]
+                y[9] : tension for muscle 6 [N]
+            t : time at which the derivative is evaluated [s]
+        Returns:
+            dydt : vector of derivtives (numpy array) ...
+                dydt[0] : angular speed of shoulder [radians / s]
+                dydt[1] : angular acceleration of shoulder [radians/s^2]
+                dydt[2] : angular speed of elbow [radians / s]
+                dydt[3] : angular acceleration of elbow [radians/s^2]
+                dydt[4] : derivative of tension for muscle 1 [N/s]
+                dydt[5] : derivative of tension for muscle 2 [N/s]
+                dydt[6] : derivative of tension for muscle 3 [N/s]
+                dydt[7] : derivative of tension for muscle 4 [N/s]
+                dydt[8] : derivative of tension for muscle 5 [N/s]
+                dydt[9] : derivative of tension for muscle 6 [N/s]
+        """
+        dydt = np.zeros_like(y)
+        #*** Obtaining geometry information corresponding to current angles
+        c_elbow, c_hand, ips = self.upd_ip_impl(y[0], y[2])
+        #*** Obtaining muscle velocities given the angular velocities
+        m_lengths, m_speeds = self.muscle_kinematics(y[1],y[3], c_elbow, ips)
+        #*** Obtaining tension derivatives
+        for musc_idx in range(6):
+            dydt[4+musc_idx] = self.muscles[musc_idx].tension_deriv(
+                                    self.get_input_sum(t, 3*musc_idx),
+                                    m_lengths[musc_idx],
+                                    m_speeds[musc_idx],
+                                    y[4+musc_idx])
+	#*** obtaining the muscle torques
+        #~~ muscle 1 wrt shouler
+        tau1s = self.shoulder_torque(ips[0], ips[1], y[4])
+        #~~ muscle 1 wrt elbow
+        tau1e = self.elbow_torque(ips[0], ips[1], y[4])
+	#~~ muscle 2 wrt shoulder
+        tau2s = self.shoulder_torque(ips[2], ips[3], y[5])
+	#~~ muscle 3 wrt shoulder
+        tau3s = self.shoulder_torque(ips[4], ips[5], y[6])
+	#~~ muscle 4 wrt shoulder
+        tau4s = self.shoulder_torque(ips[6], ips[7], y[7])
+	#~~ muscle 4 wrt elbow
+        tau4e = self.elbow_torque(ips[6], ips[7], y[7]) 
+	#~~ muscle 5 wrt elbow
+        tau5e = self.elbow_torque(ips[8], ips[9], y[8])
+	#~~ muscle 6 wrt elbow
+        tau6e = self.elbow_torque(ips[10], ips[11], y[9])
+        tau1 = tau1s + tau2s + tau3s + tau4s # shoulder torque
+        tau2 = tau1e + tau4e + tau5e + tau6e # elbow torque
+
+	#*** setting shorter names for the variables
+        q1 = y[0]
+        q1p = y[1]
+        q2 = y[2]
+        q2p = y[3]
+        L1 = self.l_arm
+        L2 = self.l_farm
+        m1 = self.mass1
+        m2 = self.mass2
+        g = self.g
+        mu1 = self.mu1
+        mu2 = self.mu2
+        #*** angular acceleration equations
+        dydt[0] = q1p
+        dydt[1] = 3.0*(-2.0*L2*(-2.0*L1*L2*m2*q1p*q2p*sin(q2) - L1*L2*m2*q2p**2*sin(q2) +
+                       L1*g*m1*cos(q1) + 2.0*L1*g*m2*cos(q1) + L2*g*m2*cos(q1 + q2) +
+                       2.0*mu1*q1p - 2.0*tau1) + (3.0*L1*cos(q2) + 2.0*L2) * 
+                       (L1*L2*m2*q1p**2*sin(q2) + L2*g*m2*cos(q1 + q2) +
+                       2.0*mu2*q2p - 2.0*tau2)) / ( 
+                       L1**2*L2*(4.0*m1 + 9.0*m2*sin(q2)**2 + 3.0*m2))
+        dydt[2] = q2p
+        dydt[3] = 3.0*(L2*m2*(3.0*L1*cos(q2) + 2.0*L2)*(-2.0*L1*L2*m2*q1p*q2p*sin(q2) -
+                       L1*L2*m2*q2p**2*sin(q2) + L1*g*m1*cos(q1) + 2.0*L1*g*m2*cos(q1) +
+                       L2*g*m2*cos(q1 + q2) + 2.0*mu1*q1p - 2.0*tau1) -
+                       2.0*(L1**2*m1 + 3.0*L1**2*m2 + 3.0*L1*L2*m2*cos(q2) + L2**2*m2) *
+                       (L1*L2*m2*q1p**2*sin(q2) + L2*g*m2*cos(q1 + q2) + 2.0*mu2*q2p -
+                       2.0*tau2)) / (L1**2*L2**2*m2*(4.0*m1 + 9.0*m2*sin(q2)**2 + 3.0*m2))
+        return dydt
+           
+    def update(self, time):
+        """ This function advances the state for net.min_delay time units. 
+        
+            Since the planar arm has 28 variables, 10 of which are handled by the ODE
+            integrator, it is necessary to customize this method so the right values
+            are entered into the buffer.
+        """
+        # updating the double pendulum state variables
+        new_times = self.times[-1] + self.times_grid
+        self.times += self.net.min_delay
+        self.buffer[:self.offset,:] = self.buffer[self.mbs:,:]
+        self.buffer[self.offset:,0:10] = odeint(self.derivatives, 
+                                                self.buffer[-1,0:10], 
+                                                new_times, 
+                                                rtol=self.rtol, 
+                                                atol=self.atol)[1:,:]
+        # with the updated buffer, update the muscle insertion points
+        self.upd_ip()
+        # with the update ips, update the muscle afferent outputs
+        self.upd_muscle_buff(time)
+
+    def flat_update(self, time):
+        """ advances the state for net.min_delay time units when the network is flat. """
+        # self.times is a view of network.ts
+        nts = self.times[self.offset-1:] # times relevant for the update
+        solution = solve_ivp(self.dt_fun,
+                             (nts[0], nts[-1]),
+                             self.buffer[0:10,-1], 
+                             t_eval=nts,
+                             rtol=self.rtol,
+                             atol=self.atol)
+        np.put(self.buffer[0:10,self.offset:], range(self.net.min_buff_size*10), 
+               solution.y[:,1:])
+        # with the updated buffer, update the muscle insertion points
+        self.upd_ip()
+        # with the update ips, update the muscle afferent outputs
+        self.upd_muscle_buff(time, flat=True)
+
+
+class planar_arm_v3(plant):
+    """ 
+    Model of a planar arm with six muscles, version three.
+    
+    In this version the afferent outputs come from models of the bag 1 and
+    bag 2 fibers. The 'derivatives' function updates the tensions of these
+    fibers, whereas the Ia and II outputs are written in new buffer entries by
+    the upd_muscle_buff function. The Ib output is also handled by the
+    'derivatives' function, using a simplified version of the Lin and Crago 2002
+    mdoel.
+
+    The inputs to this model are the stimulations to each one of the muscles;
+    each muscle can receive 3 types of stimuli. The first type of stimulus 
+    represents inputs from alpha motoneurons, and causes muscle contraction.
+    The other two types represent inputs from dynamic and static gamma 
+    interneurons, respectively representing inputs to the dynamic bag fibers
+    and to the static bag fibers and nuclear chain fibers (these last are not
+    explicitly modeled). 
+    
+    Geometry of the muscles is specified through 14 2-dimensional
+    coordinates. Two coordinates are for the elbow and hand, whereas the
+    remaining 12 are for the insertion points of the 6 muscles. The script in
+    planar_arm.ipynb permits to visualize the geometric configuration that
+    results from particular values of the coordinates, and explains the
+    reference position used to specify these coordinates.
+
+    Afferent outputs are calculated by modeling the static and dynamic
+    intrafusal bag fibers using Hill muscles. The Ia output is proportional to a
+    linear combination of the lengths for the serial elements in both  dynamic
+    and static bag fibers. The II output is has two components, one proportional
+    to the length of the serial element, and one proportional to the length of
+    the parallel element, both in the static bag fiber.
+
+    Both dynamic and static gamma stimulation have a double effect. The first
+    effect is to cause contraction in the bag fiber, reducing the length of the
+    parallel element. The second effect is to change the parameters of the Hill
+    model. There are three parameter sets; the first one (P1) contains the 
+    effective values of the parameters when there is no gamma stimulation; the
+    second one (P2) has the parameters for full dynamic gamma stimulation and no
+    static gamma stimulation; the third one (P3) is for full static gamma
+    stimulation with no dynamic gamma input. The effective value of the
+    parameters (P) comes from the formula:
+    P = P1 + (P2 - P1)*S(Gd) + (P3 - P1)*S(Gs),
+    where Gd is the dynamic gamma input, Gs is the static gamma input, and S(.)
+    is the input normalization function S(x) = x/(c + x).
+
+    Inputs to the model organize by type and muscle:
+        ports 0-5: alpha stimulation to muscles 1-6
+        port 6-11: gamma dynamic stimulation to muscles 1-6
+        port 12-17: gamma static stimulation to muscles 1-6
+    Outputs from the model consist of the 4-dimensional state of the double
+    pendulum, the 6 muscle tensions, 6 tensions for the dynamic bag fibers, 6
+    tensions for the static bag fibers, 6 Ia outputs, 6 II outputs, and 6 Ib
+    outputs.
+        port 0: shoulder angle [radians]
+        port 1: angular velocity of shoulder [radians / s]
+        port 2: angle of elbow [radians]
+        port 3: angular velocity of elbow [radians / s]
+        ports 4-9: tensions for muscles 1-6 [N]
+        ports 10-15: tensions for dynamic bag fibers 1-6
+        ports 16-21: tensions for static bag fibers 1-6
+        ports 22-27: group Ib afferent outputs for muscles 1-6 
+        ports 28-33: group Ia afferent outputs for muscles 1-6
+        ports 34-39: group II afferent outputs for muscles 1-6
+
+    See planar_arm_v3.ipynb in the tests folder for an example.
+    """
+    def __init__(self, ID, params, network):
+        """ The class constructor, called by network.create.
+
+        See planar_arm.ipynb for a reference on how to specify the arm geometry.
+        All length units are in meters.
+
+        Args:
+            ID: An integer serving as a unique identifier in the network.
+            params: A dictionary with parameters to initialize the model.
+                REQUIRED PARAMETERS
+                'type' : The enum 'plant_models.planar_arm'.
+                'mass1' : mass of the rod1 [kg]
+                'mass2' : mass of the rod2 [kg]
+                'init_q1 : initial angle of the first joint (shoulder) [rad]
+                'init_q2' : initial angle of the second joint (elbow) [rad]
+                'init_q1p' : initial angular velocity of the first joint (shoulder) [rad/s]
+                'init_q2p' : initial angular velocity of the second joint (elbow) [rad/s]
+                OPTIONAL PARAMETERS
+                'g' : gravitational acceleration constant. [m/s^2] (Default: 9.81)
+                'mu1' : Viscous friction coefficient at shoulder joint. (Default: 0)
+                'mu2' : Viscous friction coefficient at elbow joint. (Default: 0)
+                p1: proximal insertion point of muscle 1 (2-element array-like).
+                p2: distal insertion point of muscle 1 (2-element array-like).
+                p3: proximal insertion point of muscle 2 (2-element array-like).
+                p4: distal insertion point of muscle 2 (2-element array-like).
+                p5: proximal insertion point of muscle 3 (2-element array-like).
+                p6: distal insertion point of muscle 3 (2-element array-like).
+                p7: proximal insertion point of muscle 4 (2-element array-like).
+                p8: distal insertion point of muscle 4 (2-element array-like).
+                p9: proximal insertion point of muscle 5 (2-element array-like).
+                p10: distal insertion point of muscle 5 (2-element array-like).
+                p11: proximal insertion point of muscle 6 (2-element array-like).
+                p12: distal insertion point of muscle 6 (2-element array-like).
+                c_elbow: coordinates of the elbow in the reference position.
+                c_hand: coordinates of the hand in the reference position.
+
+                ** The following parameters are for the extrafusal muscles, and can
+                   either be a scalar, or a 6-element array. Default values can
+                   be consulted in the create_muscle_parameters method, or by
+                   printing the m_params dictionary.
+                ---------------------------------------------------------------
+                l0_e : a 6-element array-like with the rest lengths for the 6
+                        muscles. The default value is the length of the muscle
+                        when the arm is at the reference position (shoulder at 0
+                        radians, elbow at pi/2 radians). The units of length
+                        used in l0 are the lengths in the reference
+                        position; e.g. the default value of l0 is an array
+                        like [1, 1, 1, 1, 1, 1].
+                g_e : gain for the muscle inputs.
+                k_pe_e : muscle parallel elastic element constant. 
+                k_se_e : muscle series elastic element constant. 
+                b_e : muscle dampening constant. 
+                ---------------------------------------------------------------
+                ** The following parameters are for the intrafusal afferents, and
+                   can either be a scalar, or a 6-element array. Default values can
+                   be consulted in the create_muscle_parameters method, or by
+                   printing the m_params dictionary.
+                ---------------------------------------------------------------
+                l0_s : rest lengths for static bag fibers. As with l0_e,
+                        lenghts are normalized wrt the reference position.
+                l0_d : rest lengths for dynamic bag fibers. Default is 0.9 .
+                g_s : input gain for static bag fibers in the tension equation.
+                g_d : input gain for dynamic bag fibers in the tension equation.
+                Ia_gain : output gain for muscle Ia afferents. 
+                k_pe_s : parallel elasticity constant,static fibers.
+                k_pe_d : parallel elasticity constant, dynamic fibers.
+                k_se_s : series elasticity constant, static fibers.
+                k_se_d : series elasticity constant, dynamic fibers.
+                b_s : dampening for dynamic bag fibers.
+                b_d : dampening for dynamic bag fibers.
+                II_gain : output gain for muscle II afferents.
+                Ib_gain : output gain for GTO afferents.
+                tau_g : time constant for the GTO response [s].
+                T_0 : base tension for the GTO [N].
+                fs : fraction of static bag output in Ia.
+                se_II: Activation of the II afferent comes from  se_II times the
+                       excess length of the series element, plus (1-se_II) times
+                       the excess length of the parallel element.
+                cd : The normalization constant for dynamic gamma inputs. Inputs
+                     are normalized as I/(cd + I).
+                cs : The normalization constant for static gamma inputs. Inputs
+                     are normalized as I/(cs + I).
+                ---------------------------------------------------------------
+            network: the network where the plant instance lives.
+
+        Raises:
+            AssertionError.
+
+        """
+        #-------------------------------------------------------------------------------
+        params['dimension'] = 40  # notifying dimensionality of model to parent constructor
+        params['inp_dim'] = 18 # notifying there are eighteen input ports
+        plant.__init__(self, ID, params, network) # calling parent constructor
+        # Initialization of the buffer is done below.
+        #-------------------------------------------------------------------------------
+        # Initialize the double pendulum's parameters
+        self.mass1 = params['mass1']   # mass of the rod1 [kg]
+        self.mass2 = params['mass2']   # mass of the rod2 [kg]
+        if 'g' in params: # gravitational force per kilogram
+            self.g = params['g']
+        else: 
+            self.g = 9.81  # [m/s^2]
+        if 'mu1' in params: # shoulder viscous friction coefficient
+            self.mu1 = params['mu1'] 
+        else:
+            self.mu1 = 0.
+        if 'mu2' in params: # elbow viscous friction coefficient
+            self.mu2 = params['mu2']
+        else:
+            self.mu2 = 0.
+        # Initialize the muscle insertion points
+        #~~ biarticular biceps
+        if 'p1' in params: self.p1 = params['p1']
+        else: self.p1 = (0.,0.04) # proximal insertion point
+        if 'p2' in params: self.p2 = params['p2']
+        else: self.p2 = (0.29, 0.04) # distal insertion point
+        #~~ anterior deltoid, pectoral (muscle 2)
+        if 'p3' in params: self.p3 = params['p3']
+        else: self.p3 = (0., 0.04)
+        if 'p4' in params: self.p4 = params['p4']
+        else: self.p4 = (.1, 0.02)
+        #~~ posterior deltoid (muscle 3)
+        if 'p5' in params: self.p5 = params['p5']
+        else: self.p5 = (0., -.04)
+        if 'p6' in params: self.p6 = params['p6']
+        else: self.p6 = (.1, -0.02)
+        #~~ biarticular triceps (muscle 4)
+        if 'p7' in params: self.p7 = params['p7']
+        else: self.p7 = (0., -0.04)
+        if 'p8' in params: self.p8 = params['p8']
+        else: self.p8 = (.3, -0.03)
+        #~~ brachialis (muscle 5)
+        if 'p9' in params: self.p9 = params['p9']
+        else: self.p9 = (0.2, 0.02)
+        if 'p10' in params: self.p10 = params['p10']
+        else: self.p10 = (0.29, 0.04)
+        #~~ monoarticular triceps (muscle 6)
+        if 'p11' in params: self.p11 = params['p11']
+        else: self.p11 = (0.2, -0.02)
+        if 'p12' in params: self.p12 = params['p12']
+        else: self.p12 = (0.3, -0.03)
+        # elbow and hand coordinates
+        if 'c_elbow' in params: self.c_elbow = np.array(params['c_elbow'])
+        else: self.c_elbow = (0.3, 0.)
+        if 'c_hand' in params: self.c_hand = np.array(params['c_hand'])
+        else: self.c_hand = np.array((0.3, 0.3))
+        # converting insertion points to numpy arrays
+        for p_str in ['p1', 'p2', 'p3', 'p4', 'p5', 'p6', 
+                      'p7', 'p8', 'p9', 'p10', 'p11', 'p12']:
+            exec('self.'+p_str+'=np.array(self.'+p_str+')')
+        # some basic tests with the coordinates
+        self.ip = [self.p1, self.p2, self.p3, self.p4, self.p5,self.p6,
+                  self.p7, self.p8, self.p9, self.p10, self.p11, self.p12]
+        assert (self.c_hand[0] == self.c_elbow[0] and 
+                self.c_hand[1] > self.c_elbow[1]), ['Hand and'+
+                            ' elbow coordinates not in reference position']
+        for i in range(6):
+            assert self.ip[2*i][0] < self.ip[2*i+1][0], ['Distal insertion ' +
+                   'point not right of proximal one for muscle' + str(i+1)]
+        for i in [1, 3]:
+            assert self.ip[i][1] > 0, ['Insertion point ' + str(i) +
+                   ' is expected to have a positive y coordinate']
+        for i in [5, 7]:
+            assert self.ip[i][1] < 0, ['Insertion point ' + str(i) +
+                   ' is expected to have a negative y coordinate']
+        # extract geometry information from the coordinates
+        #~~ muscle lengths at the reference position
+        #   transpose of matrix to rotate 90 degrees, used for muscle kinematics
+        self.rot90_trp = np.array([[0., 1.], [-1., 0.]])
+        self.ref_lengths, _  = self.muscle_kinematics(params['init_q1p'],
+                                                      params['init_q2p'],
+                                                      self.c_elbow,
+                                                      np.array(self.ip))
+        #~~ arm and forearm lengths
+        self.l_arm = self.c_elbow[0]  # length of the upper arm
+        self.l_farm = self.c_hand[1] - self.c_elbow[1] # length of forearm
+        #~~ insertion point 1
+        self.l_i1 = np.sqrt(self.p1[0]**2 + self.p1[1]**2)
+        self.a_i1 = np.arctan2(self.p1[1], self.p1[0])
+        #~~ insertion point 2
+        self.l_i2 = np.sqrt((self.p2[0]-self.c_elbow[0])**2 + self.p2[1]**2)
+        self.a_i2 = np.arctan2(self.c_elbow[0]-self.p2[0], self.p2[1])
+        #~~ insertion point 3
+        self.l_i3 = np.sqrt(self.p3[0]**2 + self.p3[1]**2)
+        self.a_i3 = np.arctan2(self.p3[1], self.p3[0])
+        #~~ insertion point 4
+        self.l_i4 = np.sqrt(self.p4[0]**2 + self.p4[1]**2)
+        self.a_i4 = np.arctan2(self.p4[1], self.p4[0])
+        #~~ insertion point 5
+        self.l_i5 = np.sqrt(self.p5[0]**2 + self.p5[1]**2)
+        self.a_i5 = np.arctan2(self.p5[1], self.p5[0])
+        #~~ insertion point 6
+        self.l_i6 = np.sqrt(self.p6[0]**2 + self.p6[1]**2)
+        self.a_i6 = np.arctan2(self.p6[1], self.p6[0])
+        #~~ insertion point 7
+        self.l_i7 = np.sqrt(self.p7[0]**2 + self.p7[1]**2)
+        self.a_i7 = np.arctan2(self.p7[1], self.p7[0])
+        #~~ insertion point 8
+        self.l_i8 = np.sqrt((self.p8[0]-self.c_elbow[0])**2 + self.p8[1]**2)
+        self.a_i8 = np.arctan(abs((self.c_elbow[0]-self.p8[0])/self.p8[1]))
+        #~~ insertion point 9
+        self.l_i9 = np.sqrt(self.p9[0]**2 + self.p9[1]**2)
+        self.a_i9 = np.arctan2(self.p9[1], self.p9[0])
+        #~~ insertion point 10
+        self.l_i10 = np.sqrt((self.p10[0]-self.c_elbow[0])**2 + self.p10[1]**2)
+        self.a_i10 = np.arctan2(self.c_elbow[0]-self.p10[0], self.p10[1])
+        #~~ insertion point 11
+        self.l_i11 = np.sqrt(self.p11[0]**2 + self.p11[1]**2)
+        self.a_i11 = np.arctan2(self.p11[1], self.p11[0])
+        #~~ insertion point 12
+        self.l_i12 = np.sqrt((self.p12[0]-self.c_elbow[0])**2 + self.p12[1]**2)
+        self.a_i12 = np.arctan(abs((self.c_elbow[0]-self.p12[0])/self.p12[1]))
+        # create the parameters used for muscle dynamics
+        self.create_muscle_parameters(params)
+        ###  initial the state vector.
+        self.init_state = np.zeros(self.dim)
+        # initializing double pendulum state variables
+        self.init_state[0:4] = np.array([params['init_q1'], params['init_q1p'],
+                                         params['init_q2'], params['init_q2p']])
+        # update the coordinates of all insertion points
+        self.upd_ip()
+        # initialize init_state for tensions, afferents
+        self.init_muscles()
+        #### initialize buffer
+        self.buffer = np.array([self.init_state]*self.buff_width) 
+        # one variable used in the update method
+        self.mbs = self.net.min_buff_size
+
+    def param_vector(self, par):
+        """ Returns a numpy array given a value in the params dictionary. 
+
+            This is an auxiliary function for create_muscle_parameters.
+        """
+        p_type = type(par)
+        if p_type in [float, int, np.float_, np.int_]:
+            return np.array([par]*6)
+        elif p_type in [list, np.ndarray]:
+            if len(par) == 6:
+                if p_type is list:
+                    return np.array(par)
+                else:
+                    return par
+            else:
+                raise ValueError("Found parameter list of the wrong size while"+
+                                  " creating muscles.")
+        else:
+            raise ValueError("Found parameter of the wrong type while creating"+
+                             " muscles.")
+
+    def create_muscle_parameters(self, params):
+        """ Create parameter arrays used in the Hill muscle dynamics.
+        
+            params is the parameters dictionary given to __init__ 
+        """
+        # default muscle parameters with no gamma input
+        self.m_params = {'k_pe_e' : self.param_vector(8.),
+                         'k_se_e' : self.param_vector(13.),
+                         'b_e' : self.param_vector(5.),
+                         'g_e' : self.param_vector(1.),
+                         'l0_e' : self.ref_lengths,
+                         'k_pe_s' : self.param_vector(2.),
+                         'k_se_s' : self.param_vector(2.),
+                         'b_s' : self.param_vector(.5),
+                         'g_s' : self.param_vector(.02),
+                         'l0_s' : 0.7*self.ref_lengths,
+                         'k_pe_d' : self.param_vector(.2),
+                         'k_se_d' : self.param_vector(1.),
+                         'b_d' : self.param_vector(2.),
+                         'g_d' : self.param_vector(.01),
+                         'l0_d' : 0.8*self.ref_lengths,
+                         'Ia_gain' : 2.5*np.array([3., 10., 10., 3., 10., 10.]),
+                         'II_gain' : 2.*np.array([3., 8., 8., 3., 8., 8.]),
+                         'Ib_gain' : self.param_vector(5.),
+                         'tau_g' : self.param_vector(0.05),
+                         'T_0' : self.param_vector(0.5),
+                         'fs' : self.param_vector(.1),
+                         'se_II' : self.param_vector(0.5),
+                         'cd' : self.param_vector(0.5),
+                         'cs' : self.param_vector(0.5)
+                        }
+        # combine defaults with values in the params argument
+        for p_str in self.m_params:
+            if p_str in params:
+                self.m_params[p_str] = self.param_vector(params[p_str])
+        l_str = ['_e', '_d', '_s']
+        for s in l_str:  # l0 needs a change of units
+            if 'l0'+s in params:
+                self.m_params['l0'+s] = (self.param_vector(params['l0'+s]) *
+                                         self.ref_lengths)
+        # parameters used under full dynamic gamma stimualtion
+        self.pd_params = {'k_pe_d' : self.param_vector(0.1),
+                          'k_se_d' : self.param_vector(2.),
+                          'b_d' : self.param_vector(5.),
+                          'Ia_gain' : 2.*self.m_params['Ia_gain']
+                         }
+        # parameters used under full static gamma stimualtion
+        self.ps_params = {'II_gain' : 2.*self.m_params['II_gain'],
+                          'fs' : self.param_vector(0.5),
+                          'se_II' : 0.7
+                         }
+        self.pd_p = {} # p2 - p1 from the documentation
+        self.ps_p = {} # p3 - p1 from the documentation
+        for entry in self.pd_params:
+            self.pd_p[entry] = self.pd_params[entry] - self.m_params[entry]
+        for entry in self.ps_params:
+            self.ps_p[entry] = self.ps_params[entry] - self.m_params[entry]
+            # The following would require changes to upd_eff_p
+            if entry in self.pd_params:
+                raise NotImplementedError('It is currently not allowed to ' +
+                      'modify the same parameter with both static and ' +
+                      'dynamic gamma inputs.')
+        # The dictionary of "effective" parameters
+        self.eff_p = self.m_params.copy()
+        self.eff_p['cdcs'] = np.concatenate([self.eff_p['cd'],self.eff_p['cs']],
+                                             axis=0)
+           
+    def init_muscles(self):
+        """ Set the initial tensions and afferent outputs. """
+        # obtain initial muscle lengths and velocities 
+        l, v = self.muscle_kinematics(self.init_state[1],
+                                      self.init_state[3], 
+                                      self.c_elbow, 
+                                      self.ip)
+        # Assuming T'=0
+        # initialize muscle tensions
+        A = np.array([self.get_input_sum(0., i) for i in range(18)])
+        A[6:18] = self.norm_inputs(A[6:18])
+        self.upd_eff_p(A[6:18]) # gamma inputs modify the parameters
+        l_str = ['_e', '_d', '_s']
+        par = self.eff_p
+        for i, s in enumerate(l_str):
+            self.init_state[4+6*i:10+6*i] = ((par['k_se'+s] /
+                (par['k_se'+s] + par['k_pe'+s])) *
+                (par['k_pe'+s] * (l - self.eff_p['l0'+s]) +
+                 par['b'+s]*v + par['g'+s]*A[6*i:6*(i+1)]))
+        # initialize Ib afferents
+        self.init_state[22:28] = self.eff_p['Ib_gain'] * np.log(
+                                 np.maximum(self.init_state[4:10], 0.) /
+                                 self.eff_p['T_0'] + 1.)
+        # initialize Ia and II afferents
+        Td = self.init_state[10:16]
+        Ts = self.init_state[16:22]
+        # Ia
+        self.init_state[28:34] = par['Ia_gain'] * (
+                (par['fs'] / par['k_se_s']) * Ts +
+                ((1.-par['fs']) / par['k_se_d']) * Td)
+        # II     
+        self.init_state[34:40] = par['II_gain'] * (
+                   par['se_II'] * Ts / par['k_se_s'] +
+                   ((1.-par['se_II']) / par['k_pe_s']) *
+                   (Ts - par['b_s']*v + par['g_s']*A[12:18]))
+
+    def upd_ip_impl(self, q1, q2):
+        """ Contains the computations of the upd_ip method below.
+
+            Args:
+                q1 : shoulder angle [rads]
+                q2 : elbow angle [rads]
+
+            Returns: A 3-tuple (c_elbow, c_hand, ip)
+                c_elbow: numpy array with elbow coordinates
+                c_hand: numpy array with hand coordinates
+                ip: numpy array with the coordinates for the 12 insertion
+                    points.
+
+            A good candidate for Cython optimization.
+        """
+        q12 = q1+q2
+        # update coordinates of the elbow and hand
+        c_elbow = np.array((self.l_arm*np.cos(q1), self.l_arm*np.sin(q1)))
+        c_hand = np.array((c_elbow[0] + self.l_farm*np.cos(q12),
+                       c_elbow[1] + self.l_farm*np.sin(q12)))
+        #~~ muscle 1
+        ip1 = self.p1 # if this point doesn't rotate
+        ip2 = np.array((c_elbow[0] + self.l_i2*np.cos(q12+self.a_i2),
+               c_elbow[1] + self.l_i2*np.sin(q12+self.a_i2)))
+        #~~ muscle 2
+        ip3 = self.p3  # if this point doesn't rotate
+        ip4 = np.array((self.l_i4*np.cos(q1+self.a_i4),
+                        self.l_i4*np.sin(q1+self.a_i4)))
+        #~~ muscle 3
+        ip5 = self.p5 # if this point doesn't rotate
+        ip6 = np.array((self.l_i6*np.cos(q1+self.a_i6),
+                        self.l_i6*np.sin(q1+self.a_i6)))
+        #~~ muscle 4
+        ip7 = self.p7 # if this point doesn't rotate
+        ip8 = np.array((c_elbow[0] - self.l_i8*np.cos(q12-self.a_i8),
+                        c_elbow[1] - self.l_i8*np.sin(q12-self.a_i8)))
+        #~~ muscle 5
+        ip9 = np.array((self.l_i9*np.cos(q1+self.a_i9),
+                        self.l_i9*np.sin(q1+self.a_i9)))
+        ip10 = np.array((c_elbow[0] + self.l_i10*np.cos(q12+self.a_i10),
+                         c_elbow[1] + self.l_i10*np.sin(q12+self.a_i10)))
+        #~~ muscle 6
+        ip11 = np.array((self.l_i11*np.cos(q1+self.a_i11),
+                         self.l_i11*np.sin(q1+self.a_i11)))
+        ip12 = np.array((c_elbow[0] - self.l_i12*np.cos(q12-self.a_i12),
+                         c_elbow[1] - self.l_i12*np.sin(q12-self.a_i12)))
+        return (c_elbow, c_hand, 
+                np.array([ip1, ip2, ip3, ip4, ip5, ip6, 
+                          ip7, ip8, ip9, ip10, ip11, ip12]))
+
+
+    def upd_ip(self):
+        """ Update the coordinates of all the insertion points (self.ip).
+
+            This method also updates the coordinates of the elbow and the hand.
+        """
+        # retrieve current angles
+        if self.net.flat:
+            q1 = self.buffer[0, -1] # shoulder angle
+            q2 = self.buffer[2, -1] # elbow angle
+        else:
+            q1 = self.buffer[-1, 0] 
+            q2 = self.buffer[-1, 2] 
+        self.c_elbow, self.c_hand, self.ip = self.upd_ip_impl(q1, q2) 
+
+    def shoulder_torque(self, i_prox, i_dist, T):
+    	""" Obtain the torque produced by a muscle wrt the shoulder joint.
+    	
+        	Args:
+            	i_prox : coordinates of proximal insertion point (tuple)
+            	i_dist : coordinates of distal insertion point (tuple)
+            	T : muscle tension
+        	Returns:
+            	float
+    	"""
+    	v = np.array([i_prox[0] - i_dist[0], i_prox[1] - i_dist[1]])
+    	v_norm = (sum(v*v))**(1./2.)
+    	F = (T/v_norm) * v
+    	tau = i_dist[0] * F[1] - i_dist[1] * F[0]
+    	return tau
+	
+    def elbow_torque(self, i_prox, i_dist, T):
+    	""" Obtain the torque produced by a muscle wrt the elbow joint.
+    	
+        	Args:
+            	    i_prox : coordinates of proximal insertion point (tuple)
+                    i_dist : coordinates of distal insertion point (tuple)
+            	    T : muscle tension
+        	Returns:
+            	    float
+    	"""
+    	v = np.array([i_prox[0] - i_dist[0], i_prox[1] - i_dist[1]])
+    	v_norm = (sum(v*v))**(1./2.)
+    	F = (T/v_norm) * v
+        # notice c_elbow is currently updated by upd_ip()
+    	tau = ((i_dist[0]-self.c_elbow[0]) * F[1] - 
+               (i_dist[1]-self.c_elbow[1]) * F[0])
+    	return tau
+
+    def muscle_kinematics(self, sh_vel, elb_vel, c_elbow, ips):
+        """ Returns the muscle lengths and speeds. 
+
+            Args:
+                sh_vel = angular speed at shoulder joint.
+                elb_vel = angular speed at elbow joint.
+                c_elbow : numpy array with coordiantes of the elbow.
+                ips : numpy array with the 12 insertion points.
+            Returns:
+                The 2-tuple (m_lengths, m_speeds):
+                    m_lengths : 6-element numpy array with muscle lengths
+                    m_speeds : 6-element numpy array with muscle lengths
+        """
+        #######################################################################
+        # For each muscle, the speed is the projection of the distal endpoint's
+        # velocity on the muscle line, minus the projection of the proximal
+        # endpoint's velocity on the muscle line.
+        #######################################################################
+        ## Produce a matrix where each row has the coordinates of an
+        ## insertion point, for insertion points on the arm (humerus)
+        arm_ips = np.stack((c_elbow, ips[3], ips[5], ips[8], ips[10]),
+                           axis=0)
+        ## Rotate the vectors in this matrix by 90 degress and multiply times
+        ## the shoulder angular velocity to obtain their velocities
+        arm_vels = sh_vel * np.matmul(arm_ips, self.rot90_trp)
+        ## Produce a matrix where each row has the coordinates of an
+        ## insertion point on the forearm, with the origin at the elbow
+        farm_ips = np.stack((ips[1], ips[7], ips[9], ips[11]), axis=0)
+        farm_ips = farm_ips - c_elbow
+        ## Rotate these insertion points 90 degrees and multiply times the
+        ## elbow angular velocity to obtain their velocity wrt the elbow;
+        ## add elbow velocity to obtain velocity wrt the shoulder
+        farm_vels = (elb_vel * np.matmul(farm_ips, self.rot90_trp) +
+                     arm_vels[0, :])
+        ## Produce a matrix where row i is the velocity of ips[i]
+        ips_vels = np.stack((np.zeros(2), farm_vels[0], np.zeros(2), arm_vels[1],
+                           np.zeros(2), arm_vels[2], np.zeros(2), farm_vels[1],
+                          arm_vels[3], farm_vels[2], arm_vels[4], farm_vels[3]),
+                          axis = 0)
+        ## Produce a matrix where row i is the vector going from the proximal
+        ## to the distal insertion point of muscle i+1 (muscle lines or vectors)
+        m_vecs = ips[1::2] - ips[0:-1:2] # distal ips minus proximal ips
+        ## Obtain muscle lengths, normalize the rows of m_vecs
+        m_lengths = np.linalg.norm(m_vecs, axis=1) # muscle lengths
+        m_vec_norml = m_vecs / m_lengths.reshape(6,1)
+        ## Obtain the muscle speeds
+        m_speeds = (np.sum(ips_vels[1::2] * m_vec_norml, axis=1) -
+                    np.sum(ips_vels[0:-1:2]*m_vec_norml, axis=1))
+        return m_lengths, m_speeds 
+
+    def tension_diff(self, l, v, T, time):
+        """ Obtain the tension derivative for the Hill muscle models.
+
+            This function implements a vectorized version of equation 3 in the
+            Shadmehr and Wise derivation of tension (also in Pg. 102 of the
+            book), but parameters are also affected by the gamma inputs.
+            Tension derivatives for all extrafusal and intrafusal fibers
+            are calculated.
+
+            Args:
+                l : numpy array with the muscle lenghts
+                v : numpy array with the muscle speeds
+                T : numpy array
+                  T[0]-T[5] : muscle tensions
+                  T[6]-T[11] : dynamic bag tensions
+                  T[12]-T[17] : static bag tensions
+                time : time used to retrieve the inputs
+            Returns: numpy array with T'
+        """
+        A = np.array([self.get_input_sum(time, i) for i in range(18)])
+        A[6:18] = self.norm_inputs(A[6:18])
+        self.upd_eff_p(A[6:18]) # gamma inputs modify the parameters
+        l_str = ['_e', '_d', '_s'] # the order is important
+        par = self.eff_p
+        Tp = np.zeros_like(T)
+        for i, s in enumerate(l_str):
+            Tp[6*i:6*(i+1)] = (par['k_se'+s] / par['b'+s]) * (
+                    par['k_pe'+s] * (l - self.eff_p['l0'+s]) +
+                    par['b'+s] * v -
+                    (1. + par['k_pe'+s]/par['k_se'+s]) * T[6*i:6*(i+1)] +
+                     par['g'+s]*A[6*i:6*(i+1)])
+        return Tp
+
+    def tension_diff_II(self, l, v, T, A):
+        """ Obtain the tension derivative for the static bag fibers only.
+
+            This is an auxiliary method for update and flat_update.
+
+            Args:
+                l : numpy array with the muscle lenghts
+                v : numpy array with the muscle speeds
+                T : numpy array
+                  T[0]-T[5] : static bag tensions
+                A : The 6 inputs to the static fibers, normalized.
+            Returns: numpy array with T'
+        """
+        # upd_eff_p(A) was just run in update/flat_update
+        par = self.eff_p
+        return  (par['k_se_s']/par['b_s']) * (
+                 par['k_pe_s'] * (l-par['l0_s']) + par['b_s'] * v -
+                 (1. + par['k_pe_s']/par['k_se_s']) * T + par['g_s'] * A)
+        
+    def derivatives(self, y, t):
+        """ Returns the derivatives of the state variables at time t. 
+
+        There are 4 dynamical variables to update per muscle, corresponging to
+        the 3 tensions (one extrafusal two intrafusals), and Ib afferent rate.
+        Together with the 4 state variables of the double pendulum, there are 
+        28 variables to differentiate. The Ia and II outputs are handled by the
+        update function.
+        
+        Args:
+            y : state vector (list-like) ...
+                y[0] : angle of shoulder [radians]
+                y[1] : angular speed of shoulder [radians / s]
+                y[2] : angle of elbow [radians]
+                y[3] : angular speed of elbow [radians / s]
+                y[4]-y[9] : tensions for muscles 1-6 [N]
+                y[10]-y[15]: tensions for dynamic fibers, muscles 1-6
+                y[16]-y[21]: tensions for static fibers, muscles 1-6
+                y[22]-y[27]: Ib afferent activities for muscles 1-6
+            t : time at which the derivative is evaluated [s]
+        Returns:
+            dydt : vector of derivatives (numpy array)
+                dydt[0] : angular speed of shoulder [radians / s]
+                dydt[1] : angular acceleration of shoulder [radians/s^2]
+                dydt[2] : angular speed of elbow [radians / s]
+                dydt[3] : angular acceleration of elbow [radians/s^2]
+                dydt[4-9] : tension derivatives for muscles 1-6 [N/s]
+                dydt[10-15]: tension derivatives for dynamic fibers 1-6
+                dydt[16-21]: tension derivatives for static fibers 1-6
+                dydt[22-27]: derivatives of Ib activity for muscles 1-6
+        """
+        dydt = np.zeros_like(y)
+        #*** geometry information corresponding to current angles
+        c_elbow, c_hand, ips = self.upd_ip_impl(y[0], y[2])
+        #*** muscle velocities given the angular velocities
+        lengths, speeds = self.muscle_kinematics(y[1],y[3], c_elbow, ips)
+        #*** tension derivatives for the muscles
+        dydt[4:22] = self.tension_diff(lengths, speeds, y[4:22], t)
+	#*** muscle torques
+        #~~ muscle 1 wrt shouler
+        tau1s = self.shoulder_torque(ips[0], ips[1], y[4])
+        #~~ muscle 1 wrt elbow
+        tau1e = self.elbow_torque(ips[0], ips[1], y[4])
+	#~~ muscle 2 wrt shoulder
+        tau2s = self.shoulder_torque(ips[2], ips[3], y[5])
+	#~~ muscle 3 wrt shoulder
+        tau3s = self.shoulder_torque(ips[4], ips[5], y[6])
+	#~~ muscle 4 wrt shoulder
+        tau4s = self.shoulder_torque(ips[6], ips[7], y[7])
+	#~~ muscle 4 wrt elbow
+        tau4e = self.elbow_torque(ips[6], ips[7], y[7]) 
+	#~~ muscle 5 wrt elbow
+        tau5e = self.elbow_torque(ips[8], ips[9], y[8])
+	#~~ muscle 6 wrt elbow
+        tau6e = self.elbow_torque(ips[10], ips[11], y[9])
+        tau1 = tau1s + tau2s + tau3s + tau4s # shoulder torque
+        tau2 = tau1e + tau4e + tau5e + tau6e # elbow torque
+	#*** set shorter names for the variables
+        q1 = y[0]
+        q1p = y[1]
+        q2 = y[2]
+        q2p = y[3]
+        L1 = self.l_arm
+        L2 = self.l_farm
+        m1 = self.mass1
+        m2 = self.mass2
+        g = self.g
+        mu1 = self.mu1
+        mu2 = self.mu2
+        #*** angular acceleration equations
+        dydt[0] = q1p
+        dydt[1] = 3.0*(-2.0*L2*(-2.0*L1*L2*m2*q1p*q2p*sin(q2) - L1*L2*m2*q2p**2*sin(q2) +
+                       L1*g*m1*cos(q1) + 2.0*L1*g*m2*cos(q1) + L2*g*m2*cos(q1 + q2) +
+                       2.0*mu1*q1p - 2.0*tau1) + (3.0*L1*cos(q2) + 2.0*L2) * 
+                       (L1*L2*m2*q1p**2*sin(q2) + L2*g*m2*cos(q1 + q2) +
+                       2.0*mu2*q2p - 2.0*tau2)) / ( 
+                       L1**2*L2*(4.0*m1 + 9.0*m2*sin(q2)**2 + 3.0*m2))
+        dydt[2] = q2p
+        dydt[3] = 3.0*(L2*m2*(3.0*L1*cos(q2) + 2.0*L2)*(-2.0*L1*L2*m2*q1p*q2p*sin(q2) -
+                       L1*L2*m2*q2p**2*sin(q2) + L1*g*m1*cos(q1) + 2.0*L1*g*m2*cos(q1) +
+                       L2*g*m2*cos(q1 + q2) + 2.0*mu1*q1p - 2.0*tau1) -
+                       2.0*(L1**2*m1 + 3.0*L1**2*m2 + 3.0*L1*L2*m2*cos(q2) + L2**2*m2) *
+                       (L1*L2*m2*q1p**2*sin(q2) + L2*g*m2*cos(q1 + q2) + 2.0*mu2*q2p -
+                       2.0*tau2)) / (L1**2*L2**2*m2*(4.0*m1 + 9.0*m2*sin(q2)**2 + 3.0*m2))
+       #*** Tension derivatives for the GTOs
+        r_ss = self.m_params['Ib_gain'] * np.log(
+                          np.maximum(y[4:10], 0.) / self.m_params['T_0'] + 1.)
+        dydt[22:28] = (r_ss - y[22:28]) / self.m_params['tau_g']
+        return dydt
+
+    def upd_eff_p(self, A):
+        """ Change eff_p parameters according to the given gamma inputs. 
+       
+            Args:
+                A : normalized 12-element numpy array
+                  A[0:6] : normalized dynamic gamma inputs
+                  A[6:12] : normalized static gamma inputs
+        """ 
+        for name in self.pd_p:
+            self.eff_p[name] = self.m_params[name] + A[0:6]*self.pd_p[name]
+        for name in self.ps_p:
+            self.eff_p[name] = self.m_params[name] + A[6:12]*self.ps_p[name]
+
+    def norm_inputs(self, I):
+        """ Returns the normalized version of the given gamma inputs. 
+        
+            Args:
+                I : 12-element numpy array
+                  I[0:6] : dynamic gamma inputs
+                  I[6:12] : static gamma inputs
+            Returns:
+                The 12-element numpy array A, where
+                A[0:6] = normalized dynamic gamma inputs
+                A[6:12] = normalized static gamma inputs
+        """
+        return I / (self.eff_p['cdcs'] + I)
+    
+           
+    def update(self, time):
+        """ This function advances the state for net.min_delay time units. 
+        
+            Since the planar arm has 40 variables, 28 of which are handled by the ODE
+            integrator, it is necessary to customize this method so the right values
+            are entered into the buffer.
+        """
+        # updating the double pendulum and tension state variables
+        new_times = self.times[-1] + self.times_grid
+        self.times += self.net.min_delay
+        self.buffer[:self.offset,:] = self.buffer[self.mbs:,:]
+        self.buffer[self.offset:,0:28] = odeint(self.derivatives, 
+                                                self.buffer[-1,0:28], 
+                                                new_times, 
+                                                rtol=self.rtol, 
+                                                atol=self.atol)[1:,:]
+        # extract the tensions from the buffer
+        Td = self.buffer[self.offset:,10:16]
+        Ts = self.buffer[self.offset:,16:22]
+        # obtain parameters modified by inputs at an intermediate point
+        idx_II = self.offset + int(round(self.net.min_buff_size/2.))
+        Ag = self.norm_inputs( np.array([self.get_input_sum(
+                   self.times[idx_II], i) for i in range(6,18)]))
+        self.upd_eff_p(Ag)
+        par = self.eff_p
+        # updating the Ia afferents
+        self.buffer[self.offset:,28:34] = par['Ia_gain'] * (
+                            (par['fs'] / par['k_se_s']) * Ts +
+                            ((1.-par['fs']) / par['k_se_d']) * Td)
+        # updating the II afferents
+        #   In this case we would need to obtain the muscle speeds and tension
+        #   derivatives for each substep. To avoid all that compuatation, we
+        #   obtain speeds and tension derivatives only at one intermediate point.
+        c_elbow, c_hand, ips = self.upd_ip_impl(self.buffer[idx_II,0],
+                                                self.buffer[idx_II,2])
+        l, v = self.muscle_kinematics(self.buffer[idx_II,1],
+                                      self.buffer[idx_II,3], c_elbow, ips)
+        Tsp = self.tension_diff_II(l, v, Ts, Ag[6:12])
+        self.buffer[self.offset:,34:40] =  par['II_gain'] * (
+                                par['se_II'] * Ts / par['k_se_s'] +
+                                ((1.-par['se_II']) / par['k_pe_s']) *
+                                (Ts - par['b_s']*v + par['g_s']*Ag[6:12]))
+        # with the updated buffer, update the muscle insertion points
+        # probably don't need this for anything other than animations
+        self.upd_ip()
+
+    def flat_update(self, time):
+        """ Advances the state net.min_delay time units in flat networks. """
+        # self.times is a view of network.ts
+        nts = self.times[self.offset-1:] # times relevant for the update
+        solution = solve_ivp(self.dt_fun,
+                             (nts[0], nts[-1]),
+                             self.buffer[0:28,-1], 
+                             t_eval=nts,
+                             rtol=self.rtol,
+                             atol=self.atol)
+        np.put(self.buffer[0:28,self.offset:], range(self.net.min_buff_size*28), 
+               solution.y[:,1:])
+        # extract the tensions from the buffer
+        Td = self.buffer[10:16, self.offset:].transpose()
+        Ts = self.buffer[16:22, self.offset:].transpose()
+        # obtain parameters modified by inputs
+        idx_II = self.offset + int(round(self.net.min_buff_size/2.))
+        Ag = self.norm_inputs( np.array([self.get_input_sum(
+                   self.times[idx_II], i) for i in range(6,18)]))
+        self.upd_eff_p(Ag)
+        par = self.eff_p
+        # updating the Ia afferents
+        self.buffer[28:34, self.offset:] = (par['Ia_gain'] * (
+                      (par['fs'] / par['k_se_s']) * Ts +
+                      ((1.-par['fs']) / par['k_se_d']) * Td)).transpose()
+        # updating the II afferents
+        # In this case we would need to obtain the muscle speeds and tension
+        # derivatives for each substep. To avoid all that compuatation, we
+        # obtain speeds and tension derivatives only at one intermediate point.
+        c_elbow, c_hand, ips = self.upd_ip_impl(self.buffer[0,idx_II],
+                                                self.buffer[2,idx_II])
+        l, v = self.muscle_kinematics(self.buffer[1,idx_II],
+                                      self.buffer[3,idx_II], c_elbow, ips)
+        Tsp = self.tension_diff_II(l, v, Ts, Ag[6:12])
+        self.buffer[34:40, self.offset:] = (par['II_gain'] * (
+                      par['se_II'] * Ts / par['k_se_s'] +
+                      ((1.-par['se_II']) / par['k_pe_s']) *
+                      (Ts - par['b_s']*v + par['g_s']*Ag[6:12]))).transpose()
+        # with the updated buffer, update the muscle insertion points
+        # probably don't need this for anything other than animations
+        self.upd_ip()
 

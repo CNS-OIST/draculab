@@ -63,10 +63,18 @@ class unit_types(Enum):
 
     binary = 101 # from tutorial 5
 
-    am_pm_oscillator = 102 # from spinal units
-    out_norm_sig = 103 # from spinal units
-    out_norm_am_sig = 104 # from spinal units
-    logarithmic = 105 # from spinal units
+    # Units from spinal_units.py
+    am_pm_oscillator = 102
+    out_norm_sig = 103
+    out_norm_am_sig = 104
+    logarithmic = 105
+    rga_sig = 106
+    gated_rga_sig = 107
+    gated_rga_adapt_sig = 108
+    act = 109
+    gated_out_norm_am_sig = 110
+    gated_rga_inpsel_adapt_sig = 111
+    inpsel_linear = 112
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -179,6 +187,7 @@ class unit_types(Enum):
         elif self == unit_types.binary:
             from units.custom_units import binary_unit
             unit_class = binary_unit
+        # Models from spinal
         elif self == unit_types.test_oscillator:
             from units.custom_units import test_oscillator
             unit_class = test_oscillator
@@ -194,6 +203,27 @@ class unit_types(Enum):
         elif self == unit_types.logarithmic:
             from units.spinal_units import logarithmic
             unit_class = logarithmic
+        elif self == unit_types.rga_sig:
+            from units.spinal_units import rga_sig 
+            unit_class = rga_sig 
+        elif self == unit_types.gated_rga_sig:
+            from units.spinal_units import gated_rga_sig 
+            unit_class = gated_rga_sig 
+        elif self == unit_types.gated_rga_adapt_sig:
+            from units.spinal_units import gated_rga_adapt_sig 
+            unit_class = gated_rga_adapt_sig 
+        elif self == unit_types.act:
+            from units.spinal_units import act 
+            unit_class = act 
+        elif self == unit_types.gated_out_norm_am_sig:
+            from units.spinal_units import gated_out_norm_am_sig 
+            unit_class = gated_out_norm_am_sig
+        elif self == unit_types.gated_rga_inpsel_adapt_sig:
+            from units.spinal_units import gated_rga_inpsel_adapt_sig 
+            unit_class = gated_rga_inpsel_adapt_sig 
+        elif self == unit_types.inpsel_linear:
+            from units.spinal_units import inpsel_linear
+            unit_class = inpsel_linear
         else:
             raise NotImplementedError('Attempting to retrieve the class of an ' + 
                                       'unknown unit model')
@@ -229,6 +259,10 @@ class synapse_types(Enum):
     diff_hebbsnorm2 = 201 # a variation on diff_hebbsnorm
     anticov_inh = 202 # anticovariance for inhibitory synapses
     rga = 203 # relative gain array-inspired version of diff_hebbsnorm
+    gated_rga = 204 # rga with modulated learning rate
+    inp_sel = 205 # variant of input correlation
+    chg = 206 # the change detection synapse (CHG)
+    gated_inp_sel = 207 # inp sel with gated learning rate
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -300,6 +334,18 @@ class synapse_types(Enum):
         elif self == synapse_types.rga:
             from synapses.spinal_syns import rga_synapse 
             syn_class = rga_synapse
+        elif self == synapse_types.gated_rga:
+            from synapses.spinal_syns import gated_rga_synapse 
+            syn_class = gated_rga_synapse
+        elif self == synapse_types.inp_sel:
+            from synapses.spinal_syns import input_selection_synapse
+            syn_class = input_selection_synapse
+        elif self == synapse_types.chg:
+            from synapses.spinal_syns import chg_synapse
+            syn_class = chg_synapse 
+        elif self == synapse_types.gated_inp_sel:
+            from synapses.spinal_syns import gated_input_selection_synapse
+            syn_class = gated_input_selection_synapse
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -319,6 +365,11 @@ class plant_models(Enum):
     compound_double_pendulum = 5
     planar_arm = 6
     bouncy_pendulum = 7
+    bouncy_planar_arm = 8
+    planar_arm_v2 = 9
+    bouncy_planar_arm_v2 = 10
+    planar_arm_v3 = 11
+    bouncy_planar_arm_v3 = 12
 
     def get_class(self):
         """ Return the class object corresponding to a given plant enum. 
@@ -352,6 +403,21 @@ class plant_models(Enum):
         elif self == plant_models.bouncy_pendulum:
             from plants.spinal_plants import bouncy_pendulum 
             plant_class = bouncy_pendulum
+        elif self == plant_models.bouncy_planar_arm:
+            from plants.spinal_plants import bouncy_planar_arm
+            plant_class = bouncy_planar_arm
+        elif self == plant_models.planar_arm_v2:
+            from plants.plants import planar_arm_v2
+            plant_class = planar_arm_v2
+        elif self == plant_models.bouncy_planar_arm_v2:
+            from plants.spinal_plants import bouncy_planar_arm_v2
+            plant_class = bouncy_planar_arm_v2
+        elif self == plant_models.planar_arm_v3:
+            from plants.plants import planar_arm_v3
+            plant_class = planar_arm_v3
+        elif self == plant_models.bouncy_planar_arm_v3:
+            from plants.spinal_plants import bouncy_planar_arm_v3
+            plant_class = bouncy_planar_arm_v3
         else:
             raise NotImplementedError('Attempting to retrieve the class for an unknown plant model')
         return plant_class
@@ -417,12 +483,40 @@ class syn_reqs(Enum):
     l0_norm_factor_mp = 106 # Factors to normalize the absolute sum of weight values
     out_norm_factor = 107 # factor to normalize the absolute sum of outgoing weights
     pre_out_norm_factor = 108 # shows that the presynaptic unit needs out_norm_factor 
+    sc_inp_sum_diff_mp = 109 # derivative of the scaled input sum for each port
+    lpf_fast_sc_inp_sum_mp = 110 # fast LPF'd scaled input sum per port
+    lpf_mid_sc_inp_sum_mp = 111 # mid LPF'd scaled input sum per port
+    lpf_slow_sc_inp_sum_mp = 112 # slow LPF'd scaled input sum per port
+    lpf_slow_sc_inp_sum = 113 # slow LPF'd scaled input sum, single port
+    acc_mid = 114 # accumulator with dynamics acc_mid' = (1 - acc_mid)/tau_mid
+    acc_slow = 115 # accumuluator with dynamics acc_slow' = (1 - acc_slow)/tau_slow
+    slow_decay_adapt = 116 # adapation factor, decays with tau_slow time constant
+    mp_weights = 117 # weights by port, as returned by get_mp_weights()
+    sc_inp_sum_mp = 118 # scaled sum of inputs by port
 
 
     def list_names():
         """ Return a list with the name of all defined synaptic requirements. """
         return [name for name, member in syn_reqs.__members__.items()]
 
+    def get_priority(self):
+        """ Returns the priority of a given requirement.
+
+            Requirements with higher priority (e.g. a lower priority number)
+            are placed first in the unit's `functions` list, and are thus
+            executed first.
+
+        """
+        high_priority = {'lpf_fast', 'lpf_mid', 'lpf_slow', 
+                         'mp_inputs', 'mp_weights'}
+        mid_priority = {'sc_inp_sum'}
+        if self.name in high_priority:
+            return 1
+        elif self.name in mid_priority:
+            return 2
+        else:
+            return 3
+        
 
 # Importing the classes used by the simulator
 from network import *

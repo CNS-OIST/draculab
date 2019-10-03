@@ -919,9 +919,9 @@ class double_sigma_normal(double_sigma_base):
         # branch_w, slopes, and threshs are inside the branch_params dictionary because if they
         # were lists then network.create_units would interpret them as values to assign to separate units.
         super().__init__(ID, params, network)
-        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.lpf_slow_mp_inp_sum]) 
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.mp_weights,
+                               syn_reqs.lpf_slow_mp_inp_sum]) 
      
-    
     def get_mp_input_sum(self, time):
         """ The input function of the normalized double sigma unit. """
         # Removing zero or near-zero values from lpf_slow_mp_inp_sum
@@ -1087,7 +1087,8 @@ class sigma_double_sigma_normal(double_sigma_base):
         """
         self.extra_ports = 1 # The soma port        
         double_sigma_base.__init__(self, ID, params, network)
-        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.lpf_slow_mp_inp_sum]) 
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.mp_weights,
+                               syn_reqs.lpf_slow_mp_inp_sum]) 
      
     
     def get_mp_input_sum(self, time):
@@ -1488,7 +1489,8 @@ class double_sigma_normal_trdc(double_sigma_base, multiport_trdc_base):
         double_sigma_base.__init__(self, ID, params, network)
         self.unit_initialized = True  # to avoid calling the unit constructor twice
         multiport_trdc_base.__init__(self, ID, params, network)
-        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum]) 
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.mp_weights,
+                               syn_reqs.lpf_slow_mp_inp_sum]) 
      
     
     def get_mp_input_sum(self, time):
@@ -1750,7 +1752,7 @@ class double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
         double_sigma_base.__init__(self, ID, params, network)
         self.unit_initialized = True  # to avoid calling the unit constructor twice
         trdc_sharp_base.__init__(self, ID, params, network)
-        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum]) 
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum, syn_reqs.mp_weights]) 
      
     
     def get_mp_input_sum(self, time):
@@ -1850,13 +1852,14 @@ class sigma_double_sigma_normal_sharp(double_sigma_base, trdc_sharp_base):
         double_sigma_base.__init__(self, ID, params, network)
         self.unit_initialized = True  # to avoid calling the unit constructor twice
         trdc_sharp_base.__init__(self, ID, params, network)
-        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum]) 
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum, syn_reqs.mp_weights]) 
      
     
     def get_mp_input_sum(self, time):
         """ The input function of the normalized double sigma unit. """
         # Removing zero or near-zero values from lpf_slow_mp_inp_sum
-        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) for arry in self.lpf_slow_mp_inp_sum]
+        lpf_inp_sum = [np.sign(arry)*(np.maximum(np.abs(arry), 1e-3)) 
+                       for arry in self.lpf_slow_mp_inp_sum]
         w = self.get_mp_weights(time)
         inp = self.get_mp_inputs(time)
         del w[self.sharpen_port]
@@ -1943,7 +1946,7 @@ class sds_n_ssrdc_sharp(double_sigma_base, ssrdc_sharp_base):
         double_sigma_base.__init__(self, ID, params, network)
         self.unit_initialized = True  # to avoid calling the unit constructor twice
         ssrdc_sharp_base.__init__(self, ID, params, network)
-        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum])
+        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum, syn_reqs.mp_weights])
 
         self.nm_prts = list(range(self.n_ports)) # port list without the 0, rdc, and sharpen ports
         if self.rdc_port != 0:

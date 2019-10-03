@@ -99,10 +99,14 @@ class rga_synapse(synapse):
     
         The particulars are in the 4/11/19 scrap sheet.
 
-        Presynaptic units have the lpf_fast and lpf_mid requirements.
-        Postsynaptic units have the lpf_fast, lpf_mid, inp_deriv_mp, 
-        avg_inp_deriv_mp, l0_norm_factor_mp requirements. The am_pm_oscillator
-        includes the implementation of these last three.
+        Presynaptic units are given the lpf_fast and lpf_mid requirements.
+
+        Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
+        avg_inp_deriv_mp, del_inp_deriv_mp, del_avg_inp_deriv_mp, 
+        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        
+        The update methods for most of these requirements are currently in the
+        rga_reqs class of the spinal_units.py file.        
 
         In addition, units using this type of synapse need to have a
         'custom_inp_del' attribute to indicate the extra delay steps in the 
@@ -127,8 +131,6 @@ class rga_synapse(synapse):
             OPTIONAL PARAMETERS
             'err_port' : port for "error" inputs. Default is 0.
             'lat_port' : port for "lateral" inputs. Default is 1.
-            'max_w' : maximum synaptic weight. Default is 3. DEPRECATED
-            'min_w' : minimum synaptic weight. Default is -3. DEPRECATED
 
         Raises:
             AssertionError.
@@ -136,9 +138,6 @@ class rga_synapse(synapse):
         synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
-        # po_de is the delay in postsynaptic activity for the learning rule
-        # It is set to match the delay in the 'lateral' input ports of the post unit
-        self.po_de = self.net.units[self.postID].custom_inp_del
         # most of the heavy lifting is done by requirements
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
                              syn_reqs.lpf_fast, syn_reqs.lpf_mid, 
@@ -152,29 +151,28 @@ class rga_synapse(synapse):
         if not hasattr(self.net.units[self.postID], 'custom_inp_del'):
             raise AssertionError('An rga synapse has a postsynaptic unit without ' +
                                  'the custom_inp_del attribute')
+        # po_de is the delay in postsynaptic activity for the learning rule
+        # It is set to match the delay in the 'lateral' input ports of the post unit
+        self.po_de = self.net.units[self.postID].custom_inp_del
         if 'lat_port' in params: self.lat_port = params['lat_port']
         else: self.lat_port = 1 
         if 'err_port' in params: self.err_port = params['err_port']
         else: self.err_port = 0 
-        # TODO: erase this
-        """
-        if 'max_w' in params: self.max_w = params['max_w']
-        else: self.max_w = 1.
-        if 'min_w' in params: self.min_w = params['min_w']
-        else: self.min_w = -1.
-        """
-
-    def update(self, time):
-        """ Update the weight using the RGA-inpsired learning rule.
         
-            If the network is correctly initialized, the pre-synaptic unit updates lpf_fast, 
-            and lpf_mid, whereas the post-synaptic unit updates lpf_fast, lpf_mid and the 
-            average of approximate input derivatives for each port.
+    def update(self, time):
+        """ Update the weight using the RGA-inspired learning rule.
+        
+            If the network is correctly initialized, the pre-synaptic unit 
+            updates lpf_fast, and lpf_mid, whereas the post-synaptic unit
+            updates lpf_fast, lpf_mid, and the average of approximate input
+            derivatives for each port.
 
-            Notice the average of input derivatives can come form upd_pos_diff_avg, which 
-            considers only the inputs whose synapses have positive values. To allow synapses
-            to potentially become negative, you need to change the synapse requirement in __init__
-            from pos_diff_avg to diff_avg, and the pos_diff_avg value used below to diff_avg.
+            Notice the average of input derivatives can come form 
+            upd_pos_diff_avg, which considers only the inputs whose synapses
+            have positive values. To allow synapses to potentially become negative,
+            you need to change the synapse requirement in __init__ from 
+            pos_diff_avg to diff_avg, and the pos_diff_avg value used below to 
+            diff_avg.
             Also, remove the line "if self.w < 0: self.w = 0"
         """
         u = self.net.units[self.postID]
@@ -185,7 +183,7 @@ class rga_synapse(synapse):
         pre = self.net.units[self.preID]
         spj = (pre.get_lpf_fast(self.delay_steps) -
                pre.get_lpf_mid(self.delay_steps) )
-        self.w *= 0.5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        self.w *= 1.5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         #self.w *= pre.out_norm_factor
         #self.w *= u.l0_norm_factor_mp[self.err_port]
         #self.w += self.alpha * max(up - xp, 0.) * (sp - spj)
@@ -193,6 +191,257 @@ class rga_synapse(synapse):
         #self.w += self.alpha * ((up - xp) * (sp - spj) * 
         #          (self.max_w - self.w) * (self.w - self.min_w))
         #self.w += self.alpha * up * (sp - spj)
+
+
+class gated_rga_synapse(synapse):
+    """ A variant of the rga synapse with modulated learning rate.
+
+        The RGA rule is described in the 4/11/19 scrap sheet.
+
+        Presynaptic units are given the lpf_fast and lpf_mid requirements.
+
+        Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
+        avg_inp_deriv_mp, del_inp_deriv_mp, del_avg_inp_deriv_mp, 
+        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        Postsynaptic units are also expected to include the acc_slow
+        requirement, which is used to modulate the learning rate.
+        
+        The update methods for most of these requirements are currently in the
+        rga_reqs class of the spinal_units.py file.        
+
+        In addition, units using this type of synapse need to have a
+        'custom_inp_del' attribute to indicate the extra delay steps in the 
+        'lateral' inputs. The synapse will use this delay for the activities of
+        its postsynaptic unit and for the 'lateral' inputs.
+
+        The current implementation normalizes the sum of the absolute values for
+        the weights at the 'error' port, making them add to a parameter 'w_sum'
+        times the sum of l0_norm_factor and the out_norm_factor of the 
+        presynaptic unit.
+        
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        In its current implementation, the rga synapse assumes that the lateral
+        connections are in port 1 of the unit, wheras the error inputs are in port 0.
+        This is set in the lat_port and err_port variables.
+        
+        Args:
+            params: same as the parent class, with two additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            'post_delay': NOT USING. delay steps in the post-synaptic activity.
+            OPTIONAL PARAMETERS
+            'err_port' : port for "error" inputs. Default is 0.
+            'lat_port' : port for "lateral" inputs. Default is 1.
+            'w_sum' : multiplies the sum of weight values at the error
+                      port. Default is 1.
+
+        Raises:
+            AssertionError.
+        """
+        synapse.__init__(self, params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
+        # most of the heavy lifting is done by requirements
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
+                             syn_reqs.lpf_fast, syn_reqs.lpf_mid, 
+                             syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
+                             syn_reqs.del_inp_deriv_mp,
+                             syn_reqs.del_avg_inp_deriv_mp,
+                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.pre_out_norm_factor])
+        assert self.type is synapse_types.gated_rga, ['Synapse from ' + str(self.preID) + 
+                   ' to ' + str(self.postID) + ' instantiated with the wrong type']
+        if not hasattr(self.net.units[self.postID], 'custom_inp_del'):
+            raise AssertionError('A gated_rga synapse has a postsynaptic unit without ' +
+                                 'the custom_inp_del attribute')
+        # po_de is the delay in postsynaptic activity for the learning rule
+        # It is set to match the delay in the 'lateral' input ports of the post unit
+        self.po_de = self.net.units[self.postID].custom_inp_del
+        if 'lat_port' in params: self.lat_port = params['lat_port']
+        else: self.lat_port = 1 
+        if 'err_port' in params: self.err_port = params['err_port']
+        else: self.err_port = 0 
+        if 'w_sum' in params: self.w_sum = params['w_sum']
+        else: self.w_sum = 1.
+        
+    def update(self, time):
+        """ Update the weight using the RGA-inspired learning rule.
+        
+            If the network is correctly initialized, the pre-synaptic unit 
+            updates lpf_fast, and lpf_mid, whereas the post-synaptic unit
+            updates lpf_fast, lpf_mid, acc_mid, and the average of 
+            approximate input derivatives for each port.
+
+            Notice the average of input derivatives can come form 
+            upd_pos_diff_avg, which considers only the inputs whose synapses
+            have positive values. To allow synapses to potentially become negative,
+            you need to change the synapse requirement in __init__ from 
+            pos_diff_avg to diff_avg, and the pos_diff_avg value used below to 
+            diff_avg.
+            Also, remove the line "if self.w < 0: self.w = 0"
+        """
+        u = self.net.units[self.postID]
+        xp = u.del_avg_inp_deriv_mp[self.lat_port]
+        up = u.get_lpf_fast(self.po_de) - u.get_lpf_mid(self.po_de)
+        sp = u.avg_inp_deriv_mp[self.err_port]
+        pre = self.net.units[self.preID]
+        spj = (pre.get_lpf_fast(self.delay_steps) -
+               pre.get_lpf_mid(self.delay_steps) )
+        self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
+                              pre.out_norm_factor)
+        #self.w += u.acc_mid * self.alpha * (up - xp) * (sp - spj)
+        self.w += u.acc_slow * self.alpha * (up - xp) * (sp - spj)
+
+
+
+
+class input_selection_synapse(synapse):
+    """ A variant of the input correlation synapse.
+
+        Like the input correlation synapse, it is assumed that a unit receiving
+        an input_selection_synapse will have two types of inputs. One will be
+        called "error", and the other "aff", for afferent. Unlike the
+        inp_corr model, this synapse model assumes that its corresponding input
+        is of 'aff' type. Thus the synapses for inputs at the 'error' port in
+        the postsynaptic unit can use any other model.
+
+        A second difference with the input correlation model is that weights
+        from synapses at the "aff" postsynaptic port will be normalized so their
+        absolute values add to a parameter w_sum. This is achieved with the 
+        l0_norm_factor_mp requirement.
+
+        The learning equation is: 
+        w' = lrate * pre * err_diff,
+        where err_diff is an approximation to the derivative of the scaled sum 
+        of 'error' inputs, which are in the default case the inputs at port 1 of
+        the postsynaptic unit. This derivative is obtained through the
+        upd_sc_inp_sum_diff_mp requirement of the postsynaptic unit.
+ 
+        'error' presynaptic units require the 'tau_fast' and 'tau_mid' parameters.
+        'aff' presynaptic units require the 'tau_fast' parameter.
+
+        The Enum name for this synapse type is 'inp_sel'.
+
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            OPTIONAL PARAMETERS
+            'error_port' : port where the 'error' signals are received in the
+                           postsynaptic unit. Default 1.
+            'aff_port' : port where the 'afferent' signals are received in the
+                         postsynaptic unit. Default is the port of the synapse
+                         (e.g. self.port).
+                         This port may be deprecated, and the afferent port
+                         will be considered to be the synapse's port.
+            'w_sum' : value of the sum of synaptic weights at the 'aff' synapse.
+                      Default is 1.
+
+        Raises:
+            ValueError, AssertionError.
+        """
+
+        synapse.__init__(self, params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        if 'error_port' in params:
+            self.error_port = params['error_port']
+        else:
+            self.error_port = 1
+        if 'aff_port' in params:
+            self.aff_port = params['aff_port']
+        else:
+            self.aff_port = self.port
+        if self.aff_port != self.port:
+            from warnings import warn
+            warn("aff_port and port don't coincide in input selection synapse",
+                 UserWarning)
+        if 'w_sum' in params:
+            self.w_sum = params['w_sum']
+        else:
+            self.w_sum = 1.
+        # this may be inefficient because the lpf_mid_sc_inp_sum is being
+        # calculated also for the afferent inputs
+        self.upd_requirements = set([syn_reqs.lpf_fast_sc_inp_sum_mp,
+                                     syn_reqs.lpf_mid_sc_inp_sum_mp,
+                                     syn_reqs.l0_norm_factor_mp,
+                                     syn_reqs.pre_lpf_fast])
+
+    def update(self, time):
+        """ Update the weight using the input selection rule. """
+        u = self.net.units[self.postID]
+        err_diff = (u.lpf_fast_sc_inp_sum_mp[self.error_port] -
+                    u.lpf_mid_sc_inp_sum_mp[self.error_port]) 
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+            
+        self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
+        self.w = self.w + self.alpha * pre * err_diff
+
+
+class gated_input_selection_synapse(input_selection_synapse):
+    """ The input selection synapse with modulated learning rate.
+        
+        The acc_slow attribute of the postsynaptic unit is used to modulate the
+        learning rate. Thus, this synapse should only connect to units that
+        contain that requirement. In the case of the gated_out_norm_am_sig unit,
+        inputs at port 2 are used to reset acc_slow. For the
+        gated_rga_inpsel_adapt unit inputs at port 3 are used instead.
+
+        There is also an extra delay for the presynaptic input, in order to
+        synchronize the error and the afferent signal. This delay is given as
+        the number of 'min_delay' steps, in the 'extra_steps' parameter of the
+        constructor. The 'delay' parameter of the presynaptic units must be
+        large enough to accomodate this extra delay. This means:
+        delay > min_delay * (delay_steps + extra_steps).
+
+        The name of this synapse type is 'gated_inp_sel'.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            'extra_steps' : extra delay steps for presynaptic input.
+            OPTIONAL PARAMETERS
+            'error_port' : port where the 'error' signals are received in the
+                           postsynaptic unit. Default 1.
+            'aff_port' : port where the 'afferent' signals are received in the
+                         postsynaptic unit. Default is the port of the synapse
+                         (e.g. self.port).
+            'w_sum' : value of the sum of synaptic weights at the 'aff' synapse.
+                      Default is 1.
+            'normalize' : Binary value indicating whether the sum of synaptic
+                          weights at the 'aff' synapse should be 'w_sum'.
+                          Default is True.
+        Raises:
+            ValueError, AssertionError.
+        """
+        input_selection_synapse.__init__(self, params, network)
+        self.extra_steps = params['extra_steps']
+        if 'normalize' in params:
+            self.normalize = params['normalize']
+        else:
+            self.normalize = True
+
+    def update(self, time):
+        """ Update the weight using the input selection rule. """
+        u = self.net.units[self.postID]
+        err_diff = (u.lpf_fast_sc_inp_sum_mp[self.error_port] -
+                    u.lpf_mid_sc_inp_sum_mp[self.error_port]) 
+        pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps +
+                                                      self.extra_steps)
+        if self.normalize:
+            self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
+        self.w = self.w + u.acc_slow * self.alpha * pre * err_diff
 
 
 class anti_covariance_inh_synapse(synapse):
@@ -205,12 +454,16 @@ class anti_covariance_inh_synapse(synapse):
         The presynaptic activity includes its corresponding transmission delay.
 
         This synapse type expects to be initialized with a negative weight, and will
-        implement soft weight bounding in order to ensure the sign of the weight does
+        implement soft weight bounding in order to ensure the sign of the weigh  does
         not become positive, so the rule is actually:
-        w' = - lrate * w * (post - theta) * pre,
+        w' = lrate * w * (post - theta) * pre,
+        Notice that the negative sign was removed due to the assumption that w
+        is negative.
     
         Presynaptic units require the 'tau_fast' parameter.
         Postsynaptic units require 'tau_fast' and 'tau_slow'.
+
+        The name of this rule's Enum is 'anticov_inh'.
     """
 
     def __init__(self, params, network):
@@ -232,19 +485,56 @@ class anti_covariance_inh_synapse(synapse):
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         # The anti-covaraince rule requires the current pre- and post-synaptic activity
         # For the postsynaptic activity, both fast and slow averages are used
-        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, syn_reqs.lpf_slow])
-        assert self.type is synapse_types.anticov_inh, ['Synapse from ' + str(self.preID) + ' to ' +
-                                                     str(self.postID) + ' instantiated with the wrong type']
+        self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast, 
+                                     syn_reqs.lpf_slow])
+        assert self.type is synapse_types.anticov_inh, ['Synapse from ' + str(self.preID) + 
+                           ' to ' + str(self.postID) + ' instantiated with the wrong type']
     
     def update(self, time):
         """ Update the weight according to the anti-covariance learning rule."""
-        # If the network is correctly initialized, the pre-synaptic unit is updatig lpf_fast, and the 
-        # post-synaptic unit is updating lpf_fast and lpf_slow at each update() call
+        # If the network is correctly initialized, the pre-synaptic unit 
+        # is updatig lpf_fast, and the  post-synaptic unit is updating 
+        # lpf_fast and lpf_slow at each update() call
         avg_post = self.net.units[self.postID].get_lpf_slow(0)
         post = self.net.units[self.postID].get_lpf_fast(0)
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         
         # A forward Euler step with the anti-covariance learning rule 
-        self.w = self.w * (1. - self.alpha * (post - avg_post) * pre)
+        self.w = self.w * (1. + self.alpha * (post - avg_post) * pre)
+
+
+class chg_synapse(synapse):
+    """ The change detection synapse (CHG).
+
+        This synapse type was first described in the "flow control units"
+        tiddler. It is meant to turn a normal unit into a "change detection
+        unit". The equations make clear why this would be the case:
+        w' = alpha * (|<x>_f - <x>_m| - w)
+        where  <x>_f and <x>_m are the fast and medium LPF'd versions of the
+        presynaptic input. As long as not every input goes down near zero, after
+        a change the weights will momentarily increase.
+    """
+    def __init__(self, params, network):
+        """ The  class constructor.
+
+        Args: 
+            params: same as the parent class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+        Raises:
+            AssertionError
+        """
+        synapse.__init__(self, params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid])
+        assert self.type is synapse_types.chg, ['Synapse from ' + str(self.preID) + 
+                           ' to ' + str(self.postID) + ' instantiated with the wrong type']
+
+    def update(self, time):
+        """ Update the weight according to the chg learning rule."""
+        pre_fast = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
+        pre_mid = self.net.units[self.preID].get_lpf_mid(self.delay_steps)
+        self.w += self.alpha * (abs(pre_fast - pre_mid) - self.w)
 
 

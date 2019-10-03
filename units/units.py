@@ -171,7 +171,7 @@ class unit():
                             # Used by the upd_lpf_X functions (DEPRECATED)
         self.using_interp1d = False # True when interp1d is used for interpolation in get_act
         self.init_buffers() # This will create the buffers that store states and times
-        self.functions = set() # will contain all the functions that update requirements
+        self.functions = [] # will contain all the functions that update requirements
 
      
     def init_buffers(self):
@@ -649,7 +649,9 @@ class unit():
         2) Update: a method with the name upd_<req name>  that is added to the
            'functions' list of the unit. This method oftentimes belongs to the 'unit' 
            class and is written somewhere after init_pre_syn_update, but it 
-           can also be defined only for one of the descendants of 'unit'.
+           can also be defined only for one of the descendants of 'unit'. It is
+           good practice to write the location of the update method in the
+           docstring of the 'add_<req_name>' function.
            
            The name of the requirement, as it appears in the syn_reqs Enum, must
            also be used in the 'add_' and 'upd_' methods. Failing to use this
@@ -669,6 +671,12 @@ class unit():
            The buffers should have the name <req name>_buff.
         2) There are 'getter' methods to retrieve past values of the requirement.
            The getter methods are named get_<req_name> .
+
+        Requirements may optionally have a priority number. Requirements with a
+        lower priority number will be executed first. This is useful when one 
+        requirement uses the value of another for its update. By default all
+        requirements have priority 3. This can be changed in the 'get_priority'
+        function of the syn_reqs class.
         """
         assert self.net.sim_time == 0, ['Tried to run init_pre_syn_update for unit ' + 
                                          str(self.ID) + ' when simulation time is not zero']
@@ -719,9 +727,14 @@ class unit():
         for req in self.syn_needs:
             if issubclass(type(req), syn_reqs):
                 eval('add_'+req.name+'(self)')
-                eval('self.functions.add(self.upd_'+req.name+')')
             else:  
                 raise NotImplementedError('Asking for a requirement that is not implemented')
+        # self.functions must be a list sorted according to priority.
+        # Thus we turn the set syn_needs into a list sorted by priority
+        priority = lambda x: x.get_priority()
+        syn_needs_list = sorted(self.syn_needs, key=priority)
+        self.functions = [eval('self.upd_'+req.name, {'self':self}) 
+                          for req in syn_needs_list]
 
 
     ###################################
@@ -804,17 +817,19 @@ class unit():
         self.inp_vector = np.array([ fun(time - dely) for dely,fun in 
                    zip(self.net.delays[self.ID], self.net.act[self.ID]) ])
 
-
     def upd_mp_inputs(self, time):
         """ Update the mp_inputs variable. """
         self.mp_inputs = self.get_mp_inputs(time)
+
+    def upd_mp_weights(self, time):
+        """ Update the mp_weights variable. """
+        self.mp_weights = self.get_mp_weights(time)
 
 
     def upd_inp_avg_hsn(self, time):
         """ Update the inp_avg_hsn variable. """
         self.inp_avg_hsn = ( sum([u.get_lpf_fast(s) for u,s in self.snorm_list_dels]) 
                              / self.n_hebbsnorm )
-
 
     def upd_pos_inp_avg_hsn(self, time):
         """ Update the pos_inp_avg_hsn variable. """
@@ -825,14 +840,16 @@ class unit():
 
 
     def upd_err_diff(self, time):
-        """ Update an approximate derivative of the error inputs used for input correlation learning. 
+        """ Update the derivative of the error inputs for input correlation learning. 
 
-            A very simple approach is taken, where the derivative is approximated as the difference
-            between the fast and medium low-pass filtered inputs. Each input arrives with its
-            corresponding transmission delay.
+            A very simple approach is taken, where the derivative is approximated
+            as the difference between the fast and medium low-pass filtered inputs.
+            Each input arrives with its corresponding transmission delay.
         """
-        self.err_diff = ( sum([ self.net.units[i].get_lpf_fast(s) for i,s in self.err_idx_dels ]) -
-                          sum([ self.net.units[i].get_lpf_mid(s) for i,s in self.err_idx_dels ]) )
+        self.err_diff = ( sum([ self.net.units[i].get_lpf_fast(s) 
+                                for i,s in self.err_idx_dels ]) -
+                          sum([ self.net.units[i].get_lpf_mid(s) 
+                                for i,s in self.err_idx_dels ]) )
        
 
     def upd_sc_inp_sum_sqhsn(self, time):
@@ -876,18 +893,25 @@ class unit():
         self.lpf_mid_inp_sum_buff[-1] = self.lpf_mid_inp_sum
 
 
+    def upd_lpf_slow_sc_inp_sum(self, time):
+        """ Update the lpf_slow_sc_inp_sum variable. """
+        I = self.get_input_sum(time)
+        self.lpf_slow_sc_inp_sum = I + ( (self.lpf_slow_sc_inp_sum - I) * 
+                                         self.slow_prop )
+
+
     def get_lpf_mid_inp_sum(self):
         """ Get the latest value of the mid-speed low-pass filtered sum of inputs. """
         return self.lpf_mid_inp_sum_buff[-1]
 
 
     def upd_lpf_slow_mp_inp_sum(self, time):
-        """ Update the slow LPF'd scaled sum of inputs at individual ports, returning them in a list. """
-        assert time >= self.last_time, ['Unit ' + str(self.ID) + 
-                                        ' lpf_slow_mp_inp_sum updated backwards in time']
-        inputs = self.mp_inputs    # updated because mp_inputs is a requirement variable
-        weights = self.get_mp_weights(time)
-        dots = [ np.dot(i, w) for i, w in zip(inputs, weights) ]
+        """ Update a list with the slow LPF'd scaled sum of inputs for each port. """
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_slow_mp_inp_sum updated backwards in time']
+        #inputs = self.mp_inputs    # add_lpf_slow_mp_inp_sum ensures mp_inputs is there
+        #weights = self.get_mp_weights(time)
+        dots = [ np.dot(i, w) for i, w in zip(self.mp_inputs, self.mp_weights) ]
         # same update rule from other upd_lpf_X methods above, put in a list comprehension
         self.lpf_slow_mp_inp_sum = [dots[i] + (self.lpf_slow_mp_inp_sum[i] - dots[i]) * 
                                    self.slow_prop for i in range(self.n_ports)]
@@ -1057,6 +1081,16 @@ class unit():
                             for uid, sid in self.out_syns_idx])
         self.out_norm_factor = self.des_out_w_abs_sum / (out_w_abs_sum + 1e-32)
 
+    def upd_l0_norm_factor_mp(self, time):
+        """ Update the factors to normalize the L0 norms for weight vectors. """
+        self.l0_norm_factor_mp = [ 1. / (np.absolute(ws).sum() + 1e-32) 
+                                   for ws in self.get_mp_weights(time)]
+
+
+    def upd_sc_inp_sum_mp(self, time):
+        """ Update the scaled input sum per port. """
+        self.sc_inp_sum_mp = [(i*w).sum() for i,w in zip(self.mp_inputs,
+                              self.mp_weights)]
 
     ##########################################
     # END OF UPDATE METHODS FOR REQUIREMENTS #
@@ -1412,7 +1446,7 @@ class linear(unit):
         self.tau = params['tau']  # the time constant of the dynamics
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         #assert self.type is unit_types.linear, ['Unit ' + str(self.ID) + 
-        #                                                    ' instantiated with the wrong type']
+        # ' instantiated with the wrong type']
         
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. 
