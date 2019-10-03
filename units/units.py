@@ -1446,7 +1446,7 @@ class linear(unit):
         self.tau = params['tau']  # the time constant of the dynamics
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         #assert self.type is unit_types.linear, ['Unit ' + str(self.ID) + 
-        #                                                    ' instantiated with the wrong type']
+        # ' instantiated with the wrong type']
         
     def derivatives(self, y, t):
         """ This function returns the derivatives of the state variables at a given point in time. 

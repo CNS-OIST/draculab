@@ -2255,8 +2255,10 @@ class planar_arm_v3(plant):
                 se_II: Activation of the II afferent comes from  se_II times the
                        excess length of the series element, plus (1-se_II) times
                        the excess length of the parallel element. Default 0.5 .
-                ad_b, gd_k, gd_gain, gs_b, gs_gain : partially implemented
-                        parameters that control how gamma inputs affect afferents.
+                cd : The normalization constant for dynamic gamma inputs. Inputs
+                     are normalized as I/(cd + I).
+                cs : The normalization constant for static gamma inputs. Inputs
+                     are normalized as I/(cs + I).
                 ---------------------------------------------------------------
             network: the network where the plant instance lives.
 
@@ -2430,35 +2432,33 @@ class planar_arm_v3(plant):
         
             params is the parameters dictionary given to __init__ 
         """
-        # default muscle parameters
-        self.m_params = {'k_pe_e' : self.param_vector(2.),
-                         'k_se_e' : self.param_vector(5.),
+        # default muscle parameters with no gamma input
+        self.m_params = {'k_pe_e' : self.param_vector(8.),
+                         'k_se_e' : self.param_vector(13.),
                          'b_e' : self.param_vector(5.),
                          'g_e' : self.param_vector(1.),
-                         'l0_s' : self.ref_lengths, 
-                         'k_pe_s' : self.param_vector(1.),
-                         'k_se_s' : self.param_vector(10.),
-                         'b_s' : self.param_vector(5.),
-                         'g_s' : self.param_vector(1.),
-                         'l0_d' : self.ref_lengths,
-                         'k_pe_d' : self.param_vector(.1),
-                         'k_se_d' : self.param_vector(10.),
-                         'b_d' : self.param_vector(5.),
-                         'g_d' : self.param_vector(1.),
-                         'Ia_gain' : 20.*np.array([3., 10., 10., 3., 10., 10.]),
-                         'II_gain' : np.array([2., 6., 6., 2., 6., 6.]),
+                         'l0_e' : self.ref_lengths,
+                         'k_pe_s' : self.param_vector(2.),
+                         'k_se_s' : self.param_vector(2.),
+                         'b_s' : self.param_vector(.5),
+                         'g_s' : self.param_vector(.02),
+                         'l0_s' : 0.7*self.ref_lengths,
+                         'k_pe_d' : self.param_vector(.2),
+                         'k_se_d' : self.param_vector(1.),
+                         'b_d' : self.param_vector(2.),
+                         'g_d' : self.param_vector(.01),
+                         'l0_d' : 0.8*self.ref_lengths,
+                         'Ia_gain' : 2.5*np.array([3., 10., 10., 3., 10., 10.]),
+                         'II_gain' : 2.*np.array([3., 8., 8., 3., 8., 8.]),
                          'Ib_gain' : self.param_vector(5.),
                          'tau_g' : self.param_vector(0.05),
                          'T_0' : self.param_vector(0.5),
-                         'fs' : self.param_vector(.2),
+                         'fs' : self.param_vector(.1),
                          'se_II' : self.param_vector(0.5),
-                         'gd_b' : self.param_vector(2.),
-                         'gd_k' : self.param_vector(2.),
-                         'gd_gain' : self.param_vector(0.5),
-                         'gs_b' : self.param_vector(-1.),
-                         'gs_gain' : self.param_vector(0.5)
+                         'cd' : self.param_vector(0.5),
+                         'cs' : self.param_vector(0.5)
                         }
-        # combine defaults with values in params
+        # combine defaults with values in the params argument
         for p_str in self.m_params:
             if p_str in params:
                 self.m_params[p_str] = self.param_vector(params[p_str])
@@ -2467,98 +2467,68 @@ class planar_arm_v3(plant):
             if 'l0'+s in params:
                 self.m_params['l0'+s] = (self.param_vector(params['l0'+s]) *
                                          self.ref_lengths)
-            else:
-                self.m_params['l0'+s] = self.ref_lengths
-        # some constants used when updating the afferent activities
-        self.m_params['f_Ia_s'] = (self.m_params['Ia_gain'] * 
-                    self.m_params['fs'] / self.m_params['k_se_s'])
-        self.m_params['f_Ia_d'] = (self.m_params['Ia_gain'] * 
-                    (1.-self.m_params['fs']) / self.m_params['k_se_s'])
-        self.m_params['f_II_s'] = (self.m_params['II_gain'] * 
-                   self.m_params['se_II'] * self.m_params['k_se_s'])
-        self.m_params['f_II_p'] = (self.m_params['II_gain'] * 
-                                  (1.-self.m_params['se_II']) /
-                                  self.m_params['k_pe_s'])
-        # concatenate values for extrafusal and intrafusals
-        self.cat_p = {}  # dictionary of concatenated parameters
-        p_str = ['k_pe', 'k_se', 'g', 'l0', 'b']
-        for s in p_str:
-           self.cat_p[s] = np.concatenate([self.m_params[s+'_e'],
-                                           self.m_params[s+'_d'],
-                                           self.m_params[s+'_s']],
-                                           axis=0)
-        # some commonly used constant arrays (see tension_diff)
-        self.cat_p['f_a'] = self.cat_p['k_se'] / self.cat_p['b']
-        self.cat_p['f_b'] = 1. + self.cat_p['k_pe'] / self.cat_p['k_se']
         # parameters used under full dynamic gamma stimualtion
         self.pd_params = {'k_pe_d' : self.param_vector(0.1),
                           'k_se_d' : self.param_vector(2.),
                           'b_d' : self.param_vector(5.),
-                          'fs' : self.param_vector(0.1),
-                          'gd_gain' : self.param_vector(5.)
+                          'Ia_gain' : 2.*self.m_params['Ia_gain']
                          }
         # parameters used under full static gamma stimualtion
-        self.ps_params = {'gs_gain' : self.param_vector(5.),
-                          'fs' : self.param_vector(0.3),
+        self.ps_params = {'II_gain' : 2.*self.m_params['II_gain'],
+                          'fs' : self.param_vector(0.5),
                           'se_II' : 0.7
                          }
         self.pd_p = {} # p2 - p1 from the documentation
+        self.ps_p = {} # p3 - p1 from the documentation
         for entry in self.pd_params:
             self.pd_p[entry] = self.pd_params[entry] - self.m_params[entry]
-        for entry in self.pd_params:
-            self.pd_p[entry] = self.pd_params[entry] - self.m_params[entry]
+        for entry in self.ps_params:
+            self.ps_p[entry] = self.ps_params[entry] - self.m_params[entry]
+            # The following would require changes to upd_eff_p
+            if entry in self.pd_params:
+                raise NotImplementedError('It is currently not allowed to ' +
+                      'modify the same parameter with both static and ' +
+                      'dynamic gamma inputs.')
+        # The dictionary of "effective" parameters
+        self.eff_p = self.m_params.copy()
+        self.eff_p['cdcs'] = np.concatenate([self.eff_p['cd'],self.eff_p['cs']],
+                                             axis=0)
            
     def init_muscles(self):
         """ Set the initial tensions and afferent outputs. """
         # obtain initial muscle lengths and velocities 
-        lengths, speeds = self.muscle_kinematics(self.init_state[1],
-                                                 self.init_state[3], 
-                                                 self.c_elbow, 
-                                                 self.ip)
+        l, v = self.muscle_kinematics(self.init_state[1],
+                                      self.init_state[3], 
+                                      self.c_elbow, 
+                                      self.ip)
         # Assuming T'=0
         # initialize muscle tensions
-        l = np.concatenate([lengths,lengths,lengths], axis=0)
-        v = np.concatenate([speeds,speeds,speeds], axis=0)
         A = np.array([self.get_input_sum(0., i) for i in range(18)])
-        b, k_se, k_pe = self.mod_params(A[6:18]) 
-        self.init_state[4:22] = ((k_se / (k_pe + k_se)) *
-                 (k_pe*(l - self.cat_p['l0']) + b*v + A))
-        # Code used when inputs don't modify parameters
-        """
-        self.init_state[4:22] = ((self.cat_p['k_se'] / 
-                (self.cat_p['k_pe'] + self.cat_p['k_se'])) *
-                 (self.cat_p['k_pe']*(l - self.cat_p['l0']) +
-                  self.cat_p['b'] * v + A))
-        """
+        A[6:18] = self.norm_inputs(A[6:18])
+        self.upd_eff_p(A[6:18]) # gamma inputs modify the parameters
+        l_str = ['_e', '_d', '_s']
+        par = self.eff_p
+        for i, s in enumerate(l_str):
+            self.init_state[4+6*i:10+6*i] = ((par['k_se'+s] /
+                (par['k_se'+s] + par['k_pe'+s])) *
+                (par['k_pe'+s] * (l - self.eff_p['l0'+s]) +
+                 par['b'+s]*v + par['g'+s]*A[6*i:6*(i+1)]))
         # initialize Ib afferents
-        self.init_state[22:28] = self.m_params['Ib_gain'] * np.log(
+        self.init_state[22:28] = self.eff_p['Ib_gain'] * np.log(
                                  np.maximum(self.init_state[4:10], 0.) /
-                                 self.m_params['T_0'] + 1.)
+                                 self.eff_p['T_0'] + 1.)
         # initialize Ia and II afferents
-        Ia_gain, II_gain = self.mod_gains(A[6:18])
         Td = self.init_state[10:16]
         Ts = self.init_state[16:22]
-        k_se_d = k_se[6:12]
-        k_se_s = k_se[12:18]
-        k_pe_s = k_pe[12:18]
-        b_s = b[12:18]
-        self.init_state[28:34] = Ia_gain * (
-                    self.m_params['fs'] * Ts / k_se_s +
-                    (1.-self.m_params['fs']) * Td / k_se_d)
-        self.init_state[34:40] = II_gain * (
-                   self.m_params['se_II'] * Ts / k_se_s +
-                   ((1.-self.m_params['se_II'])/k_pe_s) *
-                   (Ts-b_s*speeds + A[12:18]))
-        # Code used when input doesn't modify parameters
-        """
-        self.init_state[28:34] = self.m_params['Ia_gain'] * (
-                    self.m_params['fs'] * Ts / self.m_params['k_se_s'] +
-                    (1.-self.m_params['fs']) * Td / self.m_params['k_se_d'])
-        self.init_state[34:40] = self.m_params['II_gain'] * (
-                   self.m_params['se_II'] * Ts / self.m_params['k_se_s'] +
-                   ((1.-self.m_params['se_II'])/self.m_params['k_pe_s']) *
-                   (Ts-self.m_params['b_s']*speeds + A[12:18]))
-        """
+        # Ia
+        self.init_state[28:34] = par['Ia_gain'] * (
+                (par['fs'] / par['k_se_s']) * Ts +
+                ((1.-par['fs']) / par['k_se_d']) * Td)
+        # II     
+        self.init_state[34:40] = par['II_gain'] * (
+                   par['se_II'] * Ts / par['k_se_s'] +
+                   ((1.-par['se_II']) / par['k_pe_s']) *
+                   (Ts - par['b_s']*v + par['g_s']*A[12:18]))
 
     def upd_ip_impl(self, q1, q2):
         """ Contains the computations of the upd_ip method below.
@@ -2709,7 +2679,7 @@ class planar_arm_v3(plant):
                     np.sum(ips_vels[0:-1:2]*m_vec_norml, axis=1))
         return m_lengths, m_speeds 
 
-    def tension_diff(self, lengths, speeds, T, time):
+    def tension_diff(self, l, v, T, time):
         """ Obtain the tension derivative for the Hill muscle models.
 
             This function implements a vectorized version of equation 3 in the
@@ -2719,8 +2689,8 @@ class planar_arm_v3(plant):
             are calculated.
 
             Args:
-                lenghts : numpy array with the muscle lenghts
-                speeds: numpy array with the muscle speeds
+                l : numpy array with the muscle lenghts
+                v : numpy array with the muscle speeds
                 T : numpy array
                   T[0]-T[5] : muscle tensions
                   T[6]-T[11] : dynamic bag tensions
@@ -2728,22 +2698,21 @@ class planar_arm_v3(plant):
                 time : time used to retrieve the inputs
             Returns: numpy array with T'
         """
-        l = np.concatenate([lengths,lengths,lengths], axis=0)
-        v = np.concatenate([speeds,speeds,speeds], axis=0)
         A = np.array([self.get_input_sum(time, i) for i in range(18)])
-        # obtain parameters modified by gamma inputs
-        b, k_se, k_pe = self.mod_params(A[6:18]) 
-        Tp = (k_se / b)* (k_pe * (l-self.cat_p['l0']) +
-                         b * v - (1. + k_pe/k_se) * T + A )
-        # Code used when inputs don't modify parameters
-        """
-        Tp = self.cat_p['f_a'] * (self.cat_p['k_pe'] * (l-self.cat_p['l0']) +
-                                  self.cat_p['b'] * v -
-                                  self.cat_p['f_b'] * T + A )
-        """
+        A[6:18] = self.norm_inputs(A[6:18])
+        self.upd_eff_p(A[6:18]) # gamma inputs modify the parameters
+        l_str = ['_e', '_d', '_s'] # the order is important
+        par = self.eff_p
+        Tp = np.zeros_like(T)
+        for i, s in enumerate(l_str):
+            Tp[6*i:6*(i+1)] = (par['k_se'+s] / par['b'+s]) * (
+                    par['k_pe'+s] * (l - self.eff_p['l0'+s]) +
+                    par['b'+s] * v -
+                    (1. + par['k_pe'+s]/par['k_se'+s]) * T[6*i:6*(i+1)] +
+                     par['g'+s]*A[6*i:6*(i+1)])
         return Tp
 
-    def tension_diff_II(self, l, v, T, time, A):
+    def tension_diff_II(self, l, v, T, A):
         """ Obtain the tension derivative for the static bag fibers only.
 
             This is an auxiliary method for update and flat_update.
@@ -2753,25 +2722,14 @@ class planar_arm_v3(plant):
                 v : numpy array with the muscle speeds
                 T : numpy array
                   T[0]-T[5] : static bag tensions
-                time : time used to retrieve the inputs
-                A : The 6 inputs to the static fibers.
+                A : The 6 inputs to the static fibers, normalized.
             Returns: numpy array with T'
         """
-        A_extra = np.concatenate([np.zeros(6), A], axis=0)
-        b, k_se, k_pe = self.mod_params(A_extra)
-        b_s = b[12:18]
-        k_se_s = k_se[12:18]
-        k_pe_s = k_pe[12:18]
-        Tp = (k_se_s/b_s) * (k_pe_s * (l-self.m_params['l0_s']) +
-                            b_s * v - (1. + k_pe_s/k_se_s) * T + A )
-        # Code used when inputs don't modify parameters
-        """
-        Tp = self.cat_p['f_a'][12:18] * (self.m_params['k_pe_s'] * 
-                                        (l-self.m_params['l0_s']) +
-                                  self.m_params['b_s'] * v -
-                                  self.cat_p['f_b'][12:18] * T + A )
-        """
-        return Tp
+        # upd_eff_p(A) was just run in update/flat_update
+        par = self.eff_p
+        return  (par['k_se_s']/par['b_s']) * (
+                 par['k_pe_s'] * (l-par['l0_s']) + par['b_s'] * v -
+                 (1. + par['k_pe_s']/par['k_se_s']) * T + par['g_s'] * A)
         
     def derivatives(self, y, t):
         """ Returns the derivatives of the state variables at time t. 
@@ -2863,38 +2821,33 @@ class planar_arm_v3(plant):
         dydt[22:28] = (r_ss - y[22:28]) / self.m_params['tau_g']
         return dydt
 
-    def mod_params(self, A):
-        """ Returns some parameter vectors that are modified by gamma inputs.
-
+    def upd_eff_p(self, A):
+        """ Change eff_p parameters according to the given gamma inputs. 
+       
             Args:
-                A : numpy array with gamma inputs
-                  A[0]-A[5] : inputs to dynamic fibers
-                  A[6]-A[11] : inputs to static fibers
+                A : normalized 12-element numpy array
+                  A[0:6] : normalized dynamic gamma inputs
+                  A[6:12] : normalized static gamma inputs
+        """ 
+        for name in self.pd_p:
+            self.eff_p[name] = self.m_params[name] + A[0:6]*self.pd_p[name]
+        for name in self.ps_p:
+            self.eff_p[name] = self.m_params[name] + A[6:12]*self.ps_p[name]
+
+    def norm_inputs(self, I):
+        """ Returns the normalized version of the given gamma inputs. 
+        
+            Args:
+                I : 12-element numpy array
+                  I[0:6] : dynamic gamma inputs
+                  I[6:12] : static gamma inputs
             Returns:
-                (b, k_se, k_pe), which are modified versions of the corresponding
-                entries in self.cat_p
+                The 12-element numpy array A, where
+                A[0:6] = normalized dynamic gamma inputs
+                A[6:12] = normalized static gamma inputs
         """
-        b = self.cat_p['b'].copy()
-        k_se = self.cat_p['k_se'].copy()
-        k_pe = self.cat_p['k_pe'].copy()
-        #b[6:12] += self.m_params['gd_b']*A[0:6]
-        #b[12:18] += self.m_params['gs_b']*A[6:12]
-        k_se[6:12] = self.m_params['k_se_d'] * (1.+ self.m_params['gd_k']*A[0:6])
-        k_pe[6:12] = self.m_params['k_pe_d'] / (1.+ self.m_params['gd_k']*A[0:6])
-        return b, k_se, k_pe
-
-    def mod_gains(self, A):
-        """ Returns the gains of the afferents as modified by the inputs.
-
-            Args:
-                A : numpy array with gamma inputs
-                  A[0]-A[5] : inputs to dynamic fibers
-                  A[6]-A[11] : inputs to static fibers
-        """
-        Ia_gains = (1. + self.m_params['gd_gain']*A[0:6])*self.m_params['Ia_gain']
-        II_gains = (1. + self.m_params['gs_gain']*A[6:12])*self.m_params['II_gain']
-        return Ia_gains, II_gains
-
+        return I / (self.eff_p['cdcs'] + I)
+    
            
     def update(self, time):
         """ This function advances the state for net.min_delay time units. 
@@ -2915,25 +2868,16 @@ class planar_arm_v3(plant):
         # extract the tensions from the buffer
         Td = self.buffer[self.offset:,10:16]
         Ts = self.buffer[self.offset:,16:22]
-        # obtain parameters modified by inputs
+        # obtain parameters modified by inputs at an intermediate point
         idx_II = self.offset + int(round(self.net.min_buff_size/2.))
-        Ad = np.array([self.get_input_sum(self.times[idx_II], i) 
-                       for i in range(6,12)])
-        As = np.array([self.get_input_sum(self.times[idx_II], i) 
-                      for i in range(12,18)])
-        Ag = np.concatenate([Ad,As], axis=0)
-        b, k_se, k_pe = self.mod_params(Ag)
-        Ia_gains, II_gains = self.mod_gains(Ag)
+        Ag = self.norm_inputs( np.array([self.get_input_sum(
+                   self.times[idx_II], i) for i in range(6,18)]))
+        self.upd_eff_p(Ag)
+        par = self.eff_p
         # updating the Ia afferents
-        self.buffer[self.offset:,28:34] = Ia_gains * (
-                         (self.m_params['fs']/k_se[12:18]) * Ts +
-                         ((1.-self.m_params['fs'])/k_se[6:12]) * Td)
-        # Code used when inputs don't modify parameters
-        """
-        self.buffer[self.offset:,28:34] = ((self.m_params['f_Ia_s'] * Ts +
-                                           self.m_params['f_Ia_d'] * Td) *
-                                       (1. + self.m_params['gd_gain']*Ad))
-        """
+        self.buffer[self.offset:,28:34] = par['Ia_gain'] * (
+                            (par['fs'] / par['k_se_s']) * Ts +
+                            ((1.-par['fs']) / par['k_se_d']) * Td)
         # updating the II afferents
         #   In this case we would need to obtain the muscle speeds and tension
         #   derivatives for each substep. To avoid all that compuatation, we
@@ -2942,20 +2886,11 @@ class planar_arm_v3(plant):
                                                 self.buffer[idx_II,2])
         l, v = self.muscle_kinematics(self.buffer[idx_II,1],
                                       self.buffer[idx_II,3], c_elbow, ips)
-        Tsp = self.tension_diff_II(l, v, Ts, self.times[idx_II], As)
-        self.buffer[self.offset:,34:40] = II_gains * (
-                (self.m_params['se_II'] / k_se[12:18]) * Ts +
-                ((1.- self.m_params['se_II'])/k_pe[12:18]) * 
-                (Ts - b[12:18]*(v-Tsp/k_se[12:18]) - As))
-        # Code used when inputs don't modify parameters
-
-        """
-        self.buffer[self.offset:,34:40] = ((self.m_params['f_II_s'] * Ts +
-                self.m_params['f_II_p']*
-                (Ts - self.m_params['b_s']*(v-Tsp/self.m_params['k_se_s']) - As))*
-                (1. + self.m_params['gs_gain']*As))
-        """
-
+        Tsp = self.tension_diff_II(l, v, Ts, Ag[6:12])
+        self.buffer[self.offset:,34:40] =  par['II_gain'] * (
+                                par['se_II'] * Ts / par['k_se_s'] +
+                                ((1.-par['se_II']) / par['k_pe_s']) *
+                                (Ts - par['b_s']*v + par['g_s']*Ag[6:12]))
         # with the updated buffer, update the muscle insertion points
         # probably don't need this for anything other than animations
         self.upd_ip()
@@ -2977,22 +2912,14 @@ class planar_arm_v3(plant):
         Ts = self.buffer[16:22, self.offset:].transpose()
         # obtain parameters modified by inputs
         idx_II = self.offset + int(round(self.net.min_buff_size/2.))
-        Ad = np.array([self.get_input_sum(self.times[idx_II], i) 
-                       for i in range(6,12)])
-        As = np.array([self.get_input_sum(self.times[idx_II], i) 
-                      for i in range(12,18)])
-        Ag = np.concatenate([Ad,As], axis=0)
-        b, k_se, k_pe = self.mod_params(Ag)
-        Ia_gains, II_gains = self.mod_gains(Ag)
+        Ag = self.norm_inputs( np.array([self.get_input_sum(
+                   self.times[idx_II], i) for i in range(6,18)]))
+        self.upd_eff_p(Ag)
+        par = self.eff_p
         # updating the Ia afferents
-        self.buffer[28:34, self.offset:] = (Ia_gains * (
-                         (self.m_params['fs']/k_se[12:18]) * Ts +
-                    ((1.-self.m_params['fs'])/k_se[6:12]) * Td)).transpose()
-        # Code used when inputs don't modify parameters
-        """
-        self.buffer[28:34, self.offset:] = (self.m_params['f_Ia_s'] * Ts +
-                                 self.m_params['f_Ia_d'] * Td).transpose()
-        """
+        self.buffer[28:34, self.offset:] = (par['Ia_gain'] * (
+                      (par['fs'] / par['k_se_s']) * Ts +
+                      ((1.-par['fs']) / par['k_se_d']) * Td)).transpose()
         # updating the II afferents
         # In this case we would need to obtain the muscle speeds and tension
         # derivatives for each substep. To avoid all that compuatation, we
@@ -3001,17 +2928,11 @@ class planar_arm_v3(plant):
                                                 self.buffer[2,idx_II])
         l, v = self.muscle_kinematics(self.buffer[1,idx_II],
                                       self.buffer[3,idx_II], c_elbow, ips)
-        Tsp = self.tension_diff_II(l, v, Ts, self.times[idx_II], As)
-        self.buffer[34:40, self.offset:] = (II_gains * (
-                (self.m_params['se_II'] / k_se[12:18]) * Ts +
-                ((1.- self.m_params['se_II'])/k_pe[12:18]) * 
-                (Ts - b[12:18]*(v-Tsp/k_se[12:18]) - As))).transpose()
-        # Code used when inputs don't modify parameters
-        """
-        self.buffer[34:40, self.offset:] = (self.m_params['f_II_s'] * Ts +
-                self.m_params['f_II_p'] * (Ts - self.m_params['b_s']*
-                (v-Tsp/self.m_params['k_se_s']) - As)).transpose()
-        """
+        Tsp = self.tension_diff_II(l, v, Ts, Ag[6:12])
+        self.buffer[34:40, self.offset:] = (par['II_gain'] * (
+                      par['se_II'] * Ts / par['k_se_s'] +
+                      ((1.-par['se_II']) / par['k_pe_s']) *
+                      (Ts - par['b_s']*v + par['g_s']*Ag[6:12]))).transpose()
         # with the updated buffer, update the muscle insertion points
         # probably don't need this for anything other than animations
         self.upd_ip()
