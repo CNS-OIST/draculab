@@ -278,7 +278,8 @@ def add_lpf_mid_inp_sum(unit):
 def add_lpf_slow_sc_inp_sum(unit):
     """ Adds the slow low-pass filtered scaled sum of inputs.
 
-        This requirement was first used by the rga_sig unit model.
+        This requirement was first used by the rga_sig unit model, but its
+        implemenation is now in the unit class.
 
         As the name suggests, the sum of inputs is filtered with the tau_slow time
         constant. The inputs include transmission delays, and each one is multiplied
