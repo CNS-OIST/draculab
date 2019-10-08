@@ -934,10 +934,10 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
 
         The scaled sum of inputs at port 3 is for the signal that resets the 
         acc_slow accumulator, used to gate both rga and input selection synapses.
-        When the scaled sum of inputs at port 3 is larger than 0.5, acc_mid is
+        When the scaled sum of inputs at port 3 is larger than 0.5, acc_slow is
         set to 0.
          
-        When the inputs at port 4 surpasses a threshold the unit experiences
+        When the input at port 4 surpasses a threshold the unit experiences
         adaptation, which means that its slow-lpf'd activity will be used to 
         decrease its current activation. This is achieved through the 
         slow_decay_adapt requirement.
@@ -1119,7 +1119,7 @@ class chwr_linear(unit):
 
     def dt_fun(self, y, s):
         """ The derivatives function for flat networks. """
-        return max(self.inp_sum(s) - 
+        return max(self.inp_sum[s] - 
                    self.lpf_slow_sc_inp_sum - 
                    self.thresh, 0.) - y
         
