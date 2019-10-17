@@ -1086,7 +1086,7 @@ class chwr_linear(unit):
 
         This means that the output of the unit is the positive part of the
         input minus its mean value minus a threshold. The mean value comes
-        from slow low-pass filtering. In other words, the outptu approaches:
+        from slow low-pass filtering. In other words, the output approaches:
         max( I - <I> - thr, 0.)
 
         A negative threshold can be used in order to set an output activity

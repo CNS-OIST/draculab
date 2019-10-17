@@ -2450,7 +2450,7 @@ class planar_arm_v3(plant):
                          'l0_d' : 0.8*self.ref_lengths,
                          'Ia_gain' : 2.5*np.array([3., 10., 10., 3., 10., 10.]),
                          'II_gain' : 2.*np.array([3., 8., 8., 3., 8., 8.]),
-                         'Ib_gain' : self.param_vector(5.),
+                         'Ib_gain' : self.param_vector(1.),
                          'tau_g' : self.param_vector(0.05),
                          'T_0' : self.param_vector(10.),
                          'fs' : self.param_vector(.1),
