@@ -368,7 +368,8 @@ class input_selection_synapse(synapse):
         else:
             self.w_sum = 1.
         # this may be inefficient because the lpf_mid_sc_inp_sum is being
-        # calculated also for the afferent inputs
+        # calculated also for the afferent inputs. It is, however, convenient
+        # for the derived class gated_diff_inp_sel
         self.upd_requirements = set([syn_reqs.lpf_fast_sc_inp_sum_mp,
                                      syn_reqs.lpf_mid_sc_inp_sum_mp,
                                      syn_reqs.l0_norm_factor_mp,
@@ -536,5 +537,63 @@ class chg_synapse(synapse):
         pre_fast = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
         pre_mid = self.net.units[self.preID].get_lpf_mid(self.delay_steps)
         self.w += self.alpha * (abs(pre_fast - pre_mid) - self.w)
+
+
+class gated_diff_input_selection_synapse(gated_input_selection_synapse):
+    """ Differential version of the gated_input_selection synapse.
+
+        The presynaptic activity is replaced by its approximate derivative.
+        
+        The acc_slow attribute of the postsynaptic unit is used to modulate the
+        learning rate. Thus, this synapse should only connect to units that
+        contain that requirement. In the case of the gated_out_norm_am_sig unit,
+        inputs at port 2 are used to reset acc_slow. For the
+        gated_rga_inpsel_adapt unit inputs at port 3 are used instead.
+
+        There is also an extra delay for the presynaptic input, in order to
+        synchronize the error and the afferent signal. This delay is given as
+        the number of 'min_delay' steps, in the 'extra_steps' parameter of the
+        constructor. The 'delay' parameter of the presynaptic units must be
+        large enough to accomodate this extra delay. This means:
+        delay > min_delay * (delay_steps + extra_steps).
+
+        The name of this synapse type is 'gated_diff_inp_sel'.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the synapse class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            'extra_steps' : extra delay steps for presynaptic input.
+            OPTIONAL PARAMETERS
+            'error_port' : port where the 'error' signals are received in the
+                           postsynaptic unit. Default 1.
+            'aff_port' : port where the 'afferent' signals are received in the
+                         postsynaptic unit. Default is the port of the synapse
+                         (e.g. self.port).
+            'w_sum' : value of the sum of synaptic weights at the 'aff' synapse.
+                      Default is 1.
+            'normalize' : Binary value indicating whether the sum of synaptic
+                          weights at the 'aff' synapse should be 'w_sum'.
+                          Default is True.
+        Raises:
+            ValueError, AssertionError.
+        """
+        gated_input_selection_synapse.__init__(self, params, network)
+        self.upd_requirements.update([syn_reqs.pre_lpf_mid])
+
+    def update(self, time):
+        """ Update the weight using the input selection rule. """
+        u = self.net.units[self.postID]
+        err_diff = (u.lpf_fast_sc_inp_sum_mp[self.error_port] -
+                    u.lpf_mid_sc_inp_sum_mp[self.error_port]) 
+        preU = self.net.units[self.preID]
+        Dpre = (preU.get_lpf_fast(self.delay_steps + self.extra_steps) -
+                preU.get_lpf_mid(self.delay_steps + self.extra_steps))
+        if self.normalize:
+            self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
+        self.w = self.w + u.acc_slow * self.alpha * Dpre * err_diff
 
 
