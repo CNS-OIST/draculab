@@ -1905,7 +1905,7 @@ class planar_arm_v2(plant):
             	float
     	"""
     	v = np.array([i_prox[0] - i_dist[0], i_prox[1] - i_dist[1]])
-    	v_norm = (sum(v*v))**(1./2.)
+    	v_norm = np.sqrt(sum(v*v))
     	F = (T/v_norm) * v
     	tau = i_dist[0] * F[1] - i_dist[1] * F[0]
     	return tau
@@ -1921,7 +1921,7 @@ class planar_arm_v2(plant):
             	    float
     	"""
     	v = np.array([i_prox[0] - i_dist[0], i_prox[1] - i_dist[1]])
-    	v_norm = (sum(v*v))**(1./2.)
+    	v_norm = np.sqrt(sum(v*v))
     	F = (T/v_norm) * v
         # notice c_elbow is currently updated by upd_ip()
     	tau = ((i_dist[0]-self.c_elbow[0]) * F[1] - 
@@ -2120,7 +2120,7 @@ class planar_arm_v3(plant):
     fibers, whereas the Ia and II outputs are written in new buffer entries by
     the upd_muscle_buff function. The Ib output is also handled by the
     'derivatives' function, using a simplified version of the Lin and Crago 2002
-    mdoel.
+    model.
 
     The inputs to this model are the stimulations to each one of the muscles;
     each muscle can receive 3 types of stimuli. The first type of stimulus 
@@ -2133,14 +2133,14 @@ class planar_arm_v3(plant):
     Geometry of the muscles is specified through 14 2-dimensional
     coordinates. Two coordinates are for the elbow and hand, whereas the
     remaining 12 are for the insertion points of the 6 muscles. The script in
-    planar_arm.ipynb permits to visualize the geometric configuration that
+    planar_arm_v3.ipynb permits to visualize the geometric configuration that
     results from particular values of the coordinates, and explains the
     reference position used to specify these coordinates.
 
     Afferent outputs are calculated by modeling the static and dynamic
     intrafusal bag fibers using Hill muscles. The Ia output is proportional to a
     linear combination of the lengths for the serial elements in both  dynamic
-    and static bag fibers. The II output is has two components, one proportional
+    and static bag fibers. The II output has two components, one proportional
     to the length of the serial element, and one proportional to the length of
     the parallel element, both in the static bag fiber.
 
@@ -2392,17 +2392,17 @@ class planar_arm_v3(plant):
         self.a_i12 = np.arctan(abs((self.c_elbow[0]-self.p12[0])/self.p12[1]))
         # create the parameters used for muscle dynamics
         self.create_muscle_parameters(params)
-        ###  initial the state vector.
+        ###  initialize the state vector.
         self.init_state = np.zeros(self.dim)
         # initializing double pendulum state variables
         self.init_state[0:4] = np.array([params['init_q1'], params['init_q1p'],
                                          params['init_q2'], params['init_q2p']])
+        # initialize buffer
+        self.buffer = np.array([self.init_state]*self.buff_width) 
         # update the coordinates of all insertion points
         self.upd_ip()
         # initialize init_state for tensions, afferents
         self.init_muscles()
-        #### initialize buffer
-        self.buffer = np.array([self.init_state]*self.buff_width) 
         # one variable used in the update method
         self.mbs = self.net.min_buff_size
 
