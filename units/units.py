@@ -1455,7 +1455,7 @@ class linear(unit):
                 y : a 1-element array or list with the current firing rate.
                 t: time when the derivative is evaluated.
         """
-        return( self.get_input_sum(t) - y[0] ) * self.rtau
+        return ( self.get_input_sum(t) - y[0] ) * self.rtau
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """

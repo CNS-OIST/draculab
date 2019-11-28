@@ -75,6 +75,7 @@ class unit_types(Enum):
     gated_out_norm_am_sig = 110
     gated_rga_inpsel_adapt_sig = 111
     inpsel_linear = 112
+    chwr_linear = 113
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -224,6 +225,9 @@ class unit_types(Enum):
         elif self == unit_types.inpsel_linear:
             from units.spinal_units import inpsel_linear
             unit_class = inpsel_linear
+        elif self == unit_types.chwr_linear:
+            from units.spinal_units import chwr_linear
+            unit_class = chwr_linear
         else:
             raise NotImplementedError('Attempting to retrieve the class of an ' + 
                                       'unknown unit model')
@@ -263,6 +267,7 @@ class synapse_types(Enum):
     inp_sel = 205 # variant of input correlation
     chg = 206 # the change detection synapse (CHG)
     gated_inp_sel = 207 # inp sel with gated learning rate
+    gated_diff_inp_sel = 208 # differential version of gated_inp_sel
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -346,6 +351,9 @@ class synapse_types(Enum):
         elif self == synapse_types.gated_inp_sel:
             from synapses.spinal_syns import gated_input_selection_synapse
             syn_class = gated_input_selection_synapse
+        elif self == synapse_types.gated_diff_inp_sel:
+            from synapses.spinal_syns import gated_diff_input_selection_synapse
+            syn_class = gated_diff_input_selection_synapse
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         

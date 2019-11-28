@@ -5,7 +5,7 @@ The plant models specially adapted for the spinal model.
 from draculab import unit_types, synapse_types, syn_reqs 
 #from units.units import unit, sigmoidal
 from plants.plants import (plant, pendulum, spring_muscle, hill_muscle,
-planar_arm, planar_arm_v2, planar_arm_v3)
+                           planar_arm, planar_arm_v2, planar_arm_v3)
 import numpy as np
 from numpy import sin, cos # for the double pendulum equations
 

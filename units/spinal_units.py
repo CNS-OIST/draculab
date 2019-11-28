@@ -934,10 +934,10 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
 
         The scaled sum of inputs at port 3 is for the signal that resets the 
         acc_slow accumulator, used to gate both rga and input selection synapses.
-        When the scaled sum of inputs at port 3 is larger than 0.5, acc_mid is
+        When the scaled sum of inputs at port 3 is larger than 0.5, acc_slow is
         set to 0.
          
-        When the inputs at port 4 surpasses a threshold the unit experiences
+        When the input at port 4 surpasses a threshold the unit experiences
         adaptation, which means that its slow-lpf'd activity will be used to 
         decrease its current activation. This is achieved through the 
         slow_decay_adapt requirement.
@@ -1080,3 +1080,47 @@ class inpsel_linear(linear):
             self.acc_slow = 1. - (1.-self.acc_slow)*self.slow_prop
 
 
+
+class chwr_linear(unit):
+    """ A linear unit with centered half-wave rectification.
+
+        This means that the output of the unit is the positive part of the
+        input minus its mean value minus a threshold. The mean value comes
+        from slow low-pass filtering. In other words, the output approaches:
+        max( I - <I> - thr, 0.)
+
+        A negative threshold can be used in order to set an output activity
+        when the input is at its mean value.
+    """
+    def __init__(self, ID, params, network):
+        """ The class constructor. 
+
+        Args:
+            ID, params, network: same as the unit class.
+            
+            OPTIONAL PARAMETERS
+            thresh : input threshold. Default is 0.
+    """
+        unit.__init__(self, ID, params, network)
+        if 'thresh' in params: self.thresh = params['thresh']
+        else: self.thresh = 0.
+        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum])
+
+    def derivatives(self, y, t):
+        """ Returns the firing rate derivative at time t, given rate y.
+
+        Args:
+            y : array-like with one single element.
+            t : a float.
+        """
+        return max(self.get_input_sum(t) -
+                   self.lpf_slow_sc_inp_sum -
+                   self.thresh, 0.) - y[0]
+
+    def dt_fun(self, y, s):
+        """ The derivatives function for flat networks. """
+        return max(self.inp_sum[s] - 
+                   self.lpf_slow_sc_inp_sum - 
+                   self.thresh, 0.) - y
+        
+        
