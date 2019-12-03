@@ -411,9 +411,10 @@ class gated_bp_rga_synapse(synapse):
             self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
                                 pre.out_norm_factor)
             #self.w += u.acc_mid * self.alpha * (up - xp) * (sp - spj)
-            delta_w = u.acc_slow * self.alpha * (up - xp) * (sp - spj)
-            self.w += delta_w
-            self.delW = delta_w + (self.delW  - delta_w) * self.w_prop
+            delta_w = u.acc_slow * (up - xp) * (sp - spj)
+            self.w += delta_w * self.alpha
+            #self.delW = delta_w + (self.delW  - delta_w) * self.w_prop
+            self.delW += self.alpha * (delta_w - .005*self.delW)
 
             if self.delW > self.w_thresh: # synapse is increasing
                 if self.corr_type is None: # undefined correlation type
