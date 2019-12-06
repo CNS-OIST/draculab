@@ -505,6 +505,7 @@ class syn_reqs(Enum):
     slow_decay_adapt = 116 # adapation factor, decays with tau_slow time constant
     mp_weights = 117 # weights by port, as returned by get_mp_weights()
     sc_inp_sum_mp = 118 # scaled sum of inputs by port
+    integ_decay_act = 119 # integral of the activity with slow decay
 
 
     def list_names():

@@ -54,6 +54,12 @@ class rga_reqs():
         self.del_avg_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
                                      for l in self.del_inp_deriv_mp]
 
+    def upd_integ_decay_act(self, time):
+        """ Update the slow-decaying integral of the activity. """
+        self.integ_decay_act += self.min_delay * (self.act_buff[-1] - 
+                                self.integ_decay * self.integ_decay_act)
+
+
 class lpf_sc_inp_sum_mp_reqs():
     """ Class with the update functions for the X_lpf_sc_inp_sum_mp_reqs. """
     def __init__(self, params):
@@ -974,7 +980,8 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
                     'tau_mid' : Medium LPF time constant.
                     'integ_amp' : amplitude multiplier of the integral
                                     component.
-                    Using rga synapses brings an extra required parameter:
+                    'integ_decay' : decay rate of the integral component.
+                   Using rga synapses brings an extra required parameter:
                     'custom_inp_del' : an integer indicating the delay that the rga
                                   learning rule uses for the lateral port inputs. 
                                   The delay is in units of min_delay steps. 
@@ -1008,10 +1015,12 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
         else:
             self.adapt_amp = 1.
         self.integ_amp = params['integ_amp']
-        self.syn_needs.update([syn_reqs.lpf_slow_mp_inp_sum, syn_reqs.acc_slow,
+        self.integ_decay = params['integ_decay']
+        self.syn_needs.update([syn_reqs.integ_decay_act, syn_reqs.acc_slow,
                                syn_reqs.lpf_slow, syn_reqs.slow_decay_adapt,
                                syn_reqs.mp_inputs, syn_reqs.mp_weights,
                                syn_reqs.sc_inp_sum_mp])
+                               # syn_reqs.lpf_slow_mp_inp_sum
         params['inp_deriv_ports'] = [0, 1] # ports for inp_deriv_mp
         rga_reqs.__init__(self, params)
         lpf_sc_inp_sum_mp_reqs.__init__(self, params)
@@ -1030,16 +1039,16 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
         sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(t),
                                            self.get_mp_weights(t))]
         inp = (sums[0] + sums[1] + sums[2]
-               #+ self.integ_amp * sum(self.lpf_slow_mp_inp_sum[0:3]) # why 0:3?
-               + self.integ_amp * self.lpf_slow_mp_inp_sum[0]
+               #+ self.integ_amp * self.lpf_slow_mp_inp_sum[0]
+               + self.integ_amp * self.integ_decay_act
                - self.adapt_amp * self.slow_decay_adapt)
         return ( self.f(inp) - y[0] ) * self.rtau
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
         inp = (self.mp_inp_sum[0][s] + self.mp_inp_sum[1][s] + self.mp_inp_sum[2][s]
-               #+ self.integ_amp * sum(self.lpf_slow_mp_inp_sum[0:3]) # why 0:3?
-               + self.integ_amp * self.lpf_slow_mp_inp_sum[0]
+               #+ self.integ_amp * self.lpf_slow_mp_inp_sum[0]
+               + self.integ_amp * self.integ_decay_act
                - self.adapt_amp * self.slow_decay_adapt)
         return ( self.f(inp) - y ) * self.rtau
 

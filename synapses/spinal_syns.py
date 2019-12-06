@@ -381,7 +381,7 @@ class gated_bp_rga_synapse(synapse):
         else: self.w_decay = 10.
         self.delW = 0. # LPF'd change of weight
         self.corr_type = None # -1=decrease, 1=increase, 0=unreliable
-        self.w_prop = np.exp(-network.min_delay / self.w_tau) # delW propagator
+        #self.w_prop = np.exp(-network.min_delay / self.w_tau) # delW propagator
 
         
     def update(self, time):
@@ -400,40 +400,39 @@ class gated_bp_rga_synapse(synapse):
             diff_avg.
             Also, remove the line "if self.w < 0: self.w = 0"
         """
-        if self.corr_type != 0:
-            u = self.net.units[self.postID]
-            xp = u.del_avg_inp_deriv_mp[self.lat_port]
-            up = u.get_lpf_fast(self.po_de) - u.get_lpf_mid(self.po_de)
-            sp = u.avg_inp_deriv_mp[self.err_port]
-            pre = self.net.units[self.preID]
-            spj = (pre.get_lpf_fast(self.delay_steps) -
-                pre.get_lpf_mid(self.delay_steps) )
-            self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
-                                pre.out_norm_factor)
-            #self.w += u.acc_mid * self.alpha * (up - xp) * (sp - spj)
-            delta_w = u.acc_slow * (up - xp) * (sp - spj)
-            self.w += delta_w * self.alpha
-            #self.delW = delta_w + (self.delW  - delta_w) * self.w_prop
-            self.delW += self.alpha * (delta_w - .005*self.delW)
+        u = self.net.units[self.postID]
+        xp = u.del_avg_inp_deriv_mp[self.lat_port]
+        up = u.get_lpf_fast(self.po_de) - u.get_lpf_mid(self.po_de)
+        sp = u.avg_inp_deriv_mp[self.err_port]
+        pre = self.net.units[self.preID]
+        spj = (pre.get_lpf_fast(self.delay_steps) -
+            pre.get_lpf_mid(self.delay_steps) )
+        delta_w = u.acc_slow * (up - xp) * (sp - spj)
+        #delta_w = u.acc_slow * up * (sp - spj)  # FOR TESTING PURPOSES
+        #self.delW = delta_w + (self.delW  - delta_w) * self.w_prop
+        self.delW += np.abs(self.alpha) * (delta_w - .01*self.delW)
+        self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
+                            pre.out_norm_factor)
 
-            if self.delW > self.w_thresh: # synapse is increasing
-                if self.corr_type is None: # undefined correlation type
-                    self.corr_type = 1
-                elif self.corr_type == -1:  # synapse was decreasing
+        if self.corr_type != 0:
+            self.w +=  self.alpha * delta_w
+            if self.corr_type == -1:  # synapse was decreasing
+                if self.delW > self.w_thresh: # synapse is now increasing
                     self.corr_type = 0  # betrayal!
-                #elif self.corr_type == 0: # can't enter here currently
-                #    if self.delW > 3*self.w_thresh:
-                #       self.corr_type = 1  # redemption!    
-            elif self.delW < -self.w_thresh: # synapse is decreasing 
-                if self.corr_type is None: # undefined correlating type
-                    self.corr_type = -1
-                elif self.corr_type == 1:  # synapse was increasing
+            elif self.corr_type == 1:  # synapse was increasing
+                if self.delW < -self.w_thresh: # synapse is now decreasing 
                     self.corr_type = 0  # betrayal!
-                #elif self.corr_type == 0:
-                #    if self.delW > 3*self.w_thresh:
-                #       self.corr_type = 1  # redemption! 
+            else:  # self.corr_type is None
+                if self.delW > self.w_thresh: 
+                    self.corr_type = 1  
+                elif self.delW < -self.w_thresh: 
+                    self.corr_type = -1  
         else:
-            self.w -= self.alpha * self.w / self.w_decay  # punishment
+            self.w -= np.abs(self.alpha) * self.w / self.w_decay  # punishment
+            if self.delW > 2.*self.w_thresh:
+                self.corr_type = 1  # redemption!    
+            elif self.delW < -2.*self.w_thresh:
+                self.corr_type = -1  # redemption!    
 
 
 class input_selection_synapse(synapse):

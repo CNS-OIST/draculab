@@ -992,6 +992,19 @@ def add_sc_inp_sum_mp(unit):
     mp_inputs = np.array(mp_inputs) 
     sc_inp_sum_mp = np.fromiter(map(np.sum, mp_inputs*mp_weights), float)
     setattr(unit, 'sc_inp_sum_mp', sc_inp_sum_mp)
+
+
+def add_integ_decay_act(unit):
+    """ Add an integral of the unit's activity, with slow decay.
+
+        Let "ida" denote this factor. Then it is obtained as:
+        ida' = min_delay*(act - int_decay*ida)
+        The implementation is in the rga_reqs class of spinal_units.
+    """
+    if not hasattr(unit, 'integ_decay'):
+        raise NameError('The integ_decay_act requirement requires the ' +
+                        'int_decay parameter')
+    setattr(unit, 'integ_decay_act', 0.)
     
 
 #-------------------------------------------------------------------------------------

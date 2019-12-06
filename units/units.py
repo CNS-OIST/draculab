@@ -57,6 +57,7 @@ class unit():
         self.atol = self.net.atol
         self.min_buff_size = network.min_buff_size # a local copy just to avoid
                                                    # the extra reference
+        self.min_delay = self.net.min_delay # another local copy
         # The delay of a unit is usually the maximum delay among the projections
         # it sends, although a larger value can be set using params['delay'].
         # The largest delay among the projections is found by network.connect();
@@ -65,10 +66,10 @@ class unit():
         if 'delay' in params:
             self.delay = params['delay']
             # delay must be a multiple of net.min_delay. Next line checks that.
-            assert (self.delay+1e-6)%self.net.min_delay < 2e-6, ['unit' + str(self.ID) +
+            assert (self.delay+1e-6)%self.min_delay < 2e-6, ['unit' + str(self.ID) +
                                                ': delay is not a multiple of min_delay']
         else:  # giving a temporary value
-            self.delay = 2 * self.net.min_delay
+            self.delay = 2 * self.min_delay
         if type(params['init_val']) in [float, int, np.float_, np.int_]:
             self.init_val = params['init_val'] # initial value for the activation 
             self.init_act = self.init_val # also initial value for activation
@@ -187,7 +188,7 @@ class unit():
         assert self.net.sim_time == 0., 'Buffers are being reset when the simulation time is not zero'
         assert not self.net.flat, 'init_buffers should not be run with flat networks'
 
-        min_del = self.net.min_delay  # just to have shorter lines below
+        min_del = self.min_delay  # just to have shorter lines below
         self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
         self.bf_type = np.float64  # data type of the buffer when it is a numpy array
 
@@ -349,7 +350,7 @@ class unit():
         # the 'time' argument is currently only used to ensure the 'times' buffer is in sync
         #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
         new_times = self.times[-1] + self.times_grid
-        self.times += self.net.min_delay
+        self.times += self.min_delay
         # odeint also returns the initial condition, so to produce min_buff_size new values
         # we need to provide min_buff_size+1 desired times, starting with 
         # the one for the initial condition
@@ -371,7 +372,7 @@ class unit():
         In addition, all the synapses of the unit are updated.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times += self.net.min_delay
+        self.times += self.min_delay
         # odeint also returns the initial condition, so to produce min_buff_size new 
         # values we need to provide min_buff_size+1 desired times, starting with 
         # the one for the initial condition
@@ -395,7 +396,7 @@ class unit():
         """
         #assert (self.times[-1]-time) < 2e-6, 'unit' + str(self.ID) + ': update time is desynchronized'
         new_times = self.times[-1] + self.times_grid
-        self.times += self.net.min_delay
+        self.times += self.min_delay
         solution = solve_ivp(self.solve_ivp_diff, (new_times[0], new_times[-1]), 
                              [self.buffer[-1]], method='LSODA', t_eval=new_times, 
                              rtol=self.rtol, atol=self.atol)
@@ -416,7 +417,7 @@ class unit():
         In addition, all the synapses of the unit are updated.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times += self.net.min_delay
+        self.times += self.min_delay
         solution = solve_ivp(self.solve_ivp_diff, (new_times[0], new_times[-1]),
                              self.buffer[:,-1], method='LSODA', t_eval=new_times,
                              rtol=self.rtol, atol=self.atol)
@@ -450,7 +451,7 @@ class unit():
             Precision is controlled by the step size, which is min_delay/min_buff_size.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times += self.net.min_delay
+        self.times += self.min_delay
         dt = new_times[1] - new_times[0]
         # euler_int is defined in cython_utils.pyx
         new_buff = euler_int(self.derivatives, self.buffer[-1], time, len(new_times), dt)
@@ -473,7 +474,7 @@ class unit():
             self.sigma = standard deviation of Wiener process.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times += self.net.min_delay
+        self.times += self.min_delay
         # euler_maruyama_ is defined in cython_utils.pyx
         euler_maruyama(self.derivatives, self.buffer, time,
                         self.buff_size-self.min_buff_size, self.time_bit, self.mu, self.sigma)
@@ -492,7 +493,7 @@ class unit():
             self.sigma = standard deviation of Wiener process.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times += self.net.min_delay
+        self.times += self.min_delay
         # euler_maruyama_md is defined in cython_utils.pyx
         euler_maruyama_md(self.derivatives, self.buffer, time,
                         self.buff_size-self.min_buff_size, self.time_bit, 
@@ -511,7 +512,7 @@ class unit():
             The current version is rectifying ouputs by default.
         """
         new_times = self.times[-1] + self.times_grid
-        self.times += self.net.min_delay
+        self.times += self.min_delay
         new_buff = exp_euler(self.deriv_eu, self.buffer[-1], time, len(new_times),
                              self.time_bit, self.mu, self.sigma, self.eAt, self.c2, self.c3)
         new_buff = np.maximum(new_buff, 0.) # THIS IS RECTIFYING BY DEFAULT!!!
@@ -686,7 +687,7 @@ class unit():
             # The -1 below is because get_lpf_fast etc. return lpf_fast_buff[-1-steps], 
             # corresponding to the assumption that buff[-1] is the value zero steps back
             syn.delay_steps = min(self.net.units[syn.preID].steps-1, 
-                                  int(round(delay/self.net.min_delay)))
+                                  int(round(delay/self.min_delay)))
 
         # For each synapse you receive, add its requirements
         for syn in self.net.syns[self.ID]:
@@ -991,7 +992,7 @@ class unit():
         a = ss_scale / np.maximum(weights[self.exc_idx],.001)
         a = np.minimum( a, 10.) # hard bound above
         x0 = self.scale_facs[self.exc_idx]
-        t = self.net.min_delay
+        t = self.min_delay
         self.scale_facs[self.exc_idx] = (x0 * a) / ( x0 + (a - x0) * np.exp(-self.tau_scale * a * t) )
         #self.scale_facs[self.exc_idx] += self.tau_scale * self.scale_facs[self.exc_idx] * (
         #                                 ss_scale/np.maximum(weights[self.exc_idx],.05) - 
@@ -1032,7 +1033,7 @@ class unit():
         a = ss_scale / np.maximum(rdc_w[self.exc_idx_rdc],.001)
         a = np.minimum( a, 10.) # hard bound above
         x0 = self.scale_facs_rdc[self.exc_idx_rdc]
-        t = self.net.min_delay
+        t = self.min_delay
         self.scale_facs_rdc[self.exc_idx_rdc] = (x0 * a) / ( x0 + (a - x0) * 
                                                              np.exp(-self.tau_scale * a * t) )
 
