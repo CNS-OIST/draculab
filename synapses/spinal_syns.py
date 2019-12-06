@@ -429,7 +429,7 @@ class gated_bp_rga_synapse(synapse):
                     self.corr_type = -1  
         else:
             self.w -= np.abs(self.alpha) * self.w / self.w_decay  # punishment
-            if self.delW > 2.*self.w_thresh:
+            if self.delW > 1.5*self.w_thresh:
                 self.corr_type = 1  # redemption!    
             elif self.delW < -2.*self.w_thresh:
                 self.corr_type = -1  # redemption!    
