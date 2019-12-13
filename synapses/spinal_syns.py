@@ -344,8 +344,8 @@ class gated_bp_rga_synapse(synapse):
                       port. Default is 1.
             'w_thresh' : Amount of change that the synapse is not supposed to 
                          accumulate in both directions. Default is 1.
-            'w_decay' : time constant for decay of betraying weights.
-                        Default is 10.
+            'w_decay' : time constant for decay of the change integration.
+                        Default is 0.01 .
         Raises:
             AssertionError.
         """
@@ -378,7 +378,7 @@ class gated_bp_rga_synapse(synapse):
         if 'w_thresh' in params: self.w_thresh = params['w_thresh']
         else: self.w_thresh = 1.
         if 'w_decay' in params: self.w_decay = params['w_decay']
-        else: self.w_decay = 10.
+        else: self.w_decay = 0.01
         self.delW = 0. # LPF'd change of weight
         self.corr_type = None # -1=decrease, 1=increase, 0=unreliable
         #self.w_prop = np.exp(-network.min_delay / self.w_tau) # delW propagator
@@ -410,8 +410,8 @@ class gated_bp_rga_synapse(synapse):
         delta_w = u.acc_slow * (up - xp) * (sp - spj)
         #delta_w = u.acc_slow * up * (sp - spj)  # FOR TESTING PURPOSES
         #self.delW = delta_w + (self.delW  - delta_w) * self.w_prop
-        self.delW += np.abs(self.alpha) * (delta_w - .01*self.delW)
-        self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
+        self.delW += np.abs(self.alpha) * (delta_w - self.w_decay*self.delW)
+        self.w *= 0.5 * self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
                             pre.out_norm_factor)
 
         if self.corr_type != 0:
@@ -428,7 +428,7 @@ class gated_bp_rga_synapse(synapse):
                 elif self.delW < -self.w_thresh: 
                     self.corr_type = -1  
         else:
-            self.w -= np.abs(self.alpha) * self.w / self.w_decay  # punishment
+            self.w -= 0.1 * np.abs(self.alpha) * self.w   # punishment
             if self.delW > 1.5*self.w_thresh:
                 self.corr_type = 1  # redemption!    
             elif self.delW < -2.*self.w_thresh:

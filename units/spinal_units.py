@@ -953,9 +953,9 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
         functions.
 
         Like gated_rga_sig this unit has an integral component. This means
-        that the input is integrated (actually, low-pass filtered with the
-        tau_slow time constant), and the output comes from the sigmoidal 
-        function applied to the scaled input sum plus the integral component.
+        that the input is integrated using the integ_decay_act requirement,
+        and the output comes from the sigmoidal function applied to the scaled
+        input sum plus a term proportional to the integral component.
 
         The des_out_w_abs_sum parameter is included in case the
         pre_out_norm_factor requirement is used.
