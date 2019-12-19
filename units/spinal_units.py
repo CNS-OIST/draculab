@@ -60,6 +60,24 @@ class rga_reqs():
                                 self.integ_decay * self.integ_decay_act)
 
 
+    def upd_double_del_inp_deriv_mp(self, time):
+        """ Update two input derivatives with two delays for each port. """
+        u = self.net.units
+        self.double_del_inp_deriv_mp[0] = [[u[uid].get_lpf_fast(self.custom_inp_del) - 
+                                u[uid].get_lpf_mid(self.custom_inp_del) 
+                                for uid in lst] for lst in self.pre_list_mp]
+        self.double_del_inp_deriv_mp[1] = [[u[uid].get_lpf_fast(self.custom_inp_del2) - 
+                        u[uid].get_lpf_mid(self.custom_inp_del2) 
+                        for uid in lst] for lst in self.pre_list_mp]
+ 
+    def upd_double_del_avg_inp_deriv_mp(self, time):
+        """ Update averages of input derivatives with two delays for each port. """
+        self.del_avg_inp_deriv_mp[0] = [np.mean(l) if len(l) > 0 else 0.
+                                    for l in self.double_del_inp_deriv_mp[0]]
+        self.del_avg_inp_deriv_mp[1] = [np.mean(l) if len(l) > 0 else 0.
+                                    for l in self.double_del_inp_deriv_mp[1]]
+
+
 class lpf_sc_inp_sum_mp_reqs():
     """ Class with the update functions for the X_lpf_sc_inp_sum_mp_reqs. """
     def __init__(self, params):
@@ -164,8 +182,8 @@ class am_pm_oscillator(unit, rga_reqs):
 
     The outuput of the unit is the sum of a constant part and a sinusoidal part.
     Both of their amplitudes are modulated by the sum of the inputs at port 0.
-    The phase of the sinusoidal part is modulated by the relative phase of the inputs
-    at port 1 through a method chosen by the user. 
+    The phase of the sinusoidal part is modulated by the relative phase of the 
+    inputs at port 1 through a method chosen by the user. 
 
     The model uses 4-dimensional dynamics, so it's state at a given time is a 
     4-element array. The first element corresponds to the unit's activity, which
