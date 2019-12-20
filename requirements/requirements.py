@@ -768,8 +768,10 @@ def add_double_del_inp_deriv_mp(unit):
         input at the i-th port following the order in the port_idx list. 
 
         The first element in double_del_inp_deriv_mp corresponds to the delay
-        custom_inp_del, whereas the second is for the delay custom_inp_del2.
-        These delays are attributes of the postsynaptic unit.
+        custom_del_diff, whereas the second is for the delay custom_inp_del2.
+        These delays are attributes of the postsynaptic unit. The postsynaptic
+        unit receives the paramters custom_inp_del2 and custom_inp_del. From
+        these we get: custom_del_diff = custom_inp_del2 - custom_inp_del.
 
         This requirement was created for the gated_bp_rga_diff synapse, and its
         implementation lives in the rga_reqs class of spinal_units.py.
@@ -785,6 +787,9 @@ def add_double_del_inp_deriv_mp(unit):
     if not (hasattr(unit, 'custom_inp_del') and hasattr(unit, 'custom_inp_del2')):
         raise AssertionError('The double del_inp_deriv_mp requirement needs units to' +
                              ' have  custom_inp_del and custom_inp_del2 attributes.')
+    if not hasattr(unit, 'custom_del_diff'):
+        raise AssertionError('The postsynaptic unit should obtain the ' +
+                             'custom_del_diff attribute in its constructor')
     # finding ports where the derivative will be calculated
     if not hasattr(unit, 'inp_deriv_ports'):
         setattr(unit, 'inp_deriv_ports', list(range(unit.n_ports)))
@@ -804,6 +809,15 @@ def add_double_del_inp_deriv_mp(unit):
     didm1 = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
     didm2 = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
     setattr(unit, 'double_del_inp_deriv_mp', [didm1, didm2])
+    # the gated_rga_diff synapses need their indexes in the didm1 and didm2
+    # lists. We set it for them here.
+    syns = unit.net.syns
+    for p in unit.inp_deriv_ports:
+        for loc_idx, syn_idx in enumerate(unit.port_idx[p]):
+            if syns[unit.ID][syn_idx].type is synapse_types.gated_rga_diff:
+                setattr(syns[unit.ID][syn_idx], 'ddidm_idx', loc_idx)
+                assert pre_list_mp[p][loc_idx] == syns[unit.ID][syn_idx].preID, [
+                       'Failed sanity check at add_double_del_inp_deriv_mp']
  
 
 def add_double_del_avg_inp_deriv_mp(unit):

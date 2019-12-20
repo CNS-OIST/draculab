@@ -63,8 +63,8 @@ class rga_reqs():
     def upd_double_del_inp_deriv_mp(self, time):
         """ Update two input derivatives with two delays for each port. """
         u = self.net.units
-        self.double_del_inp_deriv_mp[0] = [[u[uid].get_lpf_fast(self.custom_inp_del) - 
-                                u[uid].get_lpf_mid(self.custom_inp_del) 
+        self.double_del_inp_deriv_mp[0] = [[u[uid].get_lpf_fast(self.custom_del_diff) - 
+                                u[uid].get_lpf_mid(self.custom_del_diff) 
                                 for uid in lst] for lst in self.pre_list_mp]
         self.double_del_inp_deriv_mp[1] = [[u[uid].get_lpf_fast(self.custom_inp_del2) - 
                         u[uid].get_lpf_mid(self.custom_inp_del2) 
@@ -72,9 +72,9 @@ class rga_reqs():
  
     def upd_double_del_avg_inp_deriv_mp(self, time):
         """ Update averages of input derivatives with two delays for each port. """
-        self.del_avg_inp_deriv_mp[0] = [np.mean(l) if len(l) > 0 else 0.
+        self.double_del_avg_inp_deriv_mp[0] = [np.mean(l) if len(l) > 0 else 0.
                                     for l in self.double_del_inp_deriv_mp[0]]
-        self.del_avg_inp_deriv_mp[1] = [np.mean(l) if len(l) > 0 else 0.
+        self.double_del_avg_inp_deriv_mp[1] = [np.mean(l) if len(l) > 0 else 0.
                                     for l in self.double_del_inp_deriv_mp[1]]
 
 
@@ -999,11 +999,17 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
                     'integ_amp' : amplitude multiplier of the integral
                                     component.
                     'integ_decay' : decay rate of the integral component.
-                   Using rga synapses brings an extra required parameter:
+                    Using rga synapses brings an extra required parameter:
                     'custom_inp_del' : an integer indicating the delay that the rga
                                   learning rule uses for the lateral port inputs. 
                                   The delay is in units of min_delay steps. 
-
+                    Using rga_diff synapses brings two extra required parameters:
+                    'custom_inp_del' : the shortest of the two delays.
+                    'custom_inp_del2': the longest of the two delays.
+                    When custom_inp_del2 is not in the params dictionary no
+                    exception is thrown, but instead it is assumed that
+                    rga_diff synapses are not used, and the custom_del_diff
+                    attribute will not be generated.
                 OPTIONAL PARAMETERS
                     'des_out_w_abs_sum' : desired sum of absolute weight values
                                           for the outgoing connections.
@@ -1023,6 +1029,13 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
         else:
             raise AssertionError('gated_rga_inpsel_adapt_sig units need a ' +
                                  'custom_inp_del parameter')
+        if 'custom_inp_del2' in params:
+            if params['custom_inp_del2'] > params['custom_inp_del']:
+                self.custom_inp_del2 = params['custom_inp_del2']
+                self.custom_del_diff = self.custom_inp_del2-self.custom_inp_del
+            else:
+                raise ValueError('custom_inp_del2 must be larger than ' +
+                                 'custom_inp_del')
         sigmoidal.__init__(self, ID, params, network)
         if 'des_out_w_abs_sum' in params:
             self.des_out_w_abs_sum = params['des_out_w_abs_sum']
@@ -1051,6 +1064,7 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
             self.sigma = params['sigma']
             self.mudt = self.mu * self.time_bit # used by flat updater
             self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
+
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. """
