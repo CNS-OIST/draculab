@@ -2163,7 +2163,7 @@ class planar_arm_v3(plant):
         port 12-17: gamma static stimulation to muscles 1-6
     Outputs from the model consist of the 4-dimensional state of the double
     pendulum, the 6 muscle tensions, 6 tensions for the dynamic bag fibers, 6
-    tensions for the static bag fibers, 6 Ia outputs, 6 II outputs, and 6 Ib
+    tensions for the static bag fibers, 6 Ib outputs, 6 Ia outputs, and 6 II
     outputs.
         port 0: shoulder angle [radians]
         port 1: angular velocity of shoulder [radians / s]

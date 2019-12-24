@@ -754,6 +754,97 @@ def add_del_avg_inp_deriv_mp(unit):
     setattr(unit, 'del_avg_inp_deriv_mp', del_avg_inp_deriv_mp)
 
 
+def add_double_del_inp_deriv_mp(unit):
+    """ Adds input derivatives listed by port for two custom delays.
+
+        This is a version of del_inp_deriv_mp where two values are stored for
+        each input, corresponding to two separate delays.
+
+        double_del_inp_deriv_mp will be a list with 2 elements. Each element
+        will be like the del_inp_deriv_mp attribute. In other words, both
+        double_del_inp_deriv_mp[0] and double_del_inp_deriv_mp[1] will contain
+        nested lists "del_inp_deriv_mp".
+        del_inp_deriv_mp[i,j] contains the delayed derivative of the j-th
+        input at the i-th port following the order in the port_idx list. 
+
+        The first element in double_del_inp_deriv_mp corresponds to the delay
+        custom_del_diff, whereas the second is for the delay custom_inp_del2.
+        These delays are attributes of the postsynaptic unit. The postsynaptic
+        unit receives the paramters custom_inp_del2 and custom_inp_del. From
+        these we get: custom_del_diff = custom_inp_del2 - custom_inp_del.
+
+        This requirement was created for the gated_bp_rga_diff synapse, and its
+        implementation lives in the rga_reqs class of spinal_units.py.
+        
+        The optional parameter 'inp_deriv_ports' can be passed to the 'rga_reqs'
+        constructor so that the input derivative is only calculated for the
+        ports whose number is in the inp_deriv_ports list.
+    """
+    if not unit.multiport:
+        raise AssertionError('The double_del_inp_deriv_mp requirement is ' + 
+                             'for multiport units.')
+    # The delays are an attribute of the unit. Checking if they are there.
+    if not (hasattr(unit, 'custom_inp_del') and hasattr(unit, 'custom_inp_del2')):
+        raise AssertionError('The double del_inp_deriv_mp requirement needs units to' +
+                             ' have  custom_inp_del and custom_inp_del2 attributes.')
+    if not hasattr(unit, 'custom_del_diff'):
+        raise AssertionError('The postsynaptic unit should obtain the ' +
+                             'custom_del_diff attribute in its constructor')
+    # finding ports where the derivative will be calculated
+    if not hasattr(unit, 'inp_deriv_ports'):
+        setattr(unit, 'inp_deriv_ports', list(range(unit.n_ports)))
+    if syn_reqs.del_inp_deriv_mp in unit.syn_needs:
+        raise AssertionError('The double_del_inp_deriv_mp and del_inp_deriv_mp'+
+                             ' attributes should not be together in a unit.')
+    syns = unit.net.syns[unit.ID]
+    # pre_list_mp[i,j] will contain the ID of the j-th input at the i-th port.
+    pre_list_mp = []
+    for lst in unit.port_idx:
+        pre_list_mp.append([syns[uid].preID for uid in lst])
+    # ports not in inp_deriv_ports will be considered empty
+    pre_list_mp = [pre_list_mp[p] if p in unit.inp_deriv_ports else []
+                   for p in range(unit.n_ports)]
+    setattr(unit, 'pre_list_mp', pre_list_mp)
+    # initializing all derivatives with zeros
+    didm1 = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
+    didm2 = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
+    setattr(unit, 'double_del_inp_deriv_mp', [didm1, didm2])
+    # the gated_rga_diff synapses need their indexes in the didm1 and didm2
+    # lists. We set it for them here.
+    syns = unit.net.syns
+    for p in unit.inp_deriv_ports:
+        for loc_idx, syn_idx in enumerate(unit.port_idx[p]):
+            if syns[unit.ID][syn_idx].type is synapse_types.gated_rga_diff:
+                setattr(syns[unit.ID][syn_idx], 'ddidm_idx', loc_idx)
+                assert pre_list_mp[p][loc_idx] == syns[unit.ID][syn_idx].preID, [
+                       'Failed sanity check at add_double_del_inp_deriv_mp']
+ 
+
+def add_double_del_avg_inp_deriv_mp(unit):
+    """ Adds the average of double_del_avg_inp_deriv_mp for each port.
+
+        double_del_avg_inp_deriv_mp is a list with two entries. Each one is like
+        a copy of del_avg_inp_deriv_mp, but they correspond to two different
+        delays. 
+        del_avg_inp_deriv_mp[i] provides the average of the derivatives for all
+        inputs arriving at port i, with a given delay.
+
+        This requirement was created for the gated_bp_rga_diff synapse, and its
+        implementation lives in the rga_reqs class of spinal_units.py.
+        
+        The optional parameter 'inp_deriv_ports' can be passed to the 'rga_reqs'
+        constructor so that the input derivative is only calculated for the
+        ports whose number is in the inp_deriv_ports list.
+    """
+    if not syn_reqs.double_del_inp_deriv_mp in unit.syn_needs:
+        raise AssertionError('The double_del_avg_inp_deriv_mp requirement ' + 
+                             'needs double_del_inp_deriv_mp')
+    daidm1 = [0. for _ in unit.port_idx]
+    daidm2 = [0. for _ in unit.port_idx]
+    setattr(unit, 'double_del_avg_inp_deriv_mp', [daidm1, daidm2])
+
+
+
 def add_exp_euler_vars(unit):
     """ Adds several variables used by the exp_euler integration method. """
     dt = unit.times[1] - unit.times[0] # same as unit.time_bit
@@ -992,6 +1083,19 @@ def add_sc_inp_sum_mp(unit):
     mp_inputs = np.array(mp_inputs) 
     sc_inp_sum_mp = np.fromiter(map(np.sum, mp_inputs*mp_weights), float)
     setattr(unit, 'sc_inp_sum_mp', sc_inp_sum_mp)
+
+
+def add_integ_decay_act(unit):
+    """ Add an integral of the unit's activity, with slow decay.
+
+        Let "ida" denote this factor. Then it is obtained as:
+        ida' = min_delay*(act - int_decay*ida)
+        The implementation is in the rga_reqs class of spinal_units.
+    """
+    if not hasattr(unit, 'integ_decay'):
+        raise NameError('The integ_decay_act requirement requires the ' +
+                        'int_decay parameter')
+    setattr(unit, 'integ_decay_act', 0.)
     
 
 #-------------------------------------------------------------------------------------
