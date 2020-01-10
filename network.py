@@ -900,7 +900,7 @@ class network():
                     if u.integ_meth in ["odeint", "solve_ivp"]:
                         from warnings import warn
                         warn('Integration method ' + u.integ_meth + \
-                             ' subsituted by Forward Euler in some units', UserWarning)
+                             ' substituted by Forward Euler in some units', UserWarning)
                     
                 elif u.integ_meth == "euler_maru":
                     if u.multidim:
