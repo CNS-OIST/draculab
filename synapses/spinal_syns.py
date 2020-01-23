@@ -558,9 +558,9 @@ class gated_rga_diff_synapse(synapse):
         self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
                               pre.out_norm_factor)
         # modified to add some random drift (last line)
-        self.w += (u.acc_slow * self.alpha * (up - xp) * (
+        self.w += u.acc_slow * self.alpha * (up - xp) * (
                               (sp_now - spj_now) - (sp_del - spj_del))
-                  + 0.0002*(np.random.random()-0.5))
+                  #+ 0.0002*(np.random.random()-0.5))
 
 
 class input_selection_synapse(synapse):
