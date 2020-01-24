@@ -165,7 +165,7 @@ class acc_sda_reqs():
         #    > 0.8 and self.slow_decay_adapt < 0.2):
             #self.slow_decay_adapt = self.lpf_slow
             self.slow_decay_adapt = self.lpf_slow * self.lpf_slow
-            # to produce increas in low-activity units
+            # to produce increase in low-activity units
             #self.slow_decay_adapt = self.lpf_slow - 0.3
         else:
             self.slow_decay_adapt *= self.slow_prop
