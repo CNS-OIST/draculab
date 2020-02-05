@@ -1014,6 +1014,9 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
                     'des_out_w_abs_sum' : desired sum of absolute weight values
                                           for the outgoing connections.
                                           Default is 1.
+                    'out_norm_type' : a synapse type. If included, the sum of
+                                      absolute weights for outgoing connections
+                                      will only consider synapses of that type.
                     'adapt_amp' : amplitude of adapation. Default is 1.
                     'mu' : noise bias in for euler_maru integration.
                     'sigma' : standard deviation for euler_maru integration.
@@ -1045,6 +1048,8 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
             self.adapt_amp = params['adapt_amp']
         else:
             self.adapt_amp = 1.
+        if 'out_norm_type' in params:
+            self.out_norm_type = params['out_norm_type']
         self.integ_amp = params['integ_amp']
         self.integ_decay = params['integ_decay']
         self.syn_needs.update([syn_reqs.integ_decay_act, syn_reqs.acc_slow,
