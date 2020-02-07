@@ -519,6 +519,12 @@ class gated_out_norm_am_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, acc_sda_reqs):
                     'p0_inp' : The scaled sum of port 0 inputs is multiplied by
                                this parameter before becoming being added to the
                                arguments of the sigmoidal. Default 0.
+                    'out_norm_type' : a synapse type's integer value. If included,
+                                 the sum of absolute weights for outgoing
+                                 connections will only consider synapses of
+                                 that type. For example, you may set it as:
+                                 {...,
+                                 'out_norm_type' : synapse_types.gated_rga_diff.value}
             Raises:
                 AssertionError.
         """
@@ -528,6 +534,8 @@ class gated_out_norm_am_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, acc_sda_reqs):
             params['n_ports'] = 3
         sigmoidal.__init__(self, ID, params, network)
         self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        if 'out_norm_type' in params:
+            self.out_norm_type = params['out_norm_type']
         self.syn_needs.update([syn_reqs.acc_slow, syn_reqs.mp_inputs, 
                                syn_reqs.mp_weights])
         self.needs_mp_inp_sum = True # in case we flatten
@@ -1014,9 +1022,12 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
                     'des_out_w_abs_sum' : desired sum of absolute weight values
                                           for the outgoing connections.
                                           Default is 1.
-                    'out_norm_type' : a synapse type. If included, the sum of
-                                      absolute weights for outgoing connections
-                                      will only consider synapses of that type.
+                    'out_norm_type' : a synapse type's integer value. If included,
+                                 the sum of absolute weights for outgoing
+                                 connections will only consider synapses of
+                                 that type. For example, you may set it as:
+                                 {...,
+                                 'out_norm_type' : synapse_types.gated_rga_diff.value}
                     'adapt_amp' : amplitude of adapation. Default is 1.
                     'mu' : noise bias in for euler_maru integration.
                     'sigma' : standard deviation for euler_maru integration.

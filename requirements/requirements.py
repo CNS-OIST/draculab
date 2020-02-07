@@ -870,8 +870,8 @@ def add_out_norm_factor(unit):
         des_out_w_abs_sum divided by the value of this sum.
 
         If the optional paramter 'out_norm_type' is included in the postsynaptic
-        unit, only the synapses of that type will be included in the
-        computation of the factor.
+        unit, only the synapses whose type has a value equal to this integer
+        will be included in the computation of the factor.
 
         The update function implementaion is part of the unit class. 
     """
@@ -880,17 +880,17 @@ def add_out_norm_factor(unit):
                              'des_out_w_abs_sum attribute in its unit.')
     if hasattr(unit, 'out_norm_type'):
         sel_type = True
-        unit_type = unit.out_norm_type
+        syn_type_val = unit.out_norm_type
     else:
         sel_type = False
-        unit_type = None
+        syn_type_val = None
     # Obtain indexes to all of the unit's connections in net.syns
     out_syns_idx = []
     out_w_abs_sum = 0.
     for list_idx, syn_list in enumerate(unit.net.syns):
         for syn_idx, syn in enumerate(syn_list):
             if syn.preID == unit.ID:
-                if ((sel_type is True and unit_type == syn.type) or
+                if ((sel_type is True and syn_type_val == syn.type.value) or
                     sel_type is False):                    
                     out_syns_idx.append((list_idx, syn_idx))
                     out_w_abs_sum += abs(syn.w)
