@@ -1006,7 +1006,7 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
                     'tau_mid' : Medium LPF time constant.
                     'integ_amp' : amplitude multiplier of the integral
                                     component.
-                    'integ_decay' : decay rate of the integral component.
+                    'integ_decay' : change rate of the integral component.
                     Using rga synapses brings an extra required parameter:
                     'custom_inp_del' : an integer indicating the delay that the rga
                                   learning rule uses for the lateral port inputs. 
