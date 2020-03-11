@@ -1018,6 +1018,12 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
                     exception is thrown, but instead it is assumed that
                     rga_diff synapses are not used, and the custom_del_diff
                     attribute will not be generated.
+                    Using slide_rga_diff synapses, in addition to the two delay
+                    values, requires maximum and minimum delay modifiers:
+                    'del_mod_max': maximum delay modifier.
+                    'del_mod_min': minimum delay modifier.
+                    The two delay modifiers are expressed as number of time
+                    steps, as is the case for the custom delays.
                 OPTIONAL PARAMETERS
                     'des_out_w_abs_sum' : desired sum of absolute weight values
                                           for the outgoing connections.
@@ -1050,7 +1056,18 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
             else:
                 raise ValueError('custom_inp_del2 must be larger than ' +
                                  'custom_inp_del')
+
         sigmoidal.__init__(self, ID, params, network)
+
+        if 'del_mod_max' in params or 'del_mod_min' in params:
+            if params['del_mod_max'] < params['del_mod_min']:
+                raise ValueError('del_mod_max cannot be smaller than del_mod_min')
+            self.del_mod_max = params['del_mod_max']
+            self.del_mod_min = params['del_mod_min']
+            if self.delay < (self.custom_inp_del2 + self.del_mod_max)*self.net.min_delay:
+                raise ValueError('The delay in a gated_slide_rga_diff unit is ' +
+                                 'smaller than custom_inp_del2 + del_mod_max')
+
         if 'des_out_w_abs_sum' in params:
             self.des_out_w_abs_sum = params['des_out_w_abs_sum']
         else:

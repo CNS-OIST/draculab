@@ -270,6 +270,7 @@ class synapse_types(Enum):
     gated_diff_inp_sel = 208 # differential version of gated_inp_sel
     gated_bp_rga = 209 # gated_rga with betrayal punishment
     gated_rga_diff = 210 # gated_rga with double time delays
+    gated_slide_rga_diff = 211 # gated_rga_diff with sliding time delay
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -362,6 +363,9 @@ class synapse_types(Enum):
         elif self == synapse_types.gated_rga_diff:
             from synapses.spinal_syns import gated_rga_diff_synapse 
             syn_class = gated_rga_diff_synapse
+        elif self == synapse_types.gated_slide_rga_diff:
+            from synapses.spinal_syns import gated_slide_rga_diff
+            syn_class = gated_slide_rga_diff
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
