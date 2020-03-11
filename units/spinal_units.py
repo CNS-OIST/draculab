@@ -1064,10 +1064,11 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
                 raise ValueError('del_mod_max cannot be smaller than del_mod_min')
             self.del_mod_max = params['del_mod_max']
             self.del_mod_min = params['del_mod_min']
-            if self.delay < (self.custom_inp_del2 + self.del_mod_max)*self.net.min_delay:
+            if self.delay < (self.custom_inp_del2 + self.del_mod_max)*self.min_delay:
                 raise ValueError('The delay in a gated_slide_rga_diff unit is ' +
                                  'smaller than custom_inp_del2 + del_mod_max')
-
+            if 1 > (self.custom_inp_del + self.del_mod_min):
+                raise ValueError('custom_inp_del + del_mod_min is too small')
         if 'des_out_w_abs_sum' in params:
             self.des_out_w_abs_sum = params['des_out_w_abs_sum']
         else:

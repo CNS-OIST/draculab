@@ -775,6 +775,9 @@ def add_double_del_inp_deriv_mp(unit):
 
         This requirement was created for the gated_bp_rga_diff synapse, and its
         implementation lives in the rga_reqs class of spinal_units.py.
+        If it is used with a synapse type other than gated_rga_diff or
+        gated_slide_rga_diff the code below must be modified so ddidm_idx is set
+        on the synapse.
         
         The optional parameter 'inp_deriv_ports' can be passed to the 'rga_reqs'
         constructor so that the input derivative is only calculated for the
@@ -814,7 +817,8 @@ def add_double_del_inp_deriv_mp(unit):
     syns = unit.net.syns
     for p in unit.inp_deriv_ports:
         for loc_idx, syn_idx in enumerate(unit.port_idx[p]):
-            if syns[unit.ID][syn_idx].type is synapse_types.gated_rga_diff:
+            if (syns[unit.ID][syn_idx].type is synapse_types.gated_rga_diff or
+                syns[unit.ID][syn_idx].type is synapse_types.gated_slide_rga_diff):
                 setattr(syns[unit.ID][syn_idx], 'ddidm_idx', loc_idx)
                 assert pre_list_mp[p][loc_idx] == syns[unit.ID][syn_idx].preID, [
                        'Failed sanity check at add_double_del_inp_deriv_mp']

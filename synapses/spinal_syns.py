@@ -563,7 +563,7 @@ class gated_rga_diff_synapse(synapse):
                   #+ 0.0002*(np.random.random()-0.5))
 
 
-class gated_slide_rga_diff_synapse(synapse):
+class gated_slide_rga_diff(synapse):
     """ A variation of gated_rga_diff with sliding time delays.
 
         The RGA rule is described in the 4/11/19 scrap sheet.
@@ -628,6 +628,8 @@ class gated_slide_rga_diff_synapse(synapse):
         self.alpha = self.lrate * self.net.min_delay # factor to scale the update rule
         self.del_mod_tau = params['del_mod_tau'] # time constant for delay modifier
         self.dm_alpha = self.net.min_delay / self.del_mod_tau
+        u = self.net.units[self.postID]
+        self.corr_alpha = self.net.min_delay / u.tau_slow
         # most of the heavy lifting is done by requirements
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
                              syn_reqs.lpf_fast, syn_reqs.lpf_mid, 
@@ -636,10 +638,9 @@ class gated_slide_rga_diff_synapse(synapse):
                              syn_reqs.double_del_avg_inp_deriv_mp,
                              syn_reqs.l0_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
-        assert self.type is synapse_types.gated_rga_diff, ['Synapse from ' +
+        assert self.type is synapse_types.gated_slide_rga_diff, ['Synapse from ' +
                             str(self.preID) + ' to ' + str(self.postID) + 
                             ' instantiated with the wrong type']
-        u = self.net.units[self.postID]
         if not (hasattr(u, 'custom_inp_del') and hasattr(u, 'custom_inp_del2')):
             raise AssertionErrer('A gated_slide_rga_diff synapse has a postsynaptic' +
                                  'unit without the custom_inp_del(2) attribute')
@@ -655,6 +656,8 @@ class gated_slide_rga_diff_synapse(synapse):
         self.mod_max = u.del_mod_max*self.net.min_delay
         self.mod_min = u.del_mod_min*self.net.min_delay
         self.del_mod = 0. # initializing the delay modifier
+        self.corr1 = 0.  # LPF'd correlation with custom_inp_del2 - custom_inp_del
+        self.corr2 = 0.  # LPF'd correlation with custom_inp_del2
         if 'lat_port' in params: self.lat_port = params['lat_port']
         else: self.lat_port = 1 
         if 'err_port' in params: self.err_port = params['err_port']
@@ -692,7 +695,7 @@ class gated_slide_rga_diff_synapse(synapse):
 
             The current rule allows synapses to become negative.
         """
-        dm_steps = round(self.del_mod/self.net.min_delay)
+        dm_steps = int(round(self.del_mod/self.net.min_delay))
         po_de = self.po_de + dm_steps # effective postsynaptic delay
         post = self.net.units[self.postID]
         pre = self.net.units[self.preID]
@@ -709,11 +712,13 @@ class gated_slide_rga_diff_synapse(synapse):
         # delay update
         corr1 = (up - xp) * (sp_del - spj_del)
         corr2 = (up - xp) * (sp_now - spj_now)
+        self.corr1 += self.corr_alpha * (corr1 - self.corr1)
+        self.corr2 += self.corr_alpha * (corr2 - self.corr2)
         self.del_mod += ( (self.mod_max - self.del_mod) *
                           (self.del_mod - self.mod_min) *
-                          (abs(corr2) - abs(corr1)) ) * self.dm_alpha
+                          (abs(self.corr2) - abs(self.corr1)) ) * self.dm_alpha
         # weight update
-        self.w += post.acc_slow * self.alpha * (up - xp) * (corr2 - corr1)
+        self.w += post.acc_slow * self.alpha * (corr2 - corr1)
         # next line adds some random drift
                   #+ 0.0002*(np.random.random()-0.5))
 
