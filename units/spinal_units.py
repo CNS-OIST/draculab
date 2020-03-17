@@ -18,10 +18,9 @@ class rga_reqs():
 
             The constructor receives the parameters dictionary of the unit's
             creator, but only considers one entry: 
-            'inp_deriv_ports' : A list with the numbers of the ports where
-                                inp_deriv_mp and del_inp_deriv_mp will 
-                                calculate their derivatives.
-                                Defaults to a list with all ports.
+            'inp_deriv_ports' : A list with the numbers of the ports where all
+                                inp_deriv_mp methods will calculate their 
+                                derivatives. Defaults to a list with all ports.
         """
         self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum])
         if 'inp_deriv_ports' in params:
@@ -76,6 +75,19 @@ class rga_reqs():
                                     for l in self.double_del_inp_deriv_mp[0]]
         self.double_del_avg_inp_deriv_mp[1] = [np.mean(l) if len(l) > 0 else 0.
                                     for l in self.double_del_inp_deriv_mp[1]]
+
+    def upd_slow_inp_deriv_mp(self, time):
+        """ Update the list with slow input derivatives for each port.  """
+        u = self.net.units
+        self.slow_inp_deriv_mp = [[u[uid[idx]].get_lpf_mid(dely[idx]) -
+                                   u[uid[idx]].get_lpf_slow(dely[idx]) 
+                                   for idx in range(len(uid))]
+                                   for uid, dely in self.pre_list_del_mp]
+
+    def upd_avg_slow_inp_deriv_mp(self, time):
+        """ Update the list with average slow input derivatives per port. """
+        self.avg_slow_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
+                                 for l in self.slow_inp_deriv_mp]
 
 
 class lpf_sc_inp_sum_mp_reqs():

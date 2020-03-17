@@ -818,7 +818,8 @@ def add_double_del_inp_deriv_mp(unit):
     for p in unit.inp_deriv_ports:
         for loc_idx, syn_idx in enumerate(unit.port_idx[p]):
             if (syns[unit.ID][syn_idx].type is synapse_types.gated_rga_diff or
-                syns[unit.ID][syn_idx].type is synapse_types.gated_slide_rga_diff):
+                syns[unit.ID][syn_idx].type is synapse_types.gated_slide_rga_diff or
+                syns[unit.ID][syn_idx].type is synapse_types.gated_normal_rga_diff):
                 setattr(syns[unit.ID][syn_idx], 'ddidm_idx', loc_idx)
                 assert pre_list_mp[p][loc_idx] == syns[unit.ID][syn_idx].preID, [
                        'Failed sanity check at add_double_del_inp_deriv_mp']
@@ -847,6 +848,79 @@ def add_double_del_avg_inp_deriv_mp(unit):
     daidm2 = [0. for _ in unit.port_idx]
     setattr(unit, 'double_del_avg_inp_deriv_mp', [daidm1, daidm2])
 
+
+def add_slow_inp_deriv_mp(unit):
+    """ Adds the slow input derivatives listed by port.
+
+        The slow input derivatives come from (lpf_mid - lpf_slow).
+        As with inp_deriv_mp, this works only for multiport units.
+
+        slow inp_deriv_mp[i,j] will contain the slow derivative of the j-th
+        input at the i-th port, following the order in the port_idx list.
+
+        This requirement was created for normal rga synapses, with its
+        implementation in the rga_reqs class.
+
+        The optional parameter 'inp_deriv_ports' can
+        be passed to the 'rga_reqs' constructor so that the input derivative is
+        only calculated for the ports whose number is in the inp_deriv_ports
+        list.
+
+        Any synapse using this requirement should have the pre_lpf_mid and
+        pre_lpf_slow requirements.
+    """
+    if not unit.multiport:
+        raise AssertionError('The slow inp_deriv_mp requirement is for ' + 
+                             'multiport units.')
+    if not hasattr(unit, 'inp_deriv_ports'):
+        setattr(unit, 'inp_deriv_ports', list(range(unit.n_ports)))
+    # So that the unit can access the LPF'd activities of its presynaptic units
+    # it needs a list with the ID's of the presynaptic units, arranged by port.
+    # pre_list_mp[i,j] will contain the ID of the j-th input at the i-th port.
+    # In addition, we need to know how many delay steps there are for each input.
+    # pre_del_mp[i,j] will contain the delay steps of the j-th input at the i-th
+    # port. Both lists will show no inputs in the ports not present in the
+    # optional list inp_deriv_ports.
+    if not hasattr(unit, 'pre_list_del_mp'): # inp_deriv_mp also adds this
+        syns = unit.net.syns[unit.ID]
+        pre_list_mp = []
+        pre_del_mp = []
+        for p, lst in enumerate(unit.port_idx):
+            if p in unit.inp_deriv_ports:  
+                pre_list_mp.append([syns[uid].preID for uid in lst])
+                pre_del_mp.append([syns[uid].delay_steps for uid in lst])
+            else:
+                pre_list_mp.append([])
+                pre_del_mp.append([])
+        pre_list_del_mp = list(zip(pre_list_mp, pre_del_mp)) # prezipping
+        setattr(unit, 'pre_list_del_mp', pre_list_del_mp)
+    # initializing all derivatives with zeros
+    pre_list_mp = [pld[0] for pld in unit.pre_list_del_mp]
+    slow_inp_deriv_mp = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
+    setattr(unit, 'slow_inp_deriv_mp', slow_inp_deriv_mp)
+    # the normal_rga synapses need a list with their index in the
+    # slow_inp_deriv_mp list
+    syns = unit.net.syns
+    for p in unit.inp_deriv_ports:
+        for loc_idx, syn_idx in enumerate(unit.port_idx[p]):
+            setattr(syns[unit.ID][syn_idx], 'sid_idx', loc_idx)
+            assert pre_list_mp[p][loc_idx] == syns[unit.ID][syn_idx].preID, [
+                   'Failed sanity check at add_slow_inp_deriv_mp']
+
+def add_avg_slow_inp_deriv_mp(unit):
+    """ Adds the average of the slow derivatives of all inputs at each port. 
+        
+        This requirement was created for normal rga synapses, with its
+        implementation in the rga_reqs class.
+        Depending on the optional parameter 'inp_deriv_ports' of the unit 
+        (used by upd_slow_inp_deriv_mp) the derivatives may come only for 
+        some ports.
+    """
+    if not syn_reqs.slow_inp_deriv_mp in unit.syn_needs:
+        raise AssertionError('The avg_slow_inp_deriv_mp requirement needs ' +
+                             'the slow_inp_deriv_mp requirement')
+    avg_slow_inp_deriv_mp = [ 0. for _ in unit.port_idx]
+    setattr(unit, 'avg_slow_inp_deriv_mp', avg_slow_inp_deriv_mp)
 
 
 def add_exp_euler_vars(unit):
