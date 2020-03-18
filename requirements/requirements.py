@@ -819,7 +819,10 @@ def add_double_del_inp_deriv_mp(unit):
         for loc_idx, syn_idx in enumerate(unit.port_idx[p]):
             if (syns[unit.ID][syn_idx].type is synapse_types.gated_rga_diff or
                 syns[unit.ID][syn_idx].type is synapse_types.gated_slide_rga_diff or
-                syns[unit.ID][syn_idx].type is synapse_types.gated_normal_rga_diff):
+                (syns[unit.ID][syn_idx].type is 
+                    synapse_types.gated_normal_rga_diff) or
+                (syns[unit.ID][syn_idx].type is 
+                    synapse_types.gated_normal_slide_rga_diff)):
                 setattr(syns[unit.ID][syn_idx], 'ddidm_idx', loc_idx)
                 assert pre_list_mp[p][loc_idx] == syns[unit.ID][syn_idx].preID, [
                        'Failed sanity check at add_double_del_inp_deriv_mp']
@@ -881,21 +884,21 @@ def add_slow_inp_deriv_mp(unit):
     # pre_del_mp[i,j] will contain the delay steps of the j-th input at the i-th
     # port. Both lists will show no inputs in the ports not present in the
     # optional list inp_deriv_ports.
-    if not hasattr(unit, 'pre_list_del_mp'): # inp_deriv_mp also adds this
-        syns = unit.net.syns[unit.ID]
-        pre_list_mp = []
-        pre_del_mp = []
-        for p, lst in enumerate(unit.port_idx):
-            if p in unit.inp_deriv_ports:  
-                pre_list_mp.append([syns[uid].preID for uid in lst])
-                pre_del_mp.append([syns[uid].delay_steps for uid in lst])
-            else:
-                pre_list_mp.append([])
-                pre_del_mp.append([])
-        pre_list_del_mp = list(zip(pre_list_mp, pre_del_mp)) # prezipping
-        setattr(unit, 'pre_list_del_mp', pre_list_del_mp)
+    # inp_deriv_mp also adds pre_list_del_mp. You should add it in both
+    # requirements so the lists stay up to date with any new synapses.
+    syns = unit.net.syns[unit.ID]
+    pre_list_mp = []
+    pre_del_mp = []
+    for p, lst in enumerate(unit.port_idx):
+        if p in unit.inp_deriv_ports:  
+            pre_list_mp.append([syns[uid].preID for uid in lst])
+            pre_del_mp.append([syns[uid].delay_steps for uid in lst])
+        else:
+            pre_list_mp.append([])
+            pre_del_mp.append([])
+    pre_list_del_mp = list(zip(pre_list_mp, pre_del_mp)) # prezipping
+    setattr(unit, 'pre_list_del_mp', pre_list_del_mp)
     # initializing all derivatives with zeros
-    pre_list_mp = [pld[0] for pld in unit.pre_list_del_mp]
     slow_inp_deriv_mp = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
     setattr(unit, 'slow_inp_deriv_mp', slow_inp_deriv_mp)
     # the normal_rga synapses need a list with their index in the
