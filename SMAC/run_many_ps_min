@@ -1,0 +1,9 @@
+# coding: utf-8
+
+# Launch many instances of psmac_minimal
+for i in 1 2 3 4
+do
+    echo "launching instance $i"
+    ./psmac_minimal.py $i &
+done
+
