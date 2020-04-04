@@ -837,12 +837,12 @@ if __name__=='__main__':
     
     # 5) The scenario object
     scenario = Scenario({"run_obj": "quality",   # we optimize quality (alternatively runtime)
-                        "runcount-limit": 5,   # maximum function evaluations
+                        "runcount-limit": 100,   # maximum function evaluations
                         "cs": cs,               # configuration space
                         "deterministic": "false",
                         "shared_model": True,
                         "ta" : eval_config,
-                        "wallclock_limit" : 120,
+                        "wallclock_limit" : 400000,
                         "input_psmac_dirs": "/home/sergio/projects/draculab/SMAC/smac_outs/",
                         "output_dir":"/home/sergio/projects/draculab/SMAC/smac_outs/"
                         })
@@ -854,8 +854,11 @@ if __name__=='__main__':
                     tae_runner=eval_config, run_id=seed)
     incumbent = smac.optimize()
 
-    for inc in incumbent:
-        dic = inc.get_dictionary()
-        for entry in dic:
-            print('\'' + entry + '\' : '+ str(dic[entry]) + ',') 
+    print("Incumbent for run %d:" %(seed))
+    print(incumbent.get_dictionary())
+
+    #for inc in incumbent:
+    #    dic = inc.get_dictionary()
+    #    for entry in dic:
+    #        print('\'' + entry + '\' : '+ str(dic[entry]) + ',') 
     
