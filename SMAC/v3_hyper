@@ -5,7 +5,7 @@
 # Search for hyperparameters that lead to good reaching for the model in v3_normal_OG.
 # 
 
-if __name__=='main':
+if __name__=='__main__':
     # Import ConfigSpace and different types of parameters
     from smac.configspace import ConfigurationSpace
     from ConfigSpace.hyperparameters import CategoricalHyperparameter,     UniformFloatHyperparameter, UniformIntegerHyperparameter
@@ -30,11 +30,13 @@ if __name__=='main':
     argv = sys.argv
     if len(argv) != 2:
         raise ValueError('v3_hyper receives a single integer argument')
-        try:
-            seed = int(argv[1])
-        except ValueError:
-            print('Incorrect argument. Using default seed.')
-            seed = 3    
+    try:
+        seed = int(argv[1])
+    except ValueError:
+        print('Incorrect argument. Using default seed.')
+        seed = 3    
+
+    print(seed)
 
     logging.basicConfig(level=logging.DEBUG) #INFO)
 
@@ -841,15 +843,15 @@ if __name__=='main':
                         "shared_model": True,
                         "ta" : eval_config,
                         "wallclock_limit" : 120,
-                        "input_psmac_dirs": "/Users/sergio/projects/draculab/SMAC/smac_outs/",
-                        "output_dir":"/Users/sergio/projects/draculab/SMAC/smac_outs/"
+                        "input_psmac_dirs": "/home/sergio/projects/draculab/SMAC/smac_outs/",
+                        "output_dir":"/home/sergio/projects/draculab/SMAC/smac_outs/"
                         })
     
     
     # Optimize, using a SMAC object
     print("Optimizing! Depending on your machine, this might take a few minutes.")
     smac = SMAC4AC(scenario=scenario, rng=np.random.RandomState(seed),
-                    tae_runner=eval_config)
+                    tae_runner=eval_config, run_id=seed)
     incumbent = smac.optimize()
 
     for inc in incumbent:

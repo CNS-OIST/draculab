@@ -13,8 +13,7 @@ from ConfigSpace.conditions import InCondition
 from smac.tae.execute_func import ExecuteTAFuncDict
 from smac.configspace import Configuration
 from smac.scenario.scenario import Scenario
-from smac.facade.psmac_facade import PSMAC
-from smac.facade.smac_facade import SMAC
+from smac.facade.smac_ac_facade import SMAC4AC
 import numpy as np
 import sys
 import logging
@@ -84,7 +83,7 @@ if __name__=='__main__':
         print('Incorrect argument. Using default seed.')
         seed = 3
 
-    smac = SMAC(scenario=scenario, rng=np.random.RandomState(seed),
+    smac = SMAC4AC(scenario=scenario, rng=np.random.RandomState(seed),
                     tae_runner=eval_config, run_id=seed)
     smac_incumbent = smac.optimize()
     inc_value = eval_config(smac_incumbent.get_dictionary())
