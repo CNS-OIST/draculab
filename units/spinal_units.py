@@ -1001,7 +1001,7 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
         The presynaptic units should have the lpf_fast and lpf_mid requirements,
         since these will be added by the gated_rga synapse.
 
-        This units has the required parameters to use euler_maru integration if
+        This unit has the required parameters to use euler_maru integration if
         this is specified in the parameters.
     """
     def __init__(self, ID, params, network):

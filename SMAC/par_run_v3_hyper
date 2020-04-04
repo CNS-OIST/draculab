@@ -1,0 +1,8 @@
+# coding: utf-8
+
+# Launch many instances of v3_hyper
+for i in 1 2 3 4
+do
+    echo "launching instance $i"
+    ./v3_hyper $i &
+done

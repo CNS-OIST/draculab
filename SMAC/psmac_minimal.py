@@ -17,10 +17,11 @@ from smac.facade.psmac_facade import PSMAC
 from smac.facade.smac_facade import SMAC
 import numpy as np
 import sys
+import logging
 
 
-# In[2]:
 
+logging.basicConfig(level=logging.DEBUG)
 
 cs = ConfigurationSpace()
 mu = UniformFloatHyperparameter("mu", 0.1, 4.0, default_value=0.5)
@@ -42,7 +43,7 @@ scenario = Scenario({"run_obj": "quality",   # we optimize quality (alternativel
                      "deterministic": "false",
                      "shared_model": True,
                      "ta" : eval_config,
-                     "wallclock_limit" : 500.,
+                     "wallclock_limit" : 30.,
                      "input_psmac_dirs": "smac3_outz",
                      "output_dir" : "smac3_outz"
                      })
