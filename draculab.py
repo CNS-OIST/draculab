@@ -270,6 +270,10 @@ class synapse_types(Enum):
     gated_diff_inp_sel = 208 # differential version of gated_inp_sel
     gated_bp_rga = 209 # gated_rga with betrayal punishment
     gated_rga_diff = 210 # gated_rga with double time delays
+    gated_slide_rga_diff = 211 # gated_rga_diff with sliding time delay
+    gated_normal_rga_diff = 212 # gated_rga_diff with normalized correlations
+    gated_normal_slide_rga_diff = 213 # time delay slide, normalized correlations
+    gated_normal_rga = 214 # gated_rga with normalized correlation
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -362,6 +366,18 @@ class synapse_types(Enum):
         elif self == synapse_types.gated_rga_diff:
             from synapses.spinal_syns import gated_rga_diff_synapse 
             syn_class = gated_rga_diff_synapse
+        elif self == synapse_types.gated_slide_rga_diff:
+            from synapses.spinal_syns import gated_slide_rga_diff
+            syn_class = gated_slide_rga_diff
+        elif self == synapse_types.gated_normal_rga_diff:
+            from synapses.spinal_syns import gated_normal_rga_diff
+            syn_class = gated_normal_rga_diff
+        elif self == synapse_types.gated_normal_slide_rga_diff:
+            from synapses.spinal_syns import gated_normal_slide_rga_diff
+            syn_class = gated_normal_slide_rga_diff
+        elif self == synapse_types.gated_normal_rga:
+            from synapses.spinal_syns import gated_normal_rga
+            syn_class = gated_normal_rga
         else:
             raise NotImplementedError('Attempting retrieve the class of an unknown synapse model')
         
@@ -512,6 +528,8 @@ class syn_reqs(Enum):
     integ_decay_act = 119 # integral of the activity with slow decay
     double_del_inp_deriv_mp = 120 # del_inp_deriv_mp with two values for two delays
     double_del_avg_inp_deriv_mp = 121 # del_avg_inp_deriv_mp with two delays
+    slow_inp_deriv_mp = 122 # derivative of the inputs using lpf_mid and lpf_slow
+    avg_slow_inp_deriv_mp = 123 # avarage of all slow_inp_deriv_mp values per port
 
 
     def list_names():
@@ -528,7 +546,7 @@ class syn_reqs(Enum):
         """
         high_priority = {'lpf_fast', 'lpf_mid', 'lpf_slow', 
                          'mp_inputs', 'mp_weights'}
-        mid_priority = {'sc_inp_sum'}
+        mid_priority = {'sc_inp_sum', 'inp_deriv_mp'}
         if self.name in high_priority:
             return 1
         elif self.name in mid_priority:

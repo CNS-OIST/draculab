@@ -775,6 +775,9 @@ def add_double_del_inp_deriv_mp(unit):
 
         This requirement was created for the gated_bp_rga_diff synapse, and its
         implementation lives in the rga_reqs class of spinal_units.py.
+        If it is used with a synapse type other than gated_rga_diff or
+        gated_slide_rga_diff the code below must be modified so ddidm_idx is set
+        on the synapse.
         
         The optional parameter 'inp_deriv_ports' can be passed to the 'rga_reqs'
         constructor so that the input derivative is only calculated for the
@@ -814,7 +817,12 @@ def add_double_del_inp_deriv_mp(unit):
     syns = unit.net.syns
     for p in unit.inp_deriv_ports:
         for loc_idx, syn_idx in enumerate(unit.port_idx[p]):
-            if syns[unit.ID][syn_idx].type is synapse_types.gated_rga_diff:
+            if (syns[unit.ID][syn_idx].type is synapse_types.gated_rga_diff or
+                syns[unit.ID][syn_idx].type is synapse_types.gated_slide_rga_diff or
+                (syns[unit.ID][syn_idx].type is 
+                    synapse_types.gated_normal_rga_diff) or
+                (syns[unit.ID][syn_idx].type is 
+                    synapse_types.gated_normal_slide_rga_diff)):
                 setattr(syns[unit.ID][syn_idx], 'ddidm_idx', loc_idx)
                 assert pre_list_mp[p][loc_idx] == syns[unit.ID][syn_idx].preID, [
                        'Failed sanity check at add_double_del_inp_deriv_mp']
@@ -844,6 +852,79 @@ def add_double_del_avg_inp_deriv_mp(unit):
     setattr(unit, 'double_del_avg_inp_deriv_mp', [daidm1, daidm2])
 
 
+def add_slow_inp_deriv_mp(unit):
+    """ Adds the slow input derivatives listed by port.
+
+        The slow input derivatives come from (lpf_mid - lpf_slow).
+        As with inp_deriv_mp, this works only for multiport units.
+
+        slow inp_deriv_mp[i,j] will contain the slow derivative of the j-th
+        input at the i-th port, following the order in the port_idx list.
+
+        This requirement was created for normal rga synapses, with its
+        implementation in the rga_reqs class.
+
+        The optional parameter 'inp_deriv_ports' can
+        be passed to the 'rga_reqs' constructor so that the input derivative is
+        only calculated for the ports whose number is in the inp_deriv_ports
+        list.
+
+        Any synapse using this requirement should have the pre_lpf_mid and
+        pre_lpf_slow requirements.
+    """
+    if not unit.multiport:
+        raise AssertionError('The slow inp_deriv_mp requirement is for ' + 
+                             'multiport units.')
+    if not hasattr(unit, 'inp_deriv_ports'):
+        setattr(unit, 'inp_deriv_ports', list(range(unit.n_ports)))
+    # So that the unit can access the LPF'd activities of its presynaptic units
+    # it needs a list with the ID's of the presynaptic units, arranged by port.
+    # pre_list_mp[i,j] will contain the ID of the j-th input at the i-th port.
+    # In addition, we need to know how many delay steps there are for each input.
+    # pre_del_mp[i,j] will contain the delay steps of the j-th input at the i-th
+    # port. Both lists will show no inputs in the ports not present in the
+    # optional list inp_deriv_ports.
+    # inp_deriv_mp also adds pre_list_del_mp. You should add it in both
+    # requirements so the lists stay up to date with any new synapses.
+    syns = unit.net.syns[unit.ID]
+    pre_list_mp = []
+    pre_del_mp = []
+    for p, lst in enumerate(unit.port_idx):
+        if p in unit.inp_deriv_ports:  
+            pre_list_mp.append([syns[uid].preID for uid in lst])
+            pre_del_mp.append([syns[uid].delay_steps for uid in lst])
+        else:
+            pre_list_mp.append([])
+            pre_del_mp.append([])
+    pre_list_del_mp = list(zip(pre_list_mp, pre_del_mp)) # prezipping
+    setattr(unit, 'pre_list_del_mp', pre_list_del_mp)
+    # initializing all derivatives with zeros
+    slow_inp_deriv_mp = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
+    setattr(unit, 'slow_inp_deriv_mp', slow_inp_deriv_mp)
+    # the normal_rga synapses need a list with their index in the
+    # slow_inp_deriv_mp list
+    syns = unit.net.syns
+    for p in unit.inp_deriv_ports:
+        for loc_idx, syn_idx in enumerate(unit.port_idx[p]):
+            setattr(syns[unit.ID][syn_idx], 'sid_idx', loc_idx)
+            assert pre_list_mp[p][loc_idx] == syns[unit.ID][syn_idx].preID, [
+                   'Failed sanity check at add_slow_inp_deriv_mp']
+
+def add_avg_slow_inp_deriv_mp(unit):
+    """ Adds the average of the slow derivatives of all inputs at each port. 
+        
+        This requirement was created for normal rga synapses, with its
+        implementation in the rga_reqs class.
+        Depending on the optional parameter 'inp_deriv_ports' of the unit 
+        (used by upd_slow_inp_deriv_mp) the derivatives may come only for 
+        some ports.
+    """
+    if not syn_reqs.slow_inp_deriv_mp in unit.syn_needs:
+        raise AssertionError('The avg_slow_inp_deriv_mp requirement needs ' +
+                             'the slow_inp_deriv_mp requirement')
+    avg_slow_inp_deriv_mp = [ 0. for _ in unit.port_idx]
+    setattr(unit, 'avg_slow_inp_deriv_mp', avg_slow_inp_deriv_mp)
+
 
 def add_exp_euler_vars(unit):
     """ Adds several variables used by the exp_euler integration method. """
@@ -869,19 +950,32 @@ def add_out_norm_factor(unit):
         The out_norm_factor value produced comes from a parameter called
         des_out_w_abs_sum divided by the value of this sum.
 
+        If the optional paramter 'out_norm_type' is included in the postsynaptic
+        unit, only the synapses whose type has a value equal to this integer
+        will be included in the computation of the factor.
+
         The update function implementaion is part of the unit class. 
     """
     if not hasattr(unit, 'des_out_w_abs_sum'):
         raise AssertionError('The out_norm_factor requirement needs the ' +
                              'des_out_w_abs_sum attribute in its unit.')
+    if hasattr(unit, 'out_norm_type'):
+        sel_type = True
+        syn_type_val = unit.out_norm_type
+    else:
+        sel_type = False
+        syn_type_val = None
     # Obtain indexes to all of the unit's connections in net.syns
     out_syns_idx = []
     out_w_abs_sum = 0.
     for list_idx, syn_list in enumerate(unit.net.syns):
         for syn_idx, syn in enumerate(syn_list):
             if syn.preID == unit.ID:
-                out_syns_idx.append((list_idx, syn_idx))
-                out_w_abs_sum += abs(syn.w)
+                if ((sel_type is True and syn_type_val == syn.type.value) or
+                    sel_type is False):                    
+                    out_syns_idx.append((list_idx, syn_idx))
+                    out_w_abs_sum += abs(syn.w)
+                
     out_norm_factor = unit.des_out_w_abs_sum / (out_w_abs_sum + 1e-32)
     setattr(unit, 'out_syns_idx', out_syns_idx)
     setattr(unit, 'out_norm_factor', out_norm_factor)
