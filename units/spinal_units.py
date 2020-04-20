@@ -206,11 +206,11 @@ class am_pm_oscillator(unit, rga_reqs):
     order to obtain the derivative of those inputs without the need of two low-pass
     filters and new requirements. 
 
-    The equations of the model look like this:
-    tau_u * u'   = c' + Is*th'*cos(th) + <Is>'*sin(th)
-    tau_c * c'   = Is*(1-c) + Im*c
+    The equations of the model currently look like this:
+    tau_u * u'   = u*(1-u)*[c' + (c-u) + <Is>'*sin(th) + <Is>th'cos(th)]
+    tau_c * c'   = [Is + Im*c] * (1-c)
     tau_t * th'  = w + F(u_1, ..., u_n, U)
-    tau_s * <Is>'= Is - <Is>
+    tau_s * <Is>'= tanh(Is - <Is>)
 
     where: 
         u = units's activity,
@@ -349,7 +349,8 @@ class am_pm_oscillator(unit, rga_reqs):
         #Du = (Dc + I[0]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])) / self.tau_u
         #ex = np.exp(-y[3]*np.sin(y[2]))
         #prime = 0.2*ex/(1.+ex)
-        Du = ((1.-y[0]) * (y[0]-.01) * (Dc + (y[1] - y[0]) + 
+        Du = ((1.-y[0]) * (y[0]-.01) * (y[1]*Dc + (y[1] - y[0]) + 
+        #Du = ((1.-y[0]) * (y[0]-.01) * (Dc + (y[1] - y[0]) + 
                #prime*(y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])))) / self.tau_u
                y[3]*Dth*np.cos(y[2]) + DI0*np.sin(y[2]))) / self.tau_u
         return np.array([Du, Dc, Dth, DI0])
