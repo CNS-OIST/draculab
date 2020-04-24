@@ -211,6 +211,7 @@ class am_pm_oscillator(unit, rga_reqs):
     tau_c * c'   = [Is + Im*c] * (1-c)
     tau_t * th'  = w + F(u_1, ..., u_n, U)
     tau_s * <Is>'= tanh(Is - <Is>)
+    ACTUALLY, I'M IN THE MIDDLE OF MODIFICATIONS
 
     where: 
         u = units's activity,
@@ -339,12 +340,14 @@ class am_pm_oscillator(unit, rga_reqs):
         #Dc = max(y[1],1e-3)*max(1. - y[1],1e-3)*(I[0] + I[1]) / self.tau_c
         # The Dc version below is when I[0] is always positive
         Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        #Dc = y[1] * (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         #slow_I0 = self.lpf_slow_mp_inp_sum[0]
         #Dc = ( I[0]*(1. - y[1]) + (I[1] - slow_I0)*y[1] ) / self.tau_c
         #Dc = ( I[0]*(1. - y[1]) - slow_I0*y[1] ) / self.tau_c
         Dth = (self.omega + self.f(I)) / self.tau_t
         #DI0 = np.tanh(I[0] - y[3]) / self.tau_s # default implementation
-        DI0 = np.tanh(I[0]+I[1] - y[3]) / self.tau_s # Add both inputs
+        #DI0 = np.tanh(I[0]+I[1] - y[3]) / self.tau_s # Add both inputs
+        DI = (np.tanh(I[0]+I[1]) - y[3]) / self.tau_s
         #DI0 = (sum(self.get_mp_inputs(t)[0]) - y[3]) / self.tau_s
         #DIs = self.D_factor * (I[0] - y[3])
         #Du = (Dc + I[0]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])) / self.tau_u
@@ -378,11 +381,12 @@ class am_pm_oscillator(unit, rga_reqs):
         # Obtain the derivatives
         #Dc = max(y[1],1e-3)*max(1. - y[1],1e-3)*(I[0] + I[1]) / self.tau_c
         # The Dc version below is when I[0] is always positive
-        #Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        #Dc = y[1] * (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         Dth = (self.omega + self.f(I)) / self.tau_t
         #DI0 = np.tanh(I[0] - y[3]) / self.tau_s # default implementation
         DI0 = np.tanh(I[0]+I[1] - y[3]) / self.tau_s # Add both inputs
+        #DI = (np.tanh(I[0]+I[1]) - y[3]) / self.tau_s
         #Dc += DI0 #/self.tau_c
         #Dc = self.H(self.net.sim_time-600.)*y[1]*(1. - y[1])*(I[0] + I[1]) / self.tau_c
         Du = ((1.-y[0]) * (y[0]-.01) * (Dc + (y[1] - y[0]) + 
@@ -524,12 +528,19 @@ class am_oscillator(unit, rga_reqs):
         I = [ np.dot(i, w) for i, w in 
               zip(self.get_mp_inputs(t), self.get_mp_weights(t)) ]
         # Obtain the derivatives
-        #Dc = I * y[1] * (1. - y[1]) / self.tau_c
-        Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        #Dc = (I[0]+I[1]) * y[1] * (1. - y[1]) / self.tau_c
+        #Dc = (I[0]+I[1]) * (-y[1] - .5) * (1. - y[1]) / self.tau_c
+        #Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         #DI = np.tanh(I - y[2]) / self.tau_s
-        DI = np.tanh(I[0]+I[1] - y[2]) / self.tau_s
+        #DI = np.tanh(I[0]+I[1] - y[2]) / self.tau_s
+        #DI = (np.tanh(I[0]+I[1]) - y[2]) / self.tau_s
+        #Is = I[0] + I[1]
+        #DI = (Is + 1.)*(1. - Is)/self.tau_s
+        DI = (np.tanh(I[0]+I[1]) - y[2]) / self.tau_s
         th = self.omega*t
-        Du = ((1.-y[0]) * (y[0]-.01) * (Dc + (y[1] - y[0]) + 
+        #Du = ((1.-y[0]) * (y[0]-.01) * (Dc + (y[1] - y[0]) + 
+        Du = ((1.-y[0]) * (y[0]-.01) * ( y[1] - y[0] + 
                y[2]*self.omega*np.cos(th) + DI*np.sin(th))) / self.tau_u
         return np.array([Du, Dc, DI])
 
@@ -549,14 +560,140 @@ class am_oscillator(unit, rga_reqs):
         #I = sum(self.mp_inp_sum[:,s])
         I = [ port_sum[s] for port_sum in self.mp_inp_sum ]
         # Obtain the derivatives
-        #Dc = I * (y[1]-0.01) * (1. - y[1]) / self.tau_c
-        Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        #Dc = (I[0]+I[1]) * (-y[1] -.5) * (1. - y[1]) / self.tau_c
+        #Dc = (I[0]+I[1]) * y[1] * (1. - y[1]) / self.tau_c
+        #Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         #DI = np.tanh(I - y[2]) / self.tau_s
-        DI = np.tanh(I[0]+I[1] - y[2]) / self.tau_s
+        #DI = np.tanh(I[0]+I[1] - y[2]) / self.tau_s
+        DI = 0. #(np.tanh(I[0]+I[1]) - y[2]) / self.tau_s
+        #DI = (1./(1.+np.exp(-0.5*(I[0] + I[1])))-y[2])/self.tau_s
         th = self.omega*t
-        Du = ((1.-y[0]) * (y[0]-.01) * (Dc + (y[1] - y[0]) + 
-               y[2]*self.omega*np.cos(th) + DI*np.sin(th))) / self.tau_u
+        #Du = ((1.-y[0]) * (y[0]-.01) * (Dc + (y[1] - y[0]) + 
+        #Du = ((1.-y[0]) * (y[0]-.01) * ( y[1] - y[0] + 
+        #       y[2]*self.omega*np.cos(th) + DI*np.sin(th))) / self.tau_u
+        # experimental 2D dynamics:
+        Is = I[0] + I[1]
+        Du = (y[1] - y[0] + np.tanh(Is) * np.sin(th)) / self.tau_u
         return np.array([Du, Dc, DI])
+
+
+class am_oscillator2D(unit, rga_reqs):
+    """
+    Amplitude-modulated oscillator with two state variables.
+
+    The outuput of the unit is the sum of a constant part and a sinusoidal part.
+    Both of their amplitudes are modulated by the sum of the inputs at port 0.
+
+    The model uses 2-dimensional dynamics, so its state at a given time is a 
+    3-element array. The first element corresponds to the unit's activity, which
+    comes from the sum of the constant part and the oscillating part. The second
+    element corresponds to the constant part of the output.
+
+    For the sake of RGA synapses two ports are used. Port 0 is assumed to be
+    the "error" port.
+    
+    The equations of the model currently look like this:
+    tau_u * u'   = (c - u + tanh(I)*sin(th) / tau_u
+    tau_c * c'   = c * (I0 + I1*c)*(1-c) / tau_c
+
+    where: 
+        u = units's activity,
+        c = constant part of the unit's activity,
+        I0 = scaled input sum at port 0
+        I1 = scaled input sum at port 1
+        I = I0+I1
+        th = t*omega (phase of oscillation).
+    """
+
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the parent's constructor.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                'tau_u' : Time constant for the unit's activity.
+                'tau_c' : Time constant for non-oscillatory dynamics.
+                'omega' : intrinsic oscillation angular frequency. 
+                'multidim' : the Boolean literal 'True'. This is used to indicate
+                             net.create that the 'init_val' parameter may be a single
+                             initial value even if it is a list.
+                Using rga synapses brings an extra required parameter:
+                'custom_inp_del' : an integer indicating the delay that the rga
+                                  learning rule uses for the lateral port inputs. 
+                                  The delay is in units of min_delay steps. 
+                OPTIONAL PARAMETERS
+                'mu' : mean of white noise when using noisy integration
+                'sigma' : standard deviation of noise when using noisy integration
+        Raises:
+            ValueError
+
+        """
+        params['multidim'] = True
+        if len(params['init_val']) != 2:
+            raise ValueError("Initial values for the am_oscillator2D must " +
+                             "consist of a 2-element array.")
+        if 'n_ports' in params:
+            if params['n_ports'] != 2:
+                raise ValueError("am_oscillator2D units use two input ports.")
+        else:
+            params['n_ports'] = 2
+        unit.__init__(self, ID, params, network) # parent's constructor
+        self.tau_u = params['tau_u']
+        self.tau_c = params['tau_c']
+        self.omega = params['omega']
+        if 'custom_inp_del' in params:
+            self.custom_inp_del = params['custom_inp_del']
+        if 'mu' in params:
+            self.mu = params['mu']
+        if 'sigma' in params:
+            self.sigma = params['sigma']
+        self.mudt = self.mu * self.time_bit # used by flat updaters
+        self.mudt_vec = np.zeros(self.dim)
+        self.mudt_vec[0] = self.mudt
+        self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
+        self.needs_mp_inp_sum = True # dt_fun uses mp_inp_sum
+
+    def derivatives(self, y, t):
+        """ Implements the equations of the am_oscillator.
+
+        Args:
+            y : list or Numpy array with the 3-element state vector:
+              y[0] : u  -- unit's activity,
+              y[1] : c  -- constant part of the input,
+            t : time when the derivative is evaluated.
+        Returns:
+            2-element numpy array with state variable derivatives.
+        """
+        # get the input sum at each port
+        I = [ np.dot(i, w) for i, w in 
+              zip(self.get_mp_inputs(t), self.get_mp_weights(t)) ]
+        # Obtain the derivatives
+        Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        th = self.omega*t
+        Du = (y[1] - y[0] + np.tanh(I[0]+I[1])*np.sin(th)) / self.tau_u
+        return np.array([Du, Dc])
+
+    def dt_fun(self, y, s):
+        """ The derivatives function when the network is flat.
+
+            y : list or Numpy array with the 3-element state vector:
+              y[0] : u  -- unit's activity,
+              y[1] : c  -- constant part of the input,
+            s : index to inp_sum for current time point
+        Returns:
+            3-element numpy array with state variable derivatives.
+        """
+        t = self.times[s - self.min_buff_size]
+        # get the input sum at each port
+        #I = sum(self.mp_inp_sum[:,s])
+        I = [ port_sum[s] for port_sum in self.mp_inp_sum ]
+        # Obtain the derivatives
+        Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        th = self.omega*t
+        Du = (y[1] - y[0] + np.tanh(I[0]+I[1])*np.sin(th)) / self.tau_u
+        return np.array([Du, Dc])
 
 
 class out_norm_sig(sigmoidal):
