@@ -1662,3 +1662,41 @@ class gated_diff_input_selection_synapse(gated_input_selection_synapse):
         self.w = self.w + u.acc_slow * self.alpha * Dpre * err_diff
 
 
+class static_l0_normal(synapse):
+    """ A static synapse with multiplicative normalization.
+
+        Weigths for all synapses of this type in a unit are scaled so that the
+        sum of their absolute values is 'w_sum'.
+        This is done by adding the l0_norm_factor to the postsynaptic unit.
+
+        Weights are not normalized instantly, but instead change with a given
+        time constant.
+    """
+    def __init__(self, params, network):
+    """
+        Constructor of the static_l0_normal synapse.
+
+        Args:
+            params: same as the synapse class with two additions.
+            REQUIRED PARAMETERS
+            'w_sum' : the sum of absolute weight values will add to this.
+                      Must be the same for all normalized synapses.
+            'tau_norml' : time constant for normalization.
+        Raises:
+            ValueError, AssertionError.
+    """
+        synapse.__init__(self, params, network)
+        self.tau_norml = params['tau_norml'] 
+        self.w_sum = params['w_sum']
+        if self.tau_norml <= 0.:
+            raise ValueError('tau_norml should be a positive value')
+        if self.w_sum <= 0.:
+            raise ValueError('w_sum should be a positive value')
+        self.alpha = self.net.min_delay / tau_norml
+        self.upd_requirements.update([syn_reqs.l0_norm_factor])
+
+    def update(self, time):
+        """ Update the weight normalization. """
+        nf = self.net.units[self.postID].l0_norm_factor
+        self.w = self.w + self.alpha * self.w * (nf*w_sum - 1.)
+

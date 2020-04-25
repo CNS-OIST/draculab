@@ -319,7 +319,9 @@ class unit():
 
 
     def get_weights(self, time):
-        """ Returns a list with the weights corresponding to the input list obtained with get_inputs.
+        """ Returns a list with the synaptic weights.
+        
+            The order corresponds to that in the list obtained with get_inputs.
         """
         return [ synapse.get_w(time) for synapse in self.net.syns[self.ID] ]
 
@@ -1081,6 +1083,13 @@ class unit():
         out_w_abs_sum = sum([abs(self.net.syns[uid][sid].w)
                             for uid, sid in self.out_syns_idx])
         self.out_norm_factor = self.des_out_w_abs_sum / (out_w_abs_sum + 1e-32)
+
+
+    def upd_l0_norm_factor(self, time):
+        """ Update the factor to normalize the L0 norm for the weight vector. """
+        self.l0_norm_factor = 1. / (sum([abs(w) for w in 
+                                    self.get_weights(time)]) + 1e-32) 
+
 
     def upd_l0_norm_factor_mp(self, time):
         """ Update the factors to normalize the L0 norms for weight vectors. """
