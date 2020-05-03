@@ -281,7 +281,9 @@ class synapse_types(Enum):
     gated_normal_rga_diff = 212 # gated_rga_diff with normalized correlations
     gated_normal_slide_rga_diff = 213 # time delay slide, normalized correlations
     gated_normal_rga = 214 # gated_rga with normalized correlation
-    static_normal = 215 # static with multiplicative normalization
+    static_l0_normal = 215 # static with multiplicative normalization
+    normal_rga = 216 # rga with normalized correlation
+    rga_ge = 217 # rga modulated by the derivative of the global error
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -389,6 +391,12 @@ class synapse_types(Enum):
         elif self == synapse_types.static_l0_normal:
             from synapses.spinal_syns import static_l0_normal
             syn_class = static_l0_normal
+        elif self == synapse_types.normal_rga:
+            from synapses.spinal_syns import normal_rga
+            syn_class = normal_rga
+        elif self == synapse_types.rga_ge:
+            from synapses.spinal_syns import rga_ge
+            syn_class = rga_ge
         else:
             raise NotImplementedError('Attempting retrieve the class ' +
                                       'of an unknown synapse model')
@@ -542,6 +550,7 @@ class syn_reqs(Enum):
     double_del_avg_inp_deriv_mp = 121 # del_avg_inp_deriv_mp with two delays
     slow_inp_deriv_mp = 122 # derivative of the inputs using lpf_mid and lpf_slow
     avg_slow_inp_deriv_mp = 123 # avarage of all slow_inp_deriv_mp values per port
+    l0_norm_factor = 124 # factor to normalized the sum of absolute weight values
 
 
     def list_names():

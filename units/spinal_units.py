@@ -590,20 +590,23 @@ class am_oscillator2D(unit, rga_reqs):
     comes from the sum of the constant part and the oscillating part. The second
     element corresponds to the constant part of the output.
 
-    For the sake of RGA synapses two ports are used. Port 0 is assumed to be
-    the "error" port.
+    For the sake of RGA synapses at least two ports are used. Port 0 is assumed
+    to be the "error" port, whereas port 1 is the "lateral" port. Additionally,
+    if n_ports=3, then port 2 is the "global error" port, to be used by rga_ge
+    synapses.
     
     The equations of the model currently look like this:
-    tau_u * u'   = (c - u + tanh(I)*sin(th) / tau_u
-    tau_c * c'   = c * (I0 + I1*c)*(1-c) / tau_c
+    u'   = (c - u + A*tanh(I)*sin(th) / tau_u
+    c'   = c * (I0 + I1*c)*(1-c) / tau_c
 
     where: 
         u = units's activity,
         c = constant part of the unit's activity,
-        I0 = scaled input sum at port 0
-        I1 = scaled input sum at port 1
-        I = I0+I1
-        th = t*omega (phase of oscillation).
+        I0 = scaled input sum at port 0,
+        I1 = scaled input sum at port 1,
+        I = I0+I1,
+        th = t*omega (phase of oscillation),
+        A = amplitude of the oscillations.
     """
 
     def __init__(self, ID, params, network):
@@ -624,6 +627,9 @@ class am_oscillator2D(unit, rga_reqs):
                                   learning rule uses for the lateral port inputs. 
                                   The delay is in units of min_delay steps. 
                 OPTIONAL PARAMETERS
+                A = amplitude of the oscillations. Default is 1.
+                Using rga_ge synapses requires to set n_ports = 3:
+                'n_ports' : number of input ports. Default is 2.
                 'mu' : mean of white noise when using noisy integration
                 'sigma' : standard deviation of noise when using noisy integration
         Raises:
@@ -635,7 +641,7 @@ class am_oscillator2D(unit, rga_reqs):
             raise ValueError("Initial values for the am_oscillator2D must " +
                              "consist of a 2-element array.")
         if 'n_ports' in params:
-            if params['n_ports'] != 2:
+            if params['n_ports'] != 2 and params['n_ports'] != 3:
                 raise ValueError("am_oscillator2D units use two input ports.")
         else:
             params['n_ports'] = 2
@@ -645,6 +651,8 @@ class am_oscillator2D(unit, rga_reqs):
         self.omega = params['omega']
         if 'custom_inp_del' in params:
             self.custom_inp_del = params['custom_inp_del']
+        if 'A' in params: self.A = params['A']
+        else: self.A = 1.
         if 'mu' in params:
             self.mu = params['mu']
         if 'sigma' in params:
@@ -672,7 +680,8 @@ class am_oscillator2D(unit, rga_reqs):
         # Obtain the derivatives
         Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         th = self.omega*t
-        Du = (y[1] - y[0] + np.tanh(I[0]+I[1])*np.sin(th)) / self.tau_u
+        Du = (y[1] - y[0] + 
+              self.A * np.tanh(I[0]+I[1]) * np.sin(th)) / self.tau_u
         return np.array([Du, Dc])
 
     def dt_fun(self, y, s):
@@ -692,7 +701,8 @@ class am_oscillator2D(unit, rga_reqs):
         # Obtain the derivatives
         Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         th = self.omega*t
-        Du = (y[1] - y[0] + np.tanh(I[0]+I[1])*np.sin(th)) / self.tau_u
+        Du = (y[1] - y[0] + 
+              self.A * np.tanh(I[0]+I[1])*np.sin(th)) / self.tau_u
         return np.array([Du, Dc])
 
 
@@ -1441,7 +1451,6 @@ class inpsel_linear(linear):
              self.acc_slow = 0.
         else: 
             self.acc_slow = 1. - (1.-self.acc_slow)*self.slow_prop
-
 
 
 class chwr_linear(unit):

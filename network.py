@@ -150,9 +150,11 @@ class network():
         assert self.sim_time == 0., 'Units are being created when the ' + \
                                     'simulation time is not zero'
 
-        # Any entry in 'params' other than 'coordinates', 'type', 'function', 
-        # 'branch_params', 'integ_meth', or 'init_val'  should either be a scalar,
-        # a boolean, a list of length 'n', or a numpy array of length 'n'.  
+        # Entries in 'params' are expected to be either be a scalar,
+        # a boolean, a list of length 'n', or a numpy array of length 'n'. 
+        # The following parameters are particular exceptions:
+        # 'coordinates', 'type', 'function', 'branch_params', 'integ_meth',
+        # 'init_val', and 'extra_requirementes'.
         listed = [] # the entries in 'params' specified with a list
         accepted_types = [float, int, np.float_, np.int_, bool, str] # accepted data types
         for par in params:
@@ -190,6 +192,16 @@ class network():
                         listed.append(par)
                 elif not type(params[par]) is str:
                     raise TypeError('Invalid type given for the integ_meth parameter')
+            elif par == 'extra_requirements':
+                if type(params[par]) is list:
+                    req_names = syn_reqs.list_names()
+                    for req in params[par]:
+                        if not req in req_names:
+                            raise ValueError('Attempting to create a unit with ' +
+                                             'an unknown extra_requirement')
+                else:
+                    raise ValueError('The extra_requirements parameter should'+
+                                     ' be a list of requirement names.')
             elif par == 'init_val' and 'multidim' in params and params['multidim'] is True:
             # 'init_val' can be a scalar, a list(array) or a list(array) of lists(arrays);
             # this presents a possible ambiguity when it is a list, because it could either be

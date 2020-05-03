@@ -619,7 +619,7 @@ def add_l0_norm_factor(unit):
         absolute values will be 1 if the weight vector is not zero, and zero
         otherwise.
     """
-    setattr(unit, 'l0_norm_factor_mp', 1.)
+    setattr(unit, 'l0_norm_factor', 1.)
 
 
 def add_l0_norm_factor_mp(unit):

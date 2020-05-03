@@ -43,7 +43,11 @@ class unit():
                 'integ_meth' : a string specifying an integration method for the unit.
                 'multidim' : a Boolean value indicating whether the unit is modeled by an
                              ODE with more than one equation. Defaults to False, and is set
-                             to False whenever 'init_val' has only one scalar value.
+                'extra_requirements' : a list of strings containing the names of
+                        requirements that will be added to the unit. It is not
+                        good practice to add requirements this way. Instead, use
+                        the synapse models, or the constructor of specific unit
+                        types.
             network: the network where the unit lives.
 
         Raises:
@@ -171,6 +175,9 @@ class unit():
         self.last_time = 0.  # time of last call to the update function
                             # Used by the upd_lpf_X functions (DEPRECATED)
         self.using_interp1d = False # True when interp1d is used for interpolation in get_act
+        if 'extra_requirements' in params:
+            for req in params['extra_requirements']:
+                exec('self.syn_needs.update([syn_reqs.'+req+'])')
         self.init_buffers() # This will create the buffers that store states and times
         self.functions = [] # will contain all the functions that update requirements
 
@@ -1312,15 +1319,16 @@ class sigmoidal(unit):
     """
     An implementation of a typical sigmoidal unit. 
     
-    Its output is produced by linearly suming the inputs (times the synaptic weights), 
-    and feeding the sum to a sigmoidal function, which constraints the output to values 
-    beween zero and one. The sigmoidal unit has the equation:
+    Its output is produced by linearly suming the inputs (times the synaptic
+    weights), and feeding the sum to a sigmoidal function, which constraints
+    the output to values beween zero and one. The sigmoidal unit has the equation:
     f(x) = 1. / (1. + exp(-slope*(x - thresh)))
 
     Because this unit operates in real time, it updates its value gradualy, with
     a 'tau' time constant. The dynamics of the unit are:
     tau * u' = f(inp) - u,
-    where 'inp' is the sum of inputs, and 'u' is the firing rate.
+    where 'inp' is the sum of inputs scaled by their weights, and 'u' is the 
+    firing rate.
     """
     def __init__(self, ID, params, network):
         """ The unit constructor.
