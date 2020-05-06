@@ -551,6 +551,7 @@ class syn_reqs(Enum):
     slow_inp_deriv_mp = 122 # derivative of the inputs using lpf_mid and lpf_slow
     avg_slow_inp_deriv_mp = 123 # avarage of all slow_inp_deriv_mp values per port
     l0_norm_factor = 124 # factor to normalized the sum of absolute weight values
+    del_inp_avg_mp = 125 # average of raw inputs at each port with a custom delay
 
 
     def list_names():

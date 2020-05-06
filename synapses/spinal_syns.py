@@ -347,6 +347,7 @@ class rga_ge(synapse):
         self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
         # most of the heavy lifting is done by requirements
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
+                             syn_reqs.pre_lpf_slow, # experimental
                              syn_reqs.lpf_fast, syn_reqs.lpf_mid, 
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
@@ -376,31 +377,38 @@ class rga_ge(synapse):
             updates lpf_fast, lpf_mid, and the average of approximate input
             derivatives for each port.
 
-            Notice the average of input derivatives can come form 
-            upd_pos_diff_avg, which considers only the inputs whose synapses
-            have positive values. To allow synapses to potentially become negative,
-            you need to change the synapse requirement in __init__ from 
-            pos_diff_avg to diff_avg, and the pos_diff_avg value used below to 
-            diff_avg.
-            Also, remove the line "if self.w < 0: self.w = 0"
         """
         u = self.net.units[self.postID]
         xp = u.del_avg_inp_deriv_mp[self.lat_port]
         up = u.get_lpf_fast(self.po_de) - u.get_lpf_mid(self.po_de)
-        sp = u.avg_inp_deriv_mp[self.err_port]
+        #sp = u.avg_inp_deriv_mp[self.err_port]
+        sp = u.del_avg_inp_deriv_mp[self.err_port]
         pre = self.net.units[self.preID]
-        spj = (pre.get_lpf_fast(self.delay_steps) -
-               pre.get_lpf_mid(self.delay_steps) )
-        gep = u.inp_deriv_mp[self.ge_port][0] # only one GE input
+        #spj = (pre.get_lpf_fast(self.delay_steps) -
+        #       pre.get_lpf_mid(self.delay_steps) )
+
         norm_fac = .5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w
+
+        gep = u.inp_deriv_mp[self.ge_port][0] # only one GE input
+
         #self.w += self.alpha * (up - xp) * (sp - spj) # normal rga
         #self.w += -self.alpha * gep * (up - xp) * (sp - spj) # modulated rga
         #self.w += self.alpha * ((up - xp) * (sp - spj) - gep*self.w*spj)
         #self.w += self.alpha * ((up - xp) * (sp - spj) - gep*spj)
-        u_act = u.act_buff[self.po_de]
+        u_act = u.act_buff[-1-self.po_de]
+        #pre_act = pre.act_buff[-1-self.po_de]
+        #self.w -= gep * u_act * pre_act # Hebbian-descent simile
         #self.w += self.alpha * ((up - xp) * (sp - spj) - gep*u_act*spj)
-        self.w += -gep*u_act*spj
+        #up_del = (u.get_lpf_fast(self.po_de) -
+        #          u.get_lpf_mid(self.po_de) )
+        #spj = (pre.get_lpf_fast(self.po_de+self.delay_steps) -
+        #       pre.get_lpf_slow(self.po_de+self.delay_steps) )
+        sj = pre.act_buff[-1-self.po_de+self.delay_steps]
+        s = self.del_inp_avg_mp[self.err_port]
+
+        #self.w -= gep*u_act*(spj - sp)
+        self.w -= gep*u_act*(sj - s)
 
 
 class normal_rga(synapse):

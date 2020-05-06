@@ -192,6 +192,127 @@ def add_pos_inp_avg_hsn(unit):
     setattr(unit, 'n_vec', np.ones(len(snorm_units)))
 
 
+def add_del_inp_mp(unit):
+ 
+    """ Add the average of the raw inputs at each port with a custom delay.
+
+        del_inp_avg_mp is a list of scalars.
+        del_inp_avg_mp[i] contains the sum of all inputs at port 'i', not
+        multiplied by their synaptic weights, with a delay given by the
+        'custom_inp_del' attribute of the unit plus the delay of the connection.
+
+        The ports for which the average is calculated can be specified through
+        the inp_avg_ports attribute, which is added to the unit by passing it as
+        a parameter to the rga_reqs constructor. inp_avg_ports is a list of
+        integers corresponding to the ports where the averages will be
+        calculated. Its default value is: list(range(unit.n_ports)).
+
+        This requirement was created for the rga_ge synapse, and its
+        implementation is in the rga_reqs class.
+    """
+    if not hasattr(unit,'port_idx'): 
+        raise NameError( 'the del_inp_avg_mp requirement is for multiport units ' +
+                         'with a port_idx list' )
+    # The delay is an attribute of the unit. Checking if it's there.
+    if not hasattr(unit, 'custom_inp_del'):
+        raise AssertionError('The del_inp_avg_mp requirement needs units to have ' + 
+                              'the attribute custom_inp_del.')
+    # finding ports where the derivative will be calculated
+    if not hasattr(unit, 'inp_avg_ports'):
+        setattr(unit, 'inp_avg_ports', list(range(unit.n_ports)))
+    syns = unit.net.syns[unit.ID]
+    # diam_act[i,j] is the act function of the j-th input at the i-th port.
+    # diam_del[i,j] is the delay of the j-th input at the i-th port.
+    diam_act = []
+    diam_del = []
+    acts = unit.net.act[unit.ID]
+    delys = unit.net.delays[unit.ID]
+    cid = unit.custom_inp_del*unit.net.min_delay
+    for p, lst in enumerate(unit.port_idx):
+        if p in unit.inp_deriv_ports:
+            diam_act.append([acts[uid] for uid in lst])
+            diam_del.append([cid+delys[uid] for uid in lst])
+        else:
+            diam_act.append([])
+            diam_del.append([])
+
+    diam_act_del = []
+    for da, dd in zip(diam_act, diam_del)
+        diam_act_del.append(zip(da,dd))
+
+    setattr(unit, 'diam_act_del', diam_act_del)
+    # initializing inputs
+    del_inp_mp = [[a(0.) for a in l] for l in diam_act if len(l)>0]
+    setattr(unit, 'del_inp_deriv_mp', del_inp_deriv_mp)
+    
+    [[a[0](time-a[1]) for a in l] for l in diam_act_del if len(l)>0]
+
+    del_inp_mp = [[a[0](time-a[1]) for a in l] for l in 
+                   self.diam_act_del if len(l)>0]
+    del_inp_avg_mp = 
+
+
+
+def add_del_inp_avg_mp(unit):
+    """ Add the average of the raw inputs at each port with a custom delay.
+
+        del_inp_avg_mp is a list of scalars.
+        del_inp_avg_mp[i] contains the sum of all inputs at port 'i', not
+        multiplied by their synaptic weights, with a delay given by the
+        'custom_inp_del' attribute of the unit plus the delay of the connection.
+
+        The ports for which the average is calculated can be specified through
+        the inp_avg_ports attribute, which is added to the unit by passing it as
+        a parameter to the rga_reqs constructor. inp_avg_ports is a list of
+        integers corresponding to the ports where the averages will be
+        calculated. Its default value is: list(range(unit.n_ports)).
+
+        This requirement was created for the rga_ge synapse, and its
+        implementation is in the rga_reqs class.
+    """
+    if not hasattr(unit,'port_idx'): 
+        raise NameError( 'the del_inp_avg_mp requirement is for multiport units ' +
+                         'with a port_idx list' )
+    # The delay is an attribute of the unit. Checking if it's there.
+    if not hasattr(unit, 'custom_inp_del'):
+        raise AssertionError('The del_inp_avg_mp requirement needs units to have ' + 
+                              'the attribute custom_inp_del.')
+    # finding ports where the derivative will be calculated
+    if not hasattr(unit, 'inp_avg_ports'):
+        setattr(unit, 'inp_avg_ports', list(range(unit.n_ports)))
+    syns = unit.net.syns[unit.ID]
+    # diam_act[i,j] is the act function of the j-th input at the i-th port.
+    # diam_del[i,j] is the delay of the j-th input at the i-th port.
+    diam_act = []
+    diam_del = []
+    acts = unit.net.act[unit.ID]
+    delys = unit.net.delays[unit.ID]
+    cid = unit.custom_inp_del*unit.net.min_delay
+    for p, lst in enumerate(unit.port_idx):
+        if p in unit.inp_deriv_ports:
+            diam_act.append([acts[uid] for uid in lst])
+            diam_del.append([cid+delys[uid] for uid in lst])
+        else:
+            diam_act.append([])
+            diam_del.append([])
+
+    diam_act_del = []
+    for da, dd in zip(diam_act, diam_del)
+        diam_act_del.append(zip(da,dd))
+
+    setattr(unit, 'diam_act_del', diam_act_del)
+    # initializing inputs
+    del_inp_mp = [[a(0.) for a in l] for l in diam_act if len(l)>0]
+    setattr(unit, 'del_inp_deriv_mp', del_inp_deriv_mp)
+    
+    [[a[0](time-a[1]) for a in l] for l in diam_act_del if len(l)>0]
+
+    del_inp_mp = [[a[0](time-a[1]) for a in l] for l in 
+                   self.diam_act_del if len(l)>0]
+    del_inp_avg_mp = 
+
+
+
 def add_err_diff(unit):
     """ Adds the approximate derivative of the error signal.
 

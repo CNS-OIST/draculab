@@ -27,6 +27,10 @@ class rga_reqs():
             self.inp_deriv_ports = params['inp_deriv_ports']
         # inp_deriv_ports works by indicating the add_ methods to restrict the
         # entries in pre_list_del_mp and pre_list_mp.
+        if 'inp_avg_ports' in params:
+            self.inp_avg_ports = params['inp_avg_ports']
+        # inp_avg_ports works by indicating the add_ methods to restrict the
+        # entries in diam_pre_list
 
     def upd_inp_deriv_mp(self, time):
         """ Update the list with input derivatives for each port.  """
