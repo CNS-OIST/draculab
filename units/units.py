@@ -224,7 +224,7 @@ class unit():
         self.buff_size = int(round(self.steps*min_buff)) # number of activation values to store
         # The 'buffer' contains previous activation values for all state variables.
         # By transposing, for multidim units each row is a different state vector.
-        # If flattened, each column will be a state vector.
+        # If network is flattened, each column will be a state vector.
         self.buffer = np.ascontiguousarray( [self.init_val]*self.buff_size, 
                                             dtype=self.bf_type).transpose()
         # 'act_buff' is a view of the row corresponsing to the activity variable in the

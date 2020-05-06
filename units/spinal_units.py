@@ -21,16 +21,19 @@ class rga_reqs():
             'inp_deriv_ports' : A list with the numbers of the ports where all
                                 inp_deriv_mp methods will calculate their 
                                 derivatives. Defaults to a list with all ports.
+            'del_inp_ports' : A list with the numbers of the ports where 
+                              del_inp_mp, and del_inp_avg_mp will obtain their
+                              inpus. Defaults to all ports.
         """
         self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum])
         if 'inp_deriv_ports' in params:
             self.inp_deriv_ports = params['inp_deriv_ports']
         # inp_deriv_ports works by indicating the add_ methods to restrict the
         # entries in pre_list_del_mp and pre_list_mp.
-        if 'inp_avg_ports' in params:
-            self.inp_avg_ports = params['inp_avg_ports']
-        # inp_avg_ports works by indicating the add_ methods to restrict the
-        # entries in diam_pre_list
+        if 'del_inp_ports' in params:
+            self.del_inp_ports = params['del_inp_ports']
+        # del_inp_ports works by indicating the add_del_inp_mp method to
+        # restrict the entries in dim_act_del.
 
     def upd_inp_deriv_mp(self, time):
         """ Update the list with input derivatives for each port.  """
@@ -92,6 +95,16 @@ class rga_reqs():
         """ Update the list with average slow input derivatives per port. """
         self.avg_slow_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
                                  for l in self.slow_inp_deriv_mp]
+
+    def upd_del_inp_mp(self, time):
+        """ Update the arrays with delayed inputs for each port. """
+        self.del_inp_mp = [[a[0](time-a[1]) for a in l] 
+                           for l in self.dim_act_del if len(l)>0]
+
+    def upd_del_inp_avg_mp(self, time):
+        """ Update the average of delayed inputs for each port. """
+        self.del_inp_avg_mp = [r*sum(l) for r,l in
+                               zip(self.avg_fact_mp, self.del_inp_mp)]
 
 
 class lpf_sc_inp_sum_mp_reqs():

@@ -551,7 +551,8 @@ class syn_reqs(Enum):
     slow_inp_deriv_mp = 122 # derivative of the inputs using lpf_mid and lpf_slow
     avg_slow_inp_deriv_mp = 123 # avarage of all slow_inp_deriv_mp values per port
     l0_norm_factor = 124 # factor to normalized the sum of absolute weight values
-    del_inp_avg_mp = 125 # average of raw inputs at each port with a custom delay
+    del_inp_mp = 125 # raw inputs at each port with a custom delay
+    del_inp_avg_mp = 126 # average of raw inputs at each port with a custom delay
 
 
     def list_names():
@@ -568,7 +569,7 @@ class syn_reqs(Enum):
         """
         high_priority = {'lpf_fast', 'lpf_mid', 'lpf_slow', 
                          'mp_inputs', 'mp_weights'}
-        mid_priority = {'sc_inp_sum', 'inp_deriv_mp'}
+        mid_priority = {'sc_inp_sum', 'inp_deriv_mp', 'del_inp_mp'}
         if self.name in high_priority:
             return 1
         elif self.name in mid_priority:

@@ -342,12 +342,16 @@ class rga_ge(synapse):
         Raises:
             AssertionError.
         """
+        #TODO: check if requirements still needed
         synapse.__init__(self, params, network)
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
         # most of the heavy lifting is done by requirements
         self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
                              syn_reqs.pre_lpf_slow, # experimental
+                             syn_reqs.del_inp_mp, # testing
+                             syn_reqs.del_inp_avg_mp, # testing
+                             syn_reqs.lpf_slow, # testing
                              syn_reqs.lpf_fast, syn_reqs.lpf_mid, 
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
@@ -368,6 +372,7 @@ class rga_ge(synapse):
         else: self.err_port = 0 
         if 'ge_port' in params: self.err_port = params['ge_port']
         else: self.ge_port = 2 
+        self.gep_slow = 0. # used to obtain the error's second derivative
         
     def update(self, time):
         """ Update the weight using the RGA-inspired learning rule.
@@ -378,9 +383,11 @@ class rga_ge(synapse):
             derivatives for each port.
 
         """
+        #TODO: move calculations into unit requirements
         u = self.net.units[self.postID]
         xp = u.del_avg_inp_deriv_mp[self.lat_port]
         up = u.get_lpf_fast(self.po_de) - u.get_lpf_mid(self.po_de)
+        upp = up - u.get_lpf_mid(self.po_de) + u.get_lpf_slow(self.po_de)
         #sp = u.avg_inp_deriv_mp[self.err_port]
         sp = u.del_avg_inp_deriv_mp[self.err_port]
         pre = self.net.units[self.preID]
@@ -391,6 +398,9 @@ class rga_ge(synapse):
         self.w += self.alpha * (norm_fac - 1.)*self.w
 
         gep = u.inp_deriv_mp[self.ge_port][0] # only one GE input
+        self.gep_slow += 0.05*(gep - self.gep_slow)
+        gepp = gep - self.gep_slow
+        
 
         #self.w += self.alpha * (up - xp) * (sp - spj) # normal rga
         #self.w += -self.alpha * gep * (up - xp) * (sp - spj) # modulated rga
@@ -404,11 +414,12 @@ class rga_ge(synapse):
         #          u.get_lpf_mid(self.po_de) )
         #spj = (pre.get_lpf_fast(self.po_de+self.delay_steps) -
         #       pre.get_lpf_slow(self.po_de+self.delay_steps) )
-        sj = pre.act_buff[-1-self.po_de+self.delay_steps]
-        s = self.del_inp_avg_mp[self.err_port]
-
+        sj = pre.act_buff[-1-self.po_de-self.delay_steps]
+        #s = sum(u.del_inp_mp[self.err_port])/len(u.del_inp_mp[self.err_port])
+        s = u.del_inp_avg_mp[self.err_port]
         #self.w -= gep*u_act*(spj - sp)
-        self.w -= gep*u_act*(sj - s)
+        #self.w -= gep*u_act*(sj - s)
+        self.w -= (gep*up + gepp*upp)*(sj - s)
 
 
 class normal_rga(synapse):
