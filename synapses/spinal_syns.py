@@ -352,6 +352,8 @@ class rga_ge(synapse):
                              syn_reqs.del_inp_mp, # testing
                              syn_reqs.del_inp_avg_mp, # testing
                              syn_reqs.lpf_slow, # testing
+                             syn_reqs.mp_inputs, # testing
+                             syn_reqs.inp_avg_mp, # testing
                              syn_reqs.lpf_fast, syn_reqs.lpf_mid, 
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
@@ -373,6 +375,7 @@ class rga_ge(synapse):
         if 'ge_port' in params: self.err_port = params['ge_port']
         else: self.ge_port = 2 
         self.gep_slow = 0. # used to obtain the error's second derivative
+        self.xp_slow = 0. # used to obtain the error's second derivative
         
     def update(self, time):
         """ Update the weight using the RGA-inspired learning rule.
@@ -389,7 +392,7 @@ class rga_ge(synapse):
         up = u.get_lpf_fast(self.po_de) - u.get_lpf_mid(self.po_de)
         upp = up - u.get_lpf_mid(self.po_de) + u.get_lpf_slow(self.po_de)
         #sp = u.avg_inp_deriv_mp[self.err_port]
-        sp = u.del_avg_inp_deriv_mp[self.err_port]
+        #sp = u.del_avg_inp_deriv_mp[self.err_port]
         pre = self.net.units[self.preID]
         #spj = (pre.get_lpf_fast(self.delay_steps) -
         #       pre.get_lpf_mid(self.delay_steps) )
@@ -401,6 +404,8 @@ class rga_ge(synapse):
         self.gep_slow += 0.05*(gep - self.gep_slow)
         gepp = gep - self.gep_slow
         
+        self.xp_slow += 0.05*(xp - self.xp_slow)
+        xpp = xp - self.xp_slow
 
         #self.w += self.alpha * (up - xp) * (sp - spj) # normal rga
         #self.w += -self.alpha * gep * (up - xp) * (sp - spj) # modulated rga
@@ -414,12 +419,17 @@ class rga_ge(synapse):
         #          u.get_lpf_mid(self.po_de) )
         #spj = (pre.get_lpf_fast(self.po_de+self.delay_steps) -
         #       pre.get_lpf_slow(self.po_de+self.delay_steps) )
-        sj = pre.act_buff[-1-self.po_de-self.delay_steps]
+        #sj = pre.act_buff[-1-self.po_de-self.delay_steps]
+        sj = pre.act_buff[-1-self.delay_steps]
         #s = sum(u.del_inp_mp[self.err_port])/len(u.del_inp_mp[self.err_port])
-        s = u.del_inp_avg_mp[self.err_port]
+        #s = u.del_inp_avg_mp[self.err_port]
+        s = u.inp_avg_mp[self.err_port]
         #self.w -= gep*u_act*(spj - sp)
         #self.w -= gep*u_act*(sj - s)
-        self.w -= (gep*up + gepp*upp)*(sj - s)
+        #self.w -= (gep*up + gepp*upp)*(sj - s)
+        # see 05/07/20 scrap notes
+        self.w -= (gep*(up-xp) + gepp*upp)*(sj - s)
+        #self.w -= (gep*(up-xp) + gepp*(upp-xpp))*(sj - s)
 
 
 class normal_rga(synapse):

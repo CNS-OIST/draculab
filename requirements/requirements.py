@@ -129,6 +129,30 @@ def add_mp_inputs(unit):
     setattr(unit, 'mp_inputs', val)
 
 
+def add_inp_avg_mp(unit):
+    """ Add the averages of the inputs at each port.
+
+        This requirement uses the mp_inputs requirement in order to create the
+        inp_avg_mp list.
+        
+        inp_avg_mp[i] is the average of the inputs at port i, not multiplied by
+        their weights.
+    """
+    if not syn_reqs.mp_inputs in unit.syn_needs:
+        raise AssertionError('The inp_avg_mp requirement depends on the ' +
+                             'mp_inputs requirement. ')
+    inp_avg_mp = []
+    n_inps_mp = []
+    uid = unit.ID
+    for plist in unit.port_idx:
+        inp_avg_mp.append(sum([unit.net.act[uid][idx](0.) for idx in plist]))
+        n_inps_mp.append(len(plist))
+    setattr(unit, 'inp_avg_mp', inp_avg_mp)
+    # the port i average will come from the sum of inputs times inp_recip_mp[i]
+    inp_recip_mp = [1./n if n>0 else 0. for n in n_inps_mp]
+    setattr(unit, 'inp_recip_mp', inp_recip_mp)
+
+
 def add_inp_avg_hsn(unit):
     """ Add an average of the inputs arriving at hebbsnorm synapses.
 

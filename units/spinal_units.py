@@ -96,6 +96,11 @@ class rga_reqs():
         self.avg_slow_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
                                  for l in self.slow_inp_deriv_mp]
 
+    def upd_inp_avg_mp(self, time):
+        """ Update the averages of the inputs for each port. """
+        self.inp_avg_mp = [r*p_inps.sum() for p_inps,r in 
+                           zip(self.mp_inputs, self.inp_recip_mp)]
+
     def upd_del_inp_mp(self, time):
         """ Update the arrays with delayed inputs for each port. """
         self.del_inp_mp = [[a[0](time-a[1]) for a in l] 

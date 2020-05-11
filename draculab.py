@@ -553,6 +553,7 @@ class syn_reqs(Enum):
     l0_norm_factor = 124 # factor to normalized the sum of absolute weight values
     del_inp_mp = 125 # raw inputs at each port with a custom delay
     del_inp_avg_mp = 126 # average of raw inputs at each port with a custom delay
+    inp_avg_mp = 127 # average of the raw inputs at each port
 
 
     def list_names():
