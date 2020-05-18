@@ -398,14 +398,14 @@ class rga_ge(synapse):
         #       pre.get_lpf_mid(self.delay_steps) )
 
         norm_fac = .5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
-        self.w += self.alpha * (norm_fac - 1.)*self.w
+        self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
 
         gep = u.inp_deriv_mp[self.ge_port][0] # only one GE input
-        self.gep_slow += 0.05*(gep - self.gep_slow)
+        self.gep_slow += 10.*self.net.min_delay*(gep - self.gep_slow)
         gepp = gep - self.gep_slow
         
-        self.xp_slow += 0.05*(xp - self.xp_slow)
-        xpp = xp - self.xp_slow
+        #self.xp_slow += 0.05*(xp - self.xp_slow)
+        #xpp = xp - self.xp_slow
 
         #self.w += self.alpha * (up - xp) * (sp - spj) # normal rga
         #self.w += -self.alpha * gep * (up - xp) * (sp - spj) # modulated rga
@@ -424,12 +424,14 @@ class rga_ge(synapse):
         #s = sum(u.del_inp_mp[self.err_port])/len(u.del_inp_mp[self.err_port])
         #s = u.del_inp_avg_mp[self.err_port]
         s = u.inp_avg_mp[self.err_port]
-        #self.w -= gep*u_act*(spj - sp)
-        #self.w -= gep*u_act*(sj - s)
-        #self.w -= (gep*up + gepp*upp)*(sj - s)
+        #self.w -= self.alpha*gep*u_act*(spj - sp)
+        #self.w -= self.alpha*gep*u_act*(sj - s)
+        #self.w -= self.alpha*(gep*up + gepp*upp)*(sj - s)
         # see 05/07/20 scrap notes
-        self.w -= (gep*(up-xp) + gepp*upp)*(sj - s)
-        #self.w -= (gep*(up-xp) + gepp*(upp-xpp))*(sj - s)
+        self.w -= self.alpha * (gep*(up-xp) + gepp*upp)*(sj - s)
+        #self.w -= self.alpha * (gep*(up-xp) + gepp*(upp-xpp))*(sj - s)
+        #self.w -= self.alpha * ((gep*(up-xp) + gepp*(upp-xpp))*
+        #                        (sj - s + spj - sp))
 
 
 class normal_rga(synapse):
