@@ -1800,6 +1800,98 @@ class gated_diff_input_selection_synapse(gated_input_selection_synapse):
         self.w = self.w + u.acc_slow * self.alpha * Dpre * err_diff
 
 
+class gated_diff_inp_corr(synapse, rga_reqs):
+    """ Differential version of the input correlation synapse.
+
+        This synapse assumes that its presynaptic input is some type of "error"
+        signal. The synapse's weight will be modified according to the
+        correlation between the derivative of this presynaptic input, and the
+        derivative of the input at different port of the postsynaptic unit.
+
+        Such a rule is meant to select the "error" input based on how it
+        correlates with another lateral/ascending input to the postsynaptic unit.
+        See the later part of "A generalization of RGA, and Fourier components."
+        
+        The acc_slow attribute of the postsynaptic unit is used to modulate the
+        learning rate. Thus, this synapse should only connect to units that
+        contain that requirement. In the case of the am_pulse unit, inputs at 
+        port 3 are used to reset acc_slow.
+
+        There is an extra delay for the ascending presynaptic input in order to
+        synchronize it with the error. This delay is comes from using the
+        xtra_del_inp_deriv_mp requirement for the ascending inputs, whereas the
+        inp_deriv_mp requirement is used for the error.
+
+        The weights are normalized so their sum is always moving to a given
+        'w_sum' value.
+
+        The name of this synapse type is 'gated_diff_inp_corr'.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the synapse class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            OPTIONAL PARAMETERS
+            'error_port' : port where the 'error' signals are received in the
+                           postsynaptic unit. Default is the port of the synapse
+                           (e.g. self.port).
+            'asc_port' : port where the 'ascending' signals are received in the
+                         postsynaptic unit. Default is 1.
+            'w_sum' : value of the sum of synaptic weights at the 'asc' synapse.
+                      Default is 1.
+        Raises:
+            ValueError
+        """
+        synapse.__init__(self, params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        if 'asc_port' in params:
+            self.asc_port = params['asc_port']
+        else:
+            self.asc_port = 1
+        if 'error_port' in params:
+            self.error_port = params['error_port']
+        else:
+            self.error_port = self.port
+        if self.error_port != self.port:
+            from warnings import warn
+            warn("error_port and port don't coincide in diff_inp_corr synapse",
+                 UserWarning)
+        if 'w_sum' in params:
+            self.w_sum = params['w_sum']
+        else:
+            self.w_sum = 1.
+        # this may be inefficient because the lpf_mid_sc_inp_sum is being
+        # calculated also for the afferent inputs. It is, however, convenient
+        # for the derived class gated_diff_inp_sel
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast,
+                                     syn_reqs.pre_lpf_mid,
+                                     syn_reqs.inp_deriv_mp,
+                                     syn_reqs.xtra_del_inp_deriv_mp,
+                                     syn_reqs.l0_norm_factor_mp])
+        # we need to know the index of this synapse in the inp_deriv_mp and
+        # xtra_del_inp_deriv_mp lists. Assuming we have syns_loc attribute
+        # first we find the index in post.port_idx[self.port]
+        self.postID 
+        
+
+    def update(self, time):
+        """ Update the weight using the diff_inp_corr rule. """
+        post = self.net.units[self.postID]
+        pre = self.net.units[self.preID]
+        
+        Derror = post.inp_deriv_mp[self.error_port][self.idm_id]
+        Dasc = post.xtra_del_inp_deriv_mp[self.asc_port][self.idm_id]
+
+
+        self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
+        self.w = self.w + u.acc_slow * self.alpha * Dpre * err_diff
+
+
+
 class static_l0_normal(synapse):
     """ A static synapse with multiplicative normalization.
 
@@ -1818,13 +1910,13 @@ class static_l0_normal(synapse):
             Constructor of the static_l0_normal synapse.
     
             Args:
-                params: same as the synapse class with two additions.
+                params: same as the synapse class. 
                 REQUIRED PARAMETERS
                 'w_sum' : the sum of absolute weight values will add to this.
                         Must be the same for all normalized synapses.
                 'tau_norml' : time constant for normalization.
             Raises:
-                ValueError, AssertionError.
+                ValueError
         """
         synapse.__init__(self, params, network)
         self.tau_norml = params['tau_norml'] 
@@ -1840,4 +1932,52 @@ class static_l0_normal(synapse):
         """ Update the weight normalization. """
         nf = self.net.units[self.postID].l0_norm_factor
         self.w = self.w + self.alpha * self.w * (nf*self.w_sum - 1.)
+
+
+class comp_pot(synapse):
+    """ Competitive potentiation synapse.
+
+        The weight increases according to how large the presynaptic input is,
+        compared to the average of port 0 inputs. This requires the inp_avg_mp
+        reqirement, which in turn depends on the mp_inputs requirement.
+
+        Weights are normalized so they add to a value 'w_sum'. This uses the
+        l0_norm_factor requirement.
+    """
+    def __init__(self, params, network):
+        """ Constructor of the comp_pot synapse.
+
+            Args:
+                params: same as the synapse class with two additions.
+                REQUIRED PARAMETERS
+                'lrate' : learning rate for the potentiation.
+                'w_sum' : the sum of absolute weight values will add to this.
+                        Must be the same for all normalized synapses.
+                'tau_norml' : time constant for normalization.
+            Raises:
+                ValueError
+        """
+        synapse.__init__(self, params, network)
+        self.tau_norml = params['tau_norml'] 
+        self.w_sum = params['w_sum']
+        if self.tau_norml <= 0.:
+            raise ValueError('tau_norml should be a positive value')
+        if self.w_sum <= 0.:
+            raise ValueError('w_sum should be a positive value')
+        self.alpha1 = self.lrate * self.net.min_delay # scales the update rule
+        self.alpha2 = self.net.min_delay / self.tau_norml # scales normalization
+        self.upd_requirements.update([syn_reqs.l0_norm_factor,
+                                      syn_reqs.mp_inputs,
+                                      syn_reqs.inp_avg_mp])
+
+    def update(self, time):
+        """ Update the comp_pot synapse. """
+        u = self.net.units[self.postID]
+        self.w += (self.alpha1 * (u.act_buff[0] - u.inp_avg_mp[0]) +
+                   self.alpha2 * self.w * (u.l0_norm_factor*self.w_sum - 1.))
+
+        
+
+
+
 

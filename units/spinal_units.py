@@ -55,6 +55,14 @@ class rga_reqs():
                                   u[uid].get_lpf_mid(self.custom_inp_del) 
                                   for uid in lst] for lst in self.pre_list_mp]
  
+    def upd_xtra_del_inp_deriv_mp(self, time):
+        """ Update the list with extra delayed input derivatives for each port. """
+        u = self.net.units
+        self.xtra_del_inp_deriv_mp = [
+            [u[uid].get_lpf_fast(self.custom_inp_del + dely) - 
+            u[uid].get_lpf_mid(self.custom_inp_del) 
+            for uid in lst] for lst in self.pre_list_del_mp]
+
     def upd_del_avg_inp_deriv_mp(self, time):
         """ Update the list with delayed averages of input derivatives for each port. """
         self.del_avg_inp_deriv_mp = [np.mean(l) if len(l) > 0 else 0.
@@ -898,7 +906,8 @@ class am_pulse(unit, rga_reqs):
     For the sake of RGA synapses at least two ports are used. Port 0 is assumed
     to be the "error" port, whereas port 1 is the "lateral" port. Additionally,
     if n_ports=3, then port 2 is the "global error" port, to be used by rga_ge
-    synapses.
+    synapses. If n_ports=4, then port 3 is the reset signal for the acc_slow
+    attribute (used for gated synapses).
     
     The equations of the model currently look like this:
     u'   = (c + A*|tanh(I0+I1)|*sig - u) / tau_u
@@ -950,8 +959,8 @@ class am_pulse(unit, rga_reqs):
             raise ValueError("Initial values for the am_pulse model must " +
                              "consist of a 2-element array.")
         if 'n_ports' in params:
-            if params['n_ports'] != 2 and params['n_ports'] != 3:
-                raise ValueError("am_pulse units use two or three input ports.")
+            if params['n_ports'] < 2 or params['n_ports'] > 4:
+                raise ValueError("am_pulse units use two to four input ports.")
         else:
             params['n_ports'] = 2
         unit.__init__(self, ID, params, network) # parent's constructor
@@ -975,6 +984,9 @@ class am_pulse(unit, rga_reqs):
         self.mudt_vec[0] = self.mudt
         self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
         self.needs_mp_inp_sum = True # dt_fun uses mp_inp_sum
+        # only calculate derivatives for the error and lateral ports
+        params['inp_deriv_ports'] = [0, 1] 
+        rga_reqs.__init__(self, params)
 
     def derivatives(self, y, t):
         """ Implements the equations of the am_pulse model.
@@ -1662,7 +1674,7 @@ class chwr_linear(unit):
         
 
 class inpsel_linear2(unit, acc_sda_reqs): 
-    """ A multiport linear unit that only takes inputs from ports 0 and 1.
+    """ A multiport linear unit that only sums inputs from ports 0 and 1.
 
         Port 0 is meant to receive error inputs, which should be the main
         drivers of the activity. Port 1 receives lateral inhibition. Port 2 is
@@ -1681,7 +1693,8 @@ class inpsel_linear2(unit, acc_sda_reqs):
 
         Args:
             ID, params, network: same as the linear class.
-            
+            REQUIRED PARAMETERS
+            'tau' : time constant of the dynamics.
             OPTIONAL PARAMETERS
             use_acc_slow : Whether to include the acc_slow requirement. Default
                            is 'False'.
@@ -1695,7 +1708,6 @@ class inpsel_linear2(unit, acc_sda_reqs):
         self.syn_needs.update([syn_reqs.acc_slow, syn_reqs.mp_inputs, 
                                syn_reqs.mp_weights,
                                syn_reqs.sc_inp_sum_mp]) # so synapses don't call
-                                                        # get_act
         self.needs_mp_inp_sum = True # in case we flatten
         params['acc_slow_port'] = 3 # so inputs at port 3 reset acc_slow
         acc_sda_reqs.__init__(self, params)
@@ -1707,12 +1719,13 @@ class inpsel_linear2(unit, acc_sda_reqs):
                 y : a 1-element array or list with the current firing rate.
                 t: time when the derivative is evaluated.
         """
-        return = sum([(w*i).sum() for i,w in zip(self.get_mp_inputs(time)[:2],
+        return (sum([(w*i).sum() for i,w in zip(self.get_mp_inputs(time)[:2],
                                                 self.get_mp_weights(time)[:2])])
+                - y[0] ) / self.tau
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
-        return ( self.mp_inp_sum[0][s] + self.mp_inp_sum[1][s] - y ) * self.rtau
+        return ( self.mp_inp_sum[0][s] + self.mp_inp_sum[1][s] - y ) / self.tau
 
 
 
