@@ -23,17 +23,25 @@ class rga_reqs():
                                 derivatives. Defaults to a list with all ports.
             'del_inp_ports' : A list with the numbers of the ports where 
                               del_inp_mp, and del_inp_avg_mp will obtain their
-                              inpus. Defaults to all ports.
+                              inputs. Defaults to all ports.
+            'xd_inp_deriv_p' : List with the number of the ports where
+                               xtra_del_inp_deriv_mp and
+                               xtra_del_inp_deriv_mp_sc_sum will work.
+                               Defaults to all ports.
         """
         self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum])
-        if 'inp_deriv_ports' in params:
-            self.inp_deriv_ports = params['inp_deriv_ports']
         # inp_deriv_ports works by indicating the add_ methods to restrict the
         # entries in pre_list_del_mp and pre_list_mp.
-        if 'del_inp_ports' in params:
-            self.del_inp_ports = params['del_inp_ports']
+        if 'inp_deriv_ports' in params:
+            self.inp_deriv_ports = params['inp_deriv_ports']
         # del_inp_ports works by indicating the add_del_inp_mp method to
         # restrict the entries in dim_act_del.
+        if 'del_inp_ports' in params:
+            self.del_inp_ports = params['del_inp_ports']
+        # xd_inp_deriv works by indicating the add_xtra_del_inp_deriv_mp method
+        # to restrict the entries in ??? 
+        if 'xd_inp_deriv_p' in params:
+            self.xd_inp_deriv_p = params['xd_inp_deriv_p']
 
     def upd_inp_deriv_mp(self, time):
         """ Update the list with input derivatives for each port.  """
@@ -59,9 +67,15 @@ class rga_reqs():
         """ Update the list with extra delayed input derivatives for each port. """
         u = self.net.units
         self.xtra_del_inp_deriv_mp = [
-            [u[uid].get_lpf_fast(self.custom_inp_del + dely) - 
-            u[uid].get_lpf_mid(self.custom_inp_del) 
-            for uid in lst] for lst in self.pre_list_del_mp]
+            [u[uid[idx]].get_lpf_fast(self.xtra_inp_del + dely[idx]) - 
+             u[uid[idx]].get_lpf_mid(self.xtra_inp_del + dely[idx]) 
+             for idx in range(len(uid))] for uid, dely in self.pre_uid_del_mp]
+
+    def upd_xtra_del_inp_deriv_mp_sc_sum(self,time):
+        """ Update list with scaled sums of extra delayed input derivatives. """
+        self.xtra_del_inp_deriv_mp_sc_sum = [sum([w*ddiff for w,ddiff in
+            zip(w_list, ddiff_list)]) for w_list, ddiff_list in
+            zip(self.mp_weights, self.xtra_del_inp_deriv_mp)]
 
     def upd_del_avg_inp_deriv_mp(self, time):
         """ Update the list with delayed averages of input derivatives for each port. """
@@ -72,7 +86,6 @@ class rga_reqs():
         """ Update the slow-decaying integral of the activity. """
         self.integ_decay_act += self.min_delay * (self.act_buff[-1] - 
                                 self.integ_decay * self.integ_decay_act)
-
 
     def upd_double_del_inp_deriv_mp(self, time):
         """ Update two input derivatives with two delays for each port. """
@@ -119,6 +132,12 @@ class rga_reqs():
         self.del_inp_avg_mp = [r*sum(l) for r,l in
                                zip(self.avg_fact_mp, self.del_inp_mp)]
 
+    def upd_sc_inp_sum_deriv_mp(self, time):
+        """ Update the derivatives for the scaled sum of inputs at each port."""
+        self.sc_inp_sum_deriv_mp = [sum([w*diff for w,diff in 
+                zip(w_list, diff_list)]) for w_list, diff_list in 
+                zip(self.mp_weights, self.inp_deriv_mp)]
+
 
 class lpf_sc_inp_sum_mp_reqs():
     """ Class with the update functions for the X_lpf_sc_inp_sum_mp_reqs. """
@@ -160,6 +179,13 @@ class lpf_sc_inp_sum_mp_reqs():
                                       (self.lpf_slow_sc_inp_sum_mp[i] - 
                                        self.sc_inp_sum_mp[i])
                                        * self.slow_prop for i in range(self.n_ports)]
+
+    def upd_sc_inp_sum_diff_mp(self, time):
+        """ Update the derivatives for the scaled sum of inputs at each port."""
+        self.sc_inp_sum_diff_mp = [lpf_fast - lpf_mid for lpf_fast, lpf_mid in
+                  zip(self.lpf_fast_sc_inp_sum_mp, self.lpf_mid_sc_inp_sum_mp)]
+
+
 
 class acc_sda_reqs():
     """ The acc_(mid|slow) and slow_decay_adapt update functions. """
@@ -984,8 +1010,9 @@ class am_pulse(unit, rga_reqs):
         self.mudt_vec[0] = self.mudt
         self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
         self.needs_mp_inp_sum = True # dt_fun uses mp_inp_sum
-        # only calculate derivatives for the error and lateral ports
-        params['inp_deriv_ports'] = [0, 1] 
+        # calculate derivatives for the all ports?
+        # TODO: adjust to final form of rga rule
+        params['inp_deriv_ports'] = [0, 1, 2] 
         rga_reqs.__init__(self, params)
 
     def derivatives(self, y, t):
@@ -1673,14 +1700,17 @@ class chwr_linear(unit):
                    self.thresh, 0.) - y
         
 
-class inpsel_linear2(unit, acc_sda_reqs): 
+class inpsel_linear2(unit, acc_sda_reqs, rga_reqs): 
     """ A multiport linear unit that only sums inputs from ports 0 and 1.
+
+        The current implementation only allows positive values (half-wave
+        rectification).
 
         Port 0 is meant to receive error inputs, which should be the main
         drivers of the activity. Port 1 receives lateral inhibition. Port 2 is
-        for the ascending motor command inputs. Port 3 is for triggering
-        adaptation (acc_slow). Inputs from ports 2 and 3 are not used to produce
-        activation in the unit.
+        for the ascending motor command inputs. Port 3 is for resetting the slow
+        accumulator (acc_slow), used to pause plasticity.
+        Inputs from ports 2 and 3 are not used to produce activation in the unit.
 
         This is meant to be used in the intermediate layer of an input
         selection mechanism, as described in the "A generalization of RGA, and
@@ -1695,6 +1725,7 @@ class inpsel_linear2(unit, acc_sda_reqs):
             ID, params, network: same as the linear class.
             REQUIRED PARAMETERS
             'tau' : time constant of the dynamics.
+            'xtra_inp_del' : extra delay in the port 2 (ascending) inputs.
             OPTIONAL PARAMETERS
             use_acc_slow : Whether to include the acc_slow requirement. Default
                            is 'False'.
@@ -1704,13 +1735,20 @@ class inpsel_linear2(unit, acc_sda_reqs):
             raise AssertionError('inpsel_linear2 units must have n_ports=4')
         else:
             params['n_ports'] = 4
+        # TODO: its probably possible to inplement this withouth xtra delays.
+        self.xtra_inp_del = params['xtra_inp_del']
         unit.__init__(self, ID, params, network)
-        self.syn_needs.update([syn_reqs.acc_slow, syn_reqs.mp_inputs, 
-                               syn_reqs.mp_weights,
-                               syn_reqs.sc_inp_sum_mp]) # so synapses don't call
+        self.syn_needs.update([syn_reqs.acc_slow,
+                               syn_reqs.mp_inputs, 
+                               syn_reqs.mp_weights ])
+                               #syn_reqs.sc_inp_sum_mp]) # so synapses don't call?
         self.needs_mp_inp_sum = True # in case we flatten
         params['acc_slow_port'] = 3 # so inputs at port 3 reset acc_slow
         acc_sda_reqs.__init__(self, params)
+        # The following is for the xtra_del_inp_deriv_mp requirement used by the
+        # gated_diff_inp_corr synapse.
+        params['xd_inp_deriv_p'] = [2] 
+        rga_reqs.__init__(self, params)
        
     def derivatives(self, y, t):
         """ Derivatives of the state variables at the given time. 
@@ -1719,13 +1757,14 @@ class inpsel_linear2(unit, acc_sda_reqs):
                 y : a 1-element array or list with the current firing rate.
                 t: time when the derivative is evaluated.
         """
-        return (sum([(w*i).sum() for i,w in zip(self.get_mp_inputs(time)[:2],
-                                                self.get_mp_weights(time)[:2])])
-                - y[0] ) / self.tau
+        I = sum([(w*i).sum() for i,w in zip(self.get_mp_inputs(time)[:2],
+                                            self.get_mp_weights(time)[:2])])
+        return (I - y[0]) / self.tau if y[0]>0 else 0.01
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
-        return ( self.mp_inp_sum[0][s] + self.mp_inp_sum[1][s] - y ) / self.tau
+        I = self.mp_inp_sum[0][s] + self.mp_inp_sum[1][s] 
+        return (I - y) / self.tau if y > 0 else 0.01
 
 
 

@@ -481,7 +481,7 @@ class network():
             syn_params['postID'] = target
             syn_params['init_w'] = weights[idx]
             syn_params['inp_port'] = portz[idx]
-            syn_params['syns_loc'] = len(self.syns) # location in syns[postID]
+            syn_params['syns_loc'] = len(self.syns[target]) # location in syns[postID]
             self.syns[target].append(syn_class(syn_params, self))
             # specify the delay of the connection
             self.delays[target].append( delayz[idx] )

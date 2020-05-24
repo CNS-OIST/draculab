@@ -26,10 +26,11 @@ class unit():
             params: A dictionary with parameters to initialize the unit.
                 REQUIRED PARAMETERS
                 'type' : A unit type from the unit_types enum.
-                'init_val' : initial value for the activation. Multidimensional models
-                             use a 1D list or numpy array, where the activity has
-                             the index 0. When using a multidimensional model the
-                             'multidim' parameter must also be included, and be True.
+                'init_val' : initial value for the activation. Multidimensional
+                             models use a 1D list or numpy array, where the 
+                             activity has the index 0. When using a 
+                             multidimensional model the 'multidim' parameter
+                             must also be included, and be True.
                 OPTIONAL PARAMETERS
                 'delay': maximum delay among the projections sent by the unit.
                          This is automatically set by network.connect; if included here
@@ -45,7 +46,7 @@ class unit():
                              ODE with more than one equation. Defaults to False, and is set
                 'extra_requirements' : a list of strings containing the names of
                         requirements that will be added to the unit. It is not
-                        good practice to add requirements this way. Instead, use
+                        good practice to add all requirements this way. Instead, use
                         the synapse models, or the constructor of specific unit
                         types.
             network: the network where the unit lives.

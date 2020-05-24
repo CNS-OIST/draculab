@@ -1068,6 +1068,123 @@ def add_avg_slow_inp_deriv_mp(unit):
     setattr(unit, 'avg_slow_inp_deriv_mp', avg_slow_inp_deriv_mp)
 
 
+def add_sc_inp_sum_deriv_mp(unit):
+    """ Add a list with the derivatives of scaled input sums per port.
+
+        inp_sum_deriv_mp[i] will be the derivative of the scaled sum of inputs at
+        port i. This derivative comes from the scaled sum of individual 
+        derivatives calculated using the inp_deriv_mp requirement.
+
+        This requirement was initially used with the rga_ge synapse,
+        and its update implementation is currently in the rga_reqs
+        class of spinal_units.py .
+
+        The sc_inp_sum_diff_mp requirement does the same thing, but relies on
+        the lpf_fast/mid_sc_inp_sum_mp requirements, rather than inp_deriv_mp.
+    """
+    if not syn_reqs.inp_deriv_mp in unit.syn_needs:
+        raise AssertionError('The sc_inp_sum_deriv_mp requirement needs the ' + 
+                             'inp_deriv_mp requirement.')
+    if not syn_reqs.mp_weights in unit.syn_needs:
+        raise AssertionError('The sc_inp_sum_deriv_mp requirement needs the ' + 
+                             'mp_weights requirement.')
+    if not unit.multiport:
+        raise AssertionError('The sc_inp_sum_deriv_mp requirement is for ' +
+                             'multiport units')
+    sc_inp_sum_deriv_mp = [0.]*unit.n_ports
+    setattr(unit, 'sc_inp_sum_deriv_mp', sc_inp_sum_deriv_mp)
+
+
+def add_lpf_fast_sc_inp_sum_mp(unit):
+    """ Add the fast LPF'd scaled sum of inputs for each port separately. 
+
+        This requirement was initially used with the input_selection synapse,
+        and its update implementation is currently in the out_norm_am_sig unit.
+    """
+    if not unit.multiport:
+        raise AssertionError('The lpf_fast_sc_inp_sum_mp requirement is for ' +
+                             'multiport units')
+    if not hasattr(unit,'tau_fast'): 
+        raise NameError( 'Requirement lpf_fast_sc_inp_sum requires ' +
+                         'parameter tau_fast, not yet set' )
+    if not hasattr(unit, 'fast_prop'):
+        add_propagator(unit, 'fast')
+    if (not syn_reqs.mp_weights in unit.syn_needs or
+        not syn_reqs.mp_inputs in unit.syn_needs):
+        raise AssertionError('Requirement lpf_fast_sc_inp_sum_mp depends on ' +
+                             'the mp_weights and mp_inputs requirements.')
+    setattr(unit, 'lpf_fast_sc_inp_sum_mp', [0.2]*unit.n_ports)
+
+
+def add_xtra_del_inp_deriv_mp(unit):
+    """ Adds input derivatives listed by port with normal plus extra delays.
+
+        This is a version of inp_deriv_mp where the inputs have an extra delay
+        that gets added to the normal delay. The diference with del_inp_deriv_mp
+        is that, unlike this requirement, it doesn't add the normal delay.
+
+        xtra_del_inp_deriv_mp[i,j] will contain the delayed derivative of the
+        j-th input at the i-th port, following the order in the port_idx list.
+
+        This requirement was created for the gated_diff_inp-corr synapse, and
+        its implementation is in the rga_reqs class of spinal_syns.py.
+        
+        The optional parameter 'xd_inp_deriv_p' can be passed to the 
+        'rga_reqs' constructor so that the input derivative is
+        only calculated for the ports whose number is in the inp_deriv_ports
+        list.
+    """
+    if not unit.multiport:
+        raise AssertionError('The xtra_del_inp_deriv_mp requirement is ' + 
+                             'for multiport units.')
+    # The delay is an attribute of the unit. Checking if it's there.
+    if not hasattr(unit, 'xtra_inp_del'):
+        raise AssertionError('The del_inp_deriv_mp requirement needs units to have ' + 
+                              'the attribute xtra_inp_del.')
+    # finding ports where the derivative will be calculated
+    if not hasattr(unit, 'xd_inp_deriv_p'):
+        setattr(unit, 'xd_inp_deriv_p', list(range(unit.n_ports)))
+    syns = unit.net.syns[unit.ID]
+
+    # So that the unit can access the LPF'd activities of its presynaptic units
+    # it needs a list with the ID's of the presynaptic units, arranged by port.
+    # pre_uid_mp[i,j] will contain the ID of the j-th input at the i-th port.
+    # In addition, we need to know how many delay steps there are for each input.
+    # pre_del_mp[i,j] will contain the delay steps of the j-th input at the i-th
+    # port. Both lists will show no inputs in the ports not present in the
+    # optional list xd_inp_deriv_p.
+    syns = unit.net.syns[unit.ID]
+    pre_uid_mp = []
+    pre_del_mp = []
+    for p, lst in enumerate(unit.port_idx):
+        if p in unit.xd_inp_deriv_p:  
+            pre_uid_mp.append([syns[uid].preID for uid in lst])
+            pre_del_mp.append([syns[uid].delay_steps for uid in lst])
+        else:
+            pre_uid_mp.append([])
+            pre_del_mp.append([])
+    pre_uid_del_mp = list(zip(pre_uid_mp, pre_del_mp)) # prezipping for speed
+    setattr(unit, 'pre_uid_del_mp', pre_uid_del_mp)
+    # initializing all derivatives with zeros
+    xdidm = [[0. for uid in prt_lst] for prt_lst in pre_uid_mp]
+    setattr(unit, 'xtra_del_inp_deriv_mp', xdidm)
+ 
+
+def add_xtra_del_inp_deriv_mp_sc_sum(unit):
+    """ Add scaled sum of input derivatives per port with extra delays.
+
+        xtra_del_inp_deriv_mp_sc_sum[i] is the scaled sum of all the inputs in
+        xtra_del_inp-deriv_mp[i], e.g. each input multiplied by its
+        corresponding entry in mp_weights[i].
+    """
+    #if not 'xtra_del_inp_deriv_mp' in unit.syn_needs:
+    #    raise AssertionError('xtra_del_inp_deriv_mp_sc_sum relies on the ' +
+    #           'xtra_del_inp_deriv_mp requirement, not found in the unit.')
+    # initializing the scaled sums with zeros
+    xdidmss = [0. for _ in range(unit.n_ports)]
+    setattr(unit, 'xtra_del_inp_deriv_mp_sc_sum', xdidmss)
+
+
 def add_exp_euler_vars(unit):
     """ Adds several variables used by the exp_euler integration method. """
     dt = unit.times[1] - unit.times[0] # same as unit.time_bit
@@ -1127,12 +1244,17 @@ def add_sc_inp_sum_diff_mp(unit):
     """ Add a list with the derivatives of scaled input sums per port.
 
         inp_sum_diff_mp[i] will be the derivative of the scaled sum of inputs at
-        port i. This derivatie comes from the fast lpf'd input sum minus the mid
+        port i. This derivative comes from the fast lpf'd input sum minus the mid
         lpf'd input sum. These two values come from the lpf_fast_sc_inp_sum_mp, 
         and lpf_mid_sc_inp_sum_mp requirements.
 
         This requirement was initially used with the input_selection synapse,
-        and its update implementation is currently in the logarithmic unit.
+        and its update implementation is currently in the lpf_sc_inp_sum_mp_reqs
+        class of spinal_units.py .
+
+        The sc_inp_sum_deriv_mp requirement does the same thing, but relies on
+        the inp_deriv_mp requirement rather than the lpf_fast/mid_sc_inp_sum_mp
+        requirements.
     """
     if (not syn_reqs.lpf_fast_sc_inp_sum_mp in unit.syn_needs or
         not syn_reqs.lpf_mid_sc_inp_sum_mp in unit.syn_needs):

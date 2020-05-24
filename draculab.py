@@ -570,6 +570,9 @@ class syn_reqs(Enum):
     del_inp_mp = 125 # raw inputs at each port with a custom delay
     del_inp_avg_mp = 126 # average of raw inputs at each port with a custom delay
     inp_avg_mp = 127 # average of the raw inputs at each port
+    sc_inp_sum_deriv_mp = 128 # like sc_inp_sum_diff_mp, but relies on inp_deriv_mp
+    xtra_del_inp_deriv_mp = 129 # del_inp_deriv_mp with both custom and normal delay
+    xtra_del_inp_deriv_mp_sc_sum = 130 # scaled sum of xtra_del_inp_deriv_mp at each port
 
 
     def list_names():

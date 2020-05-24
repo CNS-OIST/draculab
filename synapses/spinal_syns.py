@@ -347,17 +347,22 @@ class rga_ge(synapse):
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
         # most of the heavy lifting is done by requirements
-        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast,
+                             syn_reqs.pre_lpf_mid, 
                              syn_reqs.pre_lpf_slow, # experimental
                              syn_reqs.del_inp_mp, # testing
                              syn_reqs.del_inp_avg_mp, # testing
                              syn_reqs.lpf_slow, # testing
                              syn_reqs.mp_inputs, # testing
+                             syn_reqs.mp_weights, # testing
                              syn_reqs.inp_avg_mp, # testing
-                             syn_reqs.lpf_fast, syn_reqs.lpf_mid, 
-                             syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
+                             syn_reqs.lpf_fast,
+                             syn_reqs.lpf_mid, 
+                             syn_reqs.inp_deriv_mp, 
+                             syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
+                             syn_reqs.sc_inp_sum_deriv_mp,
                              syn_reqs.l0_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.rga_ge, ['Synapse from ' + str(self.preID) + 
@@ -428,11 +433,14 @@ class rga_ge(synapse):
         #self.w -= self.alpha*gep*u_act*(sj - s)
         #self.w -= self.alpha*(gep*up + gepp*upp)*(sj - s)
         # see 05/07/20 scrap notes
-        self.w -= self.alpha * (gep*(up-xp) + gepp*upp)*(sj - s)
+        #self.w -= self.alpha * (gep*(up-xp) + gepp*upp)*(sj - s)
         #self.w -= self.alpha * (gep*(up-xp) + gepp*(upp-xpp))*(sj - s)
         #self.w -= self.alpha * ((gep*(up-xp) + gepp*(upp-xpp))*
         #                        (sj - s + spj - sp))
-
+        #xp_now = u.avg_inp_deriv_mp[self.lat_port]
+        xp_now = u.sc_inp_sum_deriv_mp[self.lat_port]
+        self.w -= self.alpha * ((gep*(up-xp) + gepp*upp)*(sj - s) -
+                  up * xp_now)
 
 class normal_rga(synapse):
     """ A version of the rga rule with divisive normalization.
@@ -1800,7 +1808,7 @@ class gated_diff_input_selection_synapse(gated_input_selection_synapse):
         self.w = self.w + u.acc_slow * self.alpha * Dpre * err_diff
 
 
-class gated_diff_inp_corr(synapse, rga_reqs):
+class gated_diff_inp_corr(synapse):
     """ Differential version of the input correlation synapse.
 
         This synapse assumes that its presynaptic input is some type of "error"
@@ -1869,27 +1877,45 @@ class gated_diff_inp_corr(synapse, rga_reqs):
         # for the derived class gated_diff_inp_sel
         self.upd_requirements = set([syn_reqs.pre_lpf_fast,
                                      syn_reqs.pre_lpf_mid,
+                                     syn_reqs.mp_weights, # for xtra_del_inp_deriv_mp_sc_sum
                                      syn_reqs.inp_deriv_mp,
                                      syn_reqs.xtra_del_inp_deriv_mp,
+                                     syn_reqs.xtra_del_inp_deriv_mp_sc_sum,
                                      syn_reqs.l0_norm_factor_mp])
-        # we need to know the index of this synapse in the inp_deriv_mp and
-        # xtra_del_inp_deriv_mp lists. Assuming we have syns_loc attribute
-        # first we find the index in post.port_idx[self.port]
-        self.postID 
-        
+        # The plasticity in this synapse is driven by two inputs in the
+        # postsynaptic unit. One is the presynaptic input of this synapse, and
+        # the other is the ascending input to the unit. We need an index to
+        # extract the derivative of the presynaptic input from inp_deriv_mp,
+        # called idm_id.
+        # Since synapses are created serially, and this constructor is called
+        # when the synapse is being created, we can assume that idm_id will be
+        # the number of entries in post.port_idx[self.error_port]
+        self.idm_id = len(network.units[self.postID].port_idx[self.error_port])
 
+        #found = False
+        #post = network.units[self.postID] # postsynaptic unit
+        #for idx, uid in enumerate(post.port_idx[self.error_port]):
+            #if uid == self.syns_loc:
+                #self.idm_id = idx
+                #found = True
+                #break
+        #if not found:
+            #raise AssertionError('diff_inp_corr synapse could not find its ' +
+                                 #'id in inp_deriv_mp')
+        # For the derivative of the ascending input, usually there will be a 
+        # single ascending input at this port, but just to be safe we will use
+        # the derivative of the scaled input sum.
+           
     def update(self, time):
         """ Update the weight using the diff_inp_corr rule. """
         post = self.net.units[self.postID]
-        pre = self.net.units[self.preID]
+        #pre = self.net.units[self.preID]
         
         Derror = post.inp_deriv_mp[self.error_port][self.idm_id]
-        Dasc = post.xtra_del_inp_deriv_mp[self.asc_port][self.idm_id]
+        Dasc = post.xtra_del_inp_deriv_mp_sc_sum[self.asc_port]
 
-
-        self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
-        self.w = self.w + u.acc_slow * self.alpha * Dpre * err_diff
-
+        self.w += self.alpha * (post.acc_slow * Derror * Dasc +
+                  (post.l0_norm_factor_mp[self.error_port] - 1.) * self.w )
 
 
 class static_l0_normal(synapse):
@@ -1964,7 +1990,7 @@ class comp_pot(synapse):
             raise ValueError('tau_norml should be a positive value')
         if self.w_sum <= 0.:
             raise ValueError('w_sum should be a positive value')
-        self.alpha1 = self.lrate * self.net.min_delay # scales the update rule
+        self.alpha1 = params['lrate'] * self.net.min_delay # scales the update rule
         self.alpha2 = self.net.min_delay / self.tau_norml # scales normalization
         self.upd_requirements.update([syn_reqs.l0_norm_factor,
                                       syn_reqs.mp_inputs,
