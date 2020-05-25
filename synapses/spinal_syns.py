@@ -1847,7 +1847,7 @@ class gated_diff_inp_corr(synapse):
                            postsynaptic unit. Default is the port of the synapse
                            (e.g. self.port).
             'asc_port' : port where the 'ascending' signals are received in the
-                         postsynaptic unit. Default is 1.
+                         postsynaptic unit. Default is 2.
             'w_sum' : value of the sum of synaptic weights at the 'asc' synapse.
                       Default is 1.
         Raises:
@@ -1859,7 +1859,7 @@ class gated_diff_inp_corr(synapse):
         if 'asc_port' in params:
             self.asc_port = params['asc_port']
         else:
-            self.asc_port = 1
+            self.asc_port = 2
         if 'error_port' in params:
             self.error_port = params['error_port']
         else:
@@ -1915,7 +1915,8 @@ class gated_diff_inp_corr(synapse):
         Dasc = post.xtra_del_inp_deriv_mp_sc_sum[self.asc_port]
 
         self.w += self.alpha * (post.acc_slow * Derror * Dasc +
-                  (post.l0_norm_factor_mp[self.error_port] - 1.) * self.w )
+                  (self.w_sum * post.l0_norm_factor_mp[self.error_port] - 1.) 
+                   * self.w )
 
 
 class static_l0_normal(synapse):
@@ -1965,10 +1966,13 @@ class comp_pot(synapse):
 
         The weight increases according to how large the presynaptic input is,
         compared to the average of port 0 inputs. This requires the inp_avg_mp
-        reqirement, which in turn depends on the mp_inputs requirement.
+        requirement, which in turn depends on the mp_inputs requirement.
 
-        Weights are normalized so they add to a value 'w_sum'. This uses the
-        l0_norm_factor requirement.
+        Port 0 weights are normalized so they add to a value 'w_sum'. This uses
+        the l0_norm_factor_mp requirement.
+
+        The current version has soft weight bounding so weights remain positive.
+        Initial weight values should be positive!
     """
     def __init__(self, params, network):
         """ Constructor of the comp_pot synapse.
@@ -1990,17 +1994,18 @@ class comp_pot(synapse):
             raise ValueError('tau_norml should be a positive value')
         if self.w_sum <= 0.:
             raise ValueError('w_sum should be a positive value')
-        self.alpha1 = params['lrate'] * self.net.min_delay # scales the update rule
-        self.alpha2 = self.net.min_delay / self.tau_norml # scales normalization
-        self.upd_requirements.update([syn_reqs.l0_norm_factor,
+        self.alpha1 = params['lrate'] * self.net.min_delay # scale update rule
+        self.alpha2 = self.net.min_delay / self.tau_norml # scale normalization
+        self.upd_requirements.update([syn_reqs.l0_norm_factor_mp,
                                       syn_reqs.mp_inputs,
                                       syn_reqs.inp_avg_mp])
 
     def update(self, time):
         """ Update the comp_pot synapse. """
-        u = self.net.units[self.postID]
-        self.w += (self.alpha1 * (u.act_buff[0] - u.inp_avg_mp[0]) +
-                   self.alpha2 * self.w * (u.l0_norm_factor*self.w_sum - 1.))
+        post = self.net.units[self.postID]
+        pre = self.net.units[self.preID]
+        self.w += (self.w * self.alpha1 * (pre.act_buff[-1] - post.inp_avg_mp[0]) +
+               self.alpha2 * self.w * (post.l0_norm_factor_mp[0]*self.w_sum - 1.))
 
         
 

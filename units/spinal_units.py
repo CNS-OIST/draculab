@@ -73,9 +73,12 @@ class rga_reqs():
 
     def upd_xtra_del_inp_deriv_mp_sc_sum(self,time):
         """ Update list with scaled sums of extra delayed input derivatives. """
-        self.xtra_del_inp_deriv_mp_sc_sum = [sum([w*ddiff for w,ddiff in
-            zip(w_list, ddiff_list)]) for w_list, ddiff_list in
-            zip(self.mp_weights, self.xtra_del_inp_deriv_mp)]
+        #self.xtra_del_inp_deriv_mp_sc_sum = [sum([w*ddiff for w,ddiff in
+        #    zip(w_list, ddiff_list)]) for w_list, ddiff_list in
+        #    zip(self.mp_weights, self.xtra_del_inp_deriv_mp)]
+        self.xtra_del_inp_deriv_mp_sc_sum = [sum([w_l[idx]*ddiff_l[idx] 
+                    for idx in range(len(ddiff_l))]) for w_l,ddiff_l in 
+                    zip(self.mp_weights, self.xtra_del_inp_deriv_mp)]
 
     def upd_del_avg_inp_deriv_mp(self, time):
         """ Update the list with delayed averages of input derivatives for each port. """
@@ -1757,14 +1760,14 @@ class inpsel_linear2(unit, acc_sda_reqs, rga_reqs):
                 y : a 1-element array or list with the current firing rate.
                 t: time when the derivative is evaluated.
         """
-        I = sum([(w*i).sum() for i,w in zip(self.get_mp_inputs(time)[:2],
-                                            self.get_mp_weights(time)[:2])])
-        return (I - y[0]) / self.tau if y[0]>0 else 0.01
+        I = sum([(w*i).sum() for i,w in zip(self.get_mp_inputs(t)[:2],
+                                            self.get_mp_weights(t)[:2])])
+        return (I - y[0]) / self.tau #if y[0]>0 else 0.01
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
         I = self.mp_inp_sum[0][s] + self.mp_inp_sum[1][s] 
-        return (I - y) / self.tau if y > 0 else 0.01
+        return (I - y) / self.tau #if y > 0 else 0.01
 
 
 
