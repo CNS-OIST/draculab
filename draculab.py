@@ -294,6 +294,7 @@ class synapse_types(Enum):
     rga_ge = 217 # rga modulated by the derivative of the global error
     comp_pot = 218 # competitive potentiation
     gated_diff_inp_corr = 219 # differential input correlation
+    rga_21 = 220 # rga with second derivative for the error
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -413,6 +414,9 @@ class synapse_types(Enum):
         elif self == synapse_types.gated_diff_inp_corr:
             from synapses.spinal_syns import gated_diff_inp_corr
             syn_class = gated_diff_inp_corr
+        elif self == synapse_types.rga_21:
+            from synapses.spinal_syns import rga_21
+            syn_class = rga_21
         else:
             raise NotImplementedError('Attempting retrieve the class ' +
                                       'of an unknown synapse model')

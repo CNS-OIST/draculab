@@ -51,6 +51,7 @@ class synapse():
             self.plant_id = params['plant_id']
         # Some unit models call the method get_sc_input_sum, which requires the gain parameter
         if 'gain' in params: self.gain = params['gain'] 
+        # syns_loc is the location (the index) in syns[postID]
         if 'syns_loc' in params: self.syns_loc = params['syns_loc']
         self.delay_steps = None # Delay, in simulation steps units.
                                 # Initialized in unit.init_pre_syn_update.
