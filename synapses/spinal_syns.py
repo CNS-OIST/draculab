@@ -347,15 +347,22 @@ class rga_ge(synapse):
         self.lrate = params['lrate'] # learning rate for the synaptic weight
         self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
         # most of the heavy lifting is done by requirements
-        self.upd_requirements = set([syn_reqs.pre_lpf_fast, syn_reqs.pre_lpf_mid, 
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast,
+                             syn_reqs.pre_lpf_mid, 
                              syn_reqs.pre_lpf_slow, # experimental
                              syn_reqs.del_inp_mp, # testing
                              syn_reqs.del_inp_avg_mp, # testing
                              syn_reqs.lpf_slow, # testing
-                             syn_reqs.lpf_fast, syn_reqs.lpf_mid, 
-                             syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
+                             syn_reqs.mp_inputs, # testing
+                             syn_reqs.mp_weights, # testing
+                             syn_reqs.inp_avg_mp, # testing
+                             syn_reqs.lpf_fast,
+                             syn_reqs.lpf_mid, 
+                             syn_reqs.inp_deriv_mp, 
+                             syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
+                             syn_reqs.sc_inp_sum_deriv_mp,
                              syn_reqs.l0_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.rga_ge, ['Synapse from ' + str(self.preID) + 
@@ -373,6 +380,7 @@ class rga_ge(synapse):
         if 'ge_port' in params: self.err_port = params['ge_port']
         else: self.ge_port = 2 
         self.gep_slow = 0. # used to obtain the error's second derivative
+        self.xp_slow = 0. # to obtain the lateral inputs' second derivative
         
     def update(self, time):
         """ Update the weight using the RGA-inspired learning rule.
@@ -389,18 +397,20 @@ class rga_ge(synapse):
         up = u.get_lpf_fast(self.po_de) - u.get_lpf_mid(self.po_de)
         upp = up - u.get_lpf_mid(self.po_de) + u.get_lpf_slow(self.po_de)
         #sp = u.avg_inp_deriv_mp[self.err_port]
-        sp = u.del_avg_inp_deriv_mp[self.err_port]
+        #sp = u.del_avg_inp_deriv_mp[self.err_port]
         pre = self.net.units[self.preID]
         #spj = (pre.get_lpf_fast(self.delay_steps) -
         #       pre.get_lpf_mid(self.delay_steps) )
 
         norm_fac = .5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
-        self.w += self.alpha * (norm_fac - 1.)*self.w
+        self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
 
         gep = u.inp_deriv_mp[self.ge_port][0] # only one GE input
-        self.gep_slow += 0.05*(gep - self.gep_slow)
+        self.gep_slow += 10.*self.net.min_delay*(gep - self.gep_slow)
         gepp = gep - self.gep_slow
         
+        #self.xp_slow += 0.05*(xp - self.xp_slow)
+        #xpp = xp - self.xp_slow
 
         #self.w += self.alpha * (up - xp) * (sp - spj) # normal rga
         #self.w += -self.alpha * gep * (up - xp) * (sp - spj) # modulated rga
@@ -414,14 +424,154 @@ class rga_ge(synapse):
         #          u.get_lpf_mid(self.po_de) )
         #spj = (pre.get_lpf_fast(self.po_de+self.delay_steps) -
         #       pre.get_lpf_slow(self.po_de+self.delay_steps) )
-        sj = pre.act_buff[-1-self.po_de-self.delay_steps]
+        #sj = pre.act_buff[-1-self.po_de-self.delay_steps]
+        sj = pre.act_buff[-1-self.delay_steps]
         #s = sum(u.del_inp_mp[self.err_port])/len(u.del_inp_mp[self.err_port])
-        s = u.del_inp_avg_mp[self.err_port]
-        #self.w -= gep*u_act*(spj - sp)
-        #self.w -= gep*u_act*(sj - s)
-        self.w -= (gep*up + gepp*upp)*(sj - s)
+        #s = u.del_inp_avg_mp[self.err_port]
+        s = u.inp_avg_mp[self.err_port]
+        #self.w -= self.alpha*gep*u_act*(spj - sp)
+        #self.w -= self.alpha*gep*u_act*(sj - s)
+        #self.w -= self.alpha*(gep*up + gepp*upp)*(sj - s)
+        # see 05/07/20 scrap notes
+        #self.w -= self.alpha * (gep*(up-xp) + gepp*upp)*(sj - s)
+        #self.w -= self.alpha * (gep*(up-xp) + gepp*(upp-xpp))*(sj - s)
+        #self.w -= self.alpha * ((gep*(up-xp) + gepp*(upp-xpp))*
+        #                        (sj - s + spj - sp))
+        #xp_now = u.avg_inp_deriv_mp[self.lat_port]
+        xp_now = u.sc_inp_sum_deriv_mp[self.lat_port]
+        self.w -= self.alpha * ((gep*(up-xp) + gepp*upp)*(sj - s) -
+                  up * xp_now)
 
 
+class rga_21(synapse):
+    """ The RGA rule modulated with a second derivative for the errors.
+    
+        This rule is described in the NeurIPS paper.
+
+        Presynaptic units are given the lpf_fast and lpf_mid requirements.
+
+        Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
+        del_inp_deriv_mp, del_avg_inp_deriv_mp,
+        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        
+        The update methods for most of these requirements are currently in the
+        rga_reqs class of the spinal_units.py file.        
+
+        In addition, units using this type of synapse need to have a
+        'custom_inp_del' attribute to indicate the extra delay steps in the 
+        'lateral' inputs. The synapse will use this delay for the activities of
+        its postsynaptic unit and for the 'lateral' inputs.
+
+        The current implementation normalizes the sum of the absolute values for
+        the weights at the 'error' port, making them add to 1.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        In its current implementation, the rga synapse assumes that the lateral
+        connections are in port 1 of the unit, wheras the error inputs are in
+        port 0, and the global error is in port 2.
+
+        This is set in the lat_port, err_port, and ge_port variables.
+        
+        Args:
+            params: same as the parent class, with two additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            'post_delay': NOT USING. delay steps in the post-synaptic activity.
+            OPTIONAL PARAMETERS
+            'err_port' : port for "error" inputs. Default is 0.
+            'lat_port' : port for "lateral" inputs. Default is 1.
+
+        Raises:
+            AssertionError.
+        """
+        synapse.__init__(self, params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
+        # most of the heavy lifting is done by requirements
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast,
+                             syn_reqs.pre_lpf_mid, 
+                             #syn_reqs.pre_lpf_slow, # experimental
+                             #syn_reqs.del_inp_mp, # testing
+                             #syn_reqs.del_inp_avg_mp, # testing
+                             #syn_reqs.lpf_slow, # testing
+                             #syn_reqs.mp_inputs, # testing
+                             #syn_reqs.mp_weights, # testing
+                             #syn_reqs.inp_avg_mp, # testing
+                             syn_reqs.lpf_fast,
+                             syn_reqs.lpf_mid, 
+                             syn_reqs.inp_deriv_mp, 
+                             syn_reqs.avg_inp_deriv_mp,
+                             syn_reqs.del_inp_deriv_mp,
+                             syn_reqs.del_avg_inp_deriv_mp,
+                             #syn_reqs.sc_inp_sum_deriv_mp,
+                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.pre_out_norm_factor])
+        assert self.type is synapse_types.rga_21, ['Synapse from ' + str(self.preID) + 
+                   ' to ' + str(self.postID) + ' instantiated with the wrong type']
+        if not hasattr(self.net.units[self.postID], 'custom_inp_del'):
+            raise AssertionError('An rga_21 synapse has a postsynaptic unit ' +
+                                 'without the custom_inp_del attribute')
+        # po_de is the delay in postsynaptic activity for the learning rule
+        self.po_de = self.net.units[self.postID].custom_inp_del
+        if 'lat_port' in params: self.lat_port = params['lat_port']
+        else: self.lat_port = 1 
+        if 'err_port' in params: self.err_port = params['err_port']
+        else: self.err_port = 0 
+        self.ejp_slow = 0. # used to obtain the error's second derivative
+        self.ep_slow = 0. # used to obtain the error's second derivative
+        #  We need an index to
+        # extract the derivative of the presynaptic input from inp_deriv_mp,
+        # called idm_id.
+        # Since synapses are created serially, and this constructor is called
+        # when the synapse is being created, we can assume that idm_id will be
+        # the number of entries in post.port_idx[self.error_port]
+        #self.idm_id = len(network.units[self.postID].port_idx[self.err_port])
+        
+        # The procedure above fails because port_idx doesn't get updated after
+        # each individual synapse is created. It gets updated after all the
+        # synapse is a call to 'connect' are created. 
+        # Trying something else. idm_id should be equal to the number of
+        # synapses in net.units[self.postID] whose port is equal to this
+        # synapse's port.
+        count = 0
+        for syn in network.syns[self.postID]:
+            if syn.port == self.port:
+                count += 1
+        self.idm_id = count
+
+    def update(self, time):
+        """ Update the weight using the RGA-inspired learning rule.
+        
+            If the network is correctly initialized, the pre-synaptic unit 
+            updates lpf_fast, and lpf_mid, whereas the post-synaptic unit
+            updates lpf_fast, lpf_mid, and the average of approximate input
+            derivatives for each port.
+
+        """
+        #TODO: move calculations into unit requirements
+        #   in particular, a del_post_diff requirement
+        #   to caluclate cp   
+
+        # obtain factors in plasticity equation
+        post = self.net.units[self.postID]
+        pre = self.net.units[self.preID]
+        cp = post.del_avg_inp_deriv_mp[self.lat_port]
+        cip = post.get_lpf_fast(self.po_de) - post.get_lpf_mid(self.po_de)
+        ep = post.avg_inp_deriv_mp[self.err_port]
+        ejp = post.inp_deriv_mp[self.err_port][self.idm_id]
+        self.ep_slow += 10.*self.net.min_delay*(ep - self.ep_slow)
+        self.ejp_slow += 10.*self.net.min_delay*(ejp - self.ejp_slow)
+        epp = ep - self.ep_slow
+        ejpp = ejp - self.ejp_slow
+        # normalization 
+        norm_fac = .5*(post.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        self.w += self.alpha * (norm_fac - 1.)*self.w 
+        # plasticity equation
+        self.w -= self.alpha * (ejpp - epp) * (cip - cp)
+
+        
 class normal_rga(synapse):
     """ A version of the rga rule with divisive normalization.
 
@@ -1788,6 +1938,119 @@ class gated_diff_input_selection_synapse(gated_input_selection_synapse):
         self.w = self.w + u.acc_slow * self.alpha * Dpre * err_diff
 
 
+class gated_diff_inp_corr(synapse):
+    """ Differential version of the input correlation synapse.
+
+        This synapse assumes that its presynaptic input is some type of "error"
+        signal. The synapse's weight will be modified according to the
+        correlation between the derivative of this presynaptic input, and the
+        derivative of the input at different port of the postsynaptic unit.
+
+        Such a rule is meant to select the "error" input based on how it
+        correlates with another lateral/ascending input to the postsynaptic unit.
+        See the later part of "A generalization of RGA, and Fourier components."
+        
+        The acc_slow attribute of the postsynaptic unit is used to modulate the
+        learning rate. Thus, this synapse should only connect to units that
+        contain that requirement. In the case of the am_pulse unit, inputs at 
+        port 3 are used to reset acc_slow.
+
+        There is an extra delay for the ascending presynaptic input in order to
+        synchronize it with the error. This delay is comes from using the
+        xtra_del_inp_deriv_mp requirement for the ascending inputs, whereas the
+        inp_deriv_mp requirement is used for the error.
+
+        The weights are normalized so their sum is always moving to a given
+        'w_sum' value.
+
+        The name of this synapse type is 'gated_diff_inp_corr'.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the synapse class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            OPTIONAL PARAMETERS
+            'error_port' : port where the 'error' signals are received in the
+                           postsynaptic unit. Default is the port of the synapse
+                           (e.g. self.port).
+            'asc_port' : port where the 'ascending' signals are received in the
+                         postsynaptic unit. Default is 2.
+            'w_sum' : value of the sum of synaptic weights at the 'asc' synapse.
+                      Default is 1.
+        Raises:
+            ValueError
+        """
+        synapse.__init__(self, params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
+        if 'asc_port' in params:
+            self.asc_port = params['asc_port']
+        else:
+            self.asc_port = 2
+        if 'error_port' in params:
+            self.error_port = params['error_port']
+        else:
+            self.error_port = self.port
+        if self.error_port != self.port:
+            from warnings import warn
+            warn("error_port and port don't coincide in diff_inp_corr synapse",
+                 UserWarning)
+        if 'w_sum' in params:
+            self.w_sum = params['w_sum']
+        else:
+            self.w_sum = 1.
+        # this may be inefficient because the lpf_mid_sc_inp_sum is being
+        # calculated also for the afferent inputs. It is, however, convenient
+        # for the derived class gated_diff_inp_sel
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast,
+                                     syn_reqs.pre_lpf_mid,
+                                     syn_reqs.mp_weights, # for xtra_del_inp_deriv_mp_sc_sum
+                                     syn_reqs.inp_deriv_mp,
+                                     syn_reqs.xtra_del_inp_deriv_mp,
+                                     syn_reqs.xtra_del_inp_deriv_mp_sc_sum,
+                                     syn_reqs.l0_norm_factor_mp])
+        # The plasticity in this synapse is driven by two inputs in the
+        # postsynaptic unit. One is the presynaptic input of this synapse, and
+        # the other is the ascending input to the unit. We need an index to
+        # extract the derivative of the presynaptic input from inp_deriv_mp,
+        # called idm_id.
+        # Since synapses are created serially, and this constructor is called
+        # when the synapse is being created, we can assume that idm_id will be
+        # the number of entries in post.port_idx[self.error_port]
+        #self.idm_id = len(network.units[self.postID].port_idx[self.error_port])
+       
+        # The procedure above fails because port_idx doesn't get updated after
+        # each individual synapse is created. It gets updated after all the
+        # synapse is a call to 'connect' are created. 
+        # Trying something else. idm_id should be equal to the number of
+        # synapses in net.units[self.postID] whose port is equal to this
+        # synapse's port.
+        count = 0
+        for syn in network.syns[self.postID]:
+            if syn.port == self.port:
+                count += 1
+        self.idm_id = count
+
+        # For the derivative of the ascending input, usually there will be a 
+        # single ascending input at this port, but just to be safe we will use
+        # the derivative of the scaled input sum.
+           
+    def update(self, time):
+        """ Update the weight using the diff_inp_corr rule. """
+        post = self.net.units[self.postID]
+        #pre = self.net.units[self.preID]
+        
+        Derror = post.inp_deriv_mp[self.error_port][self.idm_id]
+        Dasc = post.xtra_del_inp_deriv_mp_sc_sum[self.asc_port]
+
+        self.w += self.alpha * (post.acc_slow * Derror * Dasc +
+                  (self.w_sum * post.l0_norm_factor_mp[self.error_port] - 1.) 
+                   * self.w )
+
+
 class static_l0_normal(synapse):
     """ A static synapse with multiplicative normalization.
 
@@ -1806,13 +2069,13 @@ class static_l0_normal(synapse):
             Constructor of the static_l0_normal synapse.
     
             Args:
-                params: same as the synapse class with two additions.
+                params: same as the synapse class. 
                 REQUIRED PARAMETERS
                 'w_sum' : the sum of absolute weight values will add to this.
                         Must be the same for all normalized synapses.
                 'tau_norml' : time constant for normalization.
             Raises:
-                ValueError, AssertionError.
+                ValueError
         """
         synapse.__init__(self, params, network)
         self.tau_norml = params['tau_norml'] 
@@ -1828,4 +2091,56 @@ class static_l0_normal(synapse):
         """ Update the weight normalization. """
         nf = self.net.units[self.postID].l0_norm_factor
         self.w = self.w + self.alpha * self.w * (nf*self.w_sum - 1.)
+
+
+class comp_pot(synapse):
+    """ Competitive potentiation synapse.
+
+        The weight increases according to how large the presynaptic input is,
+        compared to the average of port 0 inputs. This requires the inp_avg_mp
+        requirement, which in turn depends on the mp_inputs requirement.
+
+        Port 0 weights are normalized so they add to a value 'w_sum'. This uses
+        the l0_norm_factor_mp requirement.
+
+        The current version has soft weight bounding so weights remain positive.
+        Initial weight values should be positive!
+    """
+    def __init__(self, params, network):
+        """ Constructor of the comp_pot synapse.
+
+            Args:
+                params: same as the synapse class with two additions.
+                REQUIRED PARAMETERS
+                'lrate' : learning rate for the potentiation.
+                'w_sum' : the sum of absolute weight values will add to this.
+                        Must be the same for all normalized synapses.
+                'tau_norml' : time constant for normalization.
+            Raises:
+                ValueError
+        """
+        synapse.__init__(self, params, network)
+        self.tau_norml = params['tau_norml'] 
+        self.w_sum = params['w_sum']
+        if self.tau_norml <= 0.:
+            raise ValueError('tau_norml should be a positive value')
+        if self.w_sum <= 0.:
+            raise ValueError('w_sum should be a positive value')
+        self.alpha1 = params['lrate'] * self.net.min_delay # scale update rule
+        self.alpha2 = self.net.min_delay / self.tau_norml # scale normalization
+        self.upd_requirements.update([syn_reqs.l0_norm_factor_mp,
+                                      syn_reqs.mp_inputs,
+                                      syn_reqs.inp_avg_mp])
+
+    def update(self, time):
+        """ Update the comp_pot synapse. """
+        post = self.net.units[self.postID]
+        pre = self.net.units[self.preID]
+        self.w += (self.w * self.alpha1 * (pre.act_buff[-1] - post.inp_avg_mp[0]) +
+               self.alpha2 * self.w * (post.l0_norm_factor_mp[0]*self.w_sum - 1.))
+
+        
+
+
+
 

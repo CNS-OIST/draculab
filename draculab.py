@@ -78,6 +78,8 @@ class unit_types(Enum):
     chwr_linear = 113
     am_oscillator = 114
     am_oscillator2D = 115
+    am_pulse = 116
+    inpsel_linear2 = 117
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -236,6 +238,12 @@ class unit_types(Enum):
         elif self == unit_types.am_oscillator2D:
             from units.spinal_units import am_oscillator2D
             unit_class = am_oscillator2D
+        elif self == unit_types.am_pulse:
+            from units.spinal_units import am_pulse
+            unit_class = am_pulse
+        elif self == unit_types.inpsel_linear2:
+            from units.spinal_units import inpsel_linear2
+            unit_class = inpsel_linear2
         else:
             raise NotImplementedError('Attempting to retrieve the class of an ' + 
                                       'unknown unit model')
@@ -284,6 +292,9 @@ class synapse_types(Enum):
     static_l0_normal = 215 # static with multiplicative normalization
     normal_rga = 216 # rga with normalized correlation
     rga_ge = 217 # rga modulated by the derivative of the global error
+    comp_pot = 218 # competitive potentiation
+    gated_diff_inp_corr = 219 # differential input correlation
+    rga_21 = 220 # rga with second derivative for the error
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -397,6 +408,15 @@ class synapse_types(Enum):
         elif self == synapse_types.rga_ge:
             from synapses.spinal_syns import rga_ge
             syn_class = rga_ge
+        elif self == synapse_types.comp_pot:
+            from synapses.spinal_syns import comp_pot 
+            syn_class = comp_pot
+        elif self == synapse_types.gated_diff_inp_corr:
+            from synapses.spinal_syns import gated_diff_inp_corr
+            syn_class = gated_diff_inp_corr
+        elif self == synapse_types.rga_21:
+            from synapses.spinal_syns import rga_21
+            syn_class = rga_21
         else:
             raise NotImplementedError('Attempting retrieve the class ' +
                                       'of an unknown synapse model')
@@ -553,6 +573,10 @@ class syn_reqs(Enum):
     l0_norm_factor = 124 # factor to normalized the sum of absolute weight values
     del_inp_mp = 125 # raw inputs at each port with a custom delay
     del_inp_avg_mp = 126 # average of raw inputs at each port with a custom delay
+    inp_avg_mp = 127 # average of the raw inputs at each port
+    sc_inp_sum_deriv_mp = 128 # like sc_inp_sum_diff_mp, but relies on inp_deriv_mp
+    xtra_del_inp_deriv_mp = 129 # del_inp_deriv_mp with both custom and normal delay
+    xtra_del_inp_deriv_mp_sc_sum = 130 # scaled sum of xtra_del_inp_deriv_mp at each port
 
 
     def list_names():
