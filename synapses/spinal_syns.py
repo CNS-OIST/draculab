@@ -381,6 +381,7 @@ class rga_ge(synapse):
         else: self.ge_port = 2 
         self.gep_slow = 0. # used to obtain the error's second derivative
         self.xp_slow = 0. # to obtain the lateral inputs' second derivative
+        self.up_slow = 0. # ditto
         
     def update(self, time):
         """ Update the weight using the RGA-inspired learning rule.
@@ -395,7 +396,7 @@ class rga_ge(synapse):
         u = self.net.units[self.postID]
         xp = u.del_avg_inp_deriv_mp[self.lat_port]
         up = u.get_lpf_fast(self.po_de) - u.get_lpf_mid(self.po_de)
-        upp = up - u.get_lpf_mid(self.po_de) + u.get_lpf_slow(self.po_de)
+        #upp = up - u.get_lpf_mid(self.po_de) + u.get_lpf_slow(self.po_de)
         #sp = u.avg_inp_deriv_mp[self.err_port]
         #sp = u.del_avg_inp_deriv_mp[self.err_port]
         pre = self.net.units[self.preID]
@@ -408,9 +409,10 @@ class rga_ge(synapse):
         gep = u.inp_deriv_mp[self.ge_port][0] # only one GE input
         self.gep_slow += 10.*self.net.min_delay*(gep - self.gep_slow)
         gepp = gep - self.gep_slow
-        
-        #self.xp_slow += 0.05*(xp - self.xp_slow)
-        #xpp = xp - self.xp_slow
+        self.up_slow += 10.*self.net.min_delay*(up - self.up_slow)
+        upp = up - self.up_slow
+        self.xp_slow += 10.*self.net.min_delay*(xp - self.xp_slow)
+        xpp = xp - self.xp_slow
 
         #self.w += self.alpha * (up - xp) * (sp - spj) # normal rga
         #self.w += -self.alpha * gep * (up - xp) * (sp - spj) # modulated rga
@@ -439,8 +441,9 @@ class rga_ge(synapse):
         #                        (sj - s + spj - sp))
         #xp_now = u.avg_inp_deriv_mp[self.lat_port]
         xp_now = u.sc_inp_sum_deriv_mp[self.lat_port]
-        self.w -= self.alpha * ((gep*(up-xp) + gepp*upp)*(sj - s) -
-                  up * xp_now)
+        #self.w -= self.alpha * ((gep*(up-xp) + gepp*(upp-xpp))*(sj - s) -
+        #          up * xp_now)
+        self.w -= self.alpha * ((gep*up + gepp*upp)*(sj - s) - up * xp_now)
 
 
 class rga_21(synapse):
