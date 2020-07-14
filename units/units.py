@@ -849,7 +849,6 @@ class unit():
         self.pos_inp_avg_hsn = sum([n*(u.get_lpf_fast(s)) for n,u,s in 
                         zip(self.n_vec, self.snorm_units, self.snorm_delys)]) / sum(self.n_vec)
 
-
     def upd_err_diff(self, time):
         """ Update the derivative of the error inputs for input correlation learning. 
 
@@ -862,7 +861,6 @@ class unit():
                           sum([ self.net.units[i].get_lpf_mid(s) 
                                 for i,s in self.err_idx_dels ]) )
        
-
     def upd_sc_inp_sum_sqhsn(self, time):
         """ Update the sum of the inputs multiplied by their synaptic weights.
         
@@ -871,7 +869,6 @@ class unit():
         #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
         #                                ' sc_inp_sum_sqhsn updated backwards in time']
         self.sc_inp_sum_sqhsn = sum([u.get_lpf_fast(d) * syn.w for u,d,syn in self.u_d_syn])
-        
         
     def upd_diff_avg(self, time):
         """ Update the average of derivatives from inputs with diff_hebbsnorm synapses.
@@ -882,9 +879,8 @@ class unit():
         """
         #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
         #                                ' diff_avg updated backwards in time']
-        self.diff_avg = ( sum([u.get_lpf_fast(s) - u.get_lpf_mid(s) for u,s in self.dsnorm_list_dels]) 
-                          / self.n_dhebbsnorm )
-
+        self.diff_avg = ( sum([u.get_lpf_fast(s) - u.get_lpf_mid(s) for u,s in 
+                          self.dsnorm_list_dels]) / self.n_dhebbsnorm )
 
     def upd_lpf_mid_inp_sum(self,time):
         """ Update the lpf_mid_inp_sum variable. """
