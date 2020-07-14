@@ -2880,7 +2880,7 @@ class planar_arm_v3(plant):
                             ((1.-par['fs']) / par['k_se_d']) * Td)
         # updating the II afferents
         #   In this case we would need to obtain the muscle speeds and tension
-        #   derivatives for each substep. To avoid all that compuatation, we
+        #   derivatives for each substep. To avoid all that computation, we
         #   obtain speeds and tension derivatives only at one intermediate point.
         c_elbow, c_hand, ips = self.upd_ip_impl(self.buffer[idx_II,0],
                                                 self.buffer[idx_II,2])
@@ -2922,7 +2922,7 @@ class planar_arm_v3(plant):
                       ((1.-par['fs']) / par['k_se_d']) * Td)).transpose()
         # updating the II afferents
         # In this case we would need to obtain the muscle speeds and tension
-        # derivatives for each substep. To avoid all that compuatation, we
+        # derivatives for each substep. To avoid all that computation, we
         # obtain speeds and tension derivatives only at one intermediate point.
         c_elbow, c_hand, ips = self.upd_ip_impl(self.buffer[0,idx_II],
                                                 self.buffer[2,idx_II])

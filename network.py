@@ -1126,7 +1126,76 @@ class network():
 
         return times, unit_store, plant_store
 
-           
+
+    def save_state(self):
+        """ Create a dictionary with the network's state.
+
+            This state dictionary can be used to set the network's state using
+            the network.set_state method. After the state is set, subsequent 
+            simulations should be the same as when the state was saved.
+
+            The state dictionary does not save the whole network configuration,
+            but only the information necessary to continue simulations (e.g.
+            buffer contents, synaptic weights), and some information regarding
+            the network structure (for sanity tests in the set_state method). 
+            
+            It is assumed that save_state and set_statet will be used in
+            almost identical networks. The only differences contemplated are in
+            how much each network has been simulated, the functions of the
+            source units, and the state of the plants.
+
+            Returns:
+                state: A dictionary with the information necessary to update the
+                       simulation. The dictionary contains these entries:
+                    units: list with the type of each units
+                    syns: for each synapse: (source, type, weight).
+                    plants: list with the type of each plant.
+                    pl_syns: for each plant input and port: (source, weight).
+                    delays: a copy of network.delays
+                    flat: a copy of network.flat (True if network is flat).
+                    unit_buff_t: buffers and times for units if network not flat.
+                    plant_buff_t: buffers and times for plants if network not flat.
+                    act: copy of network.act if network flat.
+                    ts: copy of network.ts if network flat.
+        """
+        state = {}
+        state['units'] = [u.type for u in self.units]
+        state['syns'] = [[] for sl in self.syns]
+        for syn_idx in range(len(self.units)):
+            for syn in self.syns[syn_idx]:
+                state['syns'][syn_idx].append(
+                                     (syn.preID,syn.type,syn.weight))
+        state['plants'] = [p.type for p in self.plants]
+        state['pl_syns'] = [[[] for _ in range(p.inp_dim)] for p in self.plants]
+        for pl_idx in range(len(self.plants)):
+            for port in range(self.plants[pl_idx].inp_dim):
+                state['pl_syns'][p_idx][port].append((syn.preID,syn.weight) for 
+                                 syn in self.plants[pl_idx].inp_syns[port])
+        state['delays'] = self.delays
+        state['flat'] = self.flat
+        state['unit_buff_t'] = [() for _ in self.units]
+        state['plant_buff_t'] = [() for _ in self.plants]
+        if not self.flat:
+            for uid, u in enumerate(self.units):
+                if hasattr(u, 'buffer'):
+                    state['unit_buff_t'][uid] = (u.buffer, u.times)
+            for pid, p in enumerate(self.plants):
+                state['plant_buff_t'][pid] = (p.buffer, p.times)
+                
+
+
+
+    def set_state(self, state):
+        """ Set the network to a previously saved state.
+
+            This method receives a state dictionary created with the
+            save_state() function, and transfers its values into the network.
+
+            Args:gtj
+                state: see network.save_state
+        """
+        pass
+        # set sim_time to the last element of times
 
 
     def run(self, total_time):
