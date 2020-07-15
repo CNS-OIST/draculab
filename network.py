@@ -1157,6 +1157,7 @@ class network():
                     plant_buff_t: buffers and times for plants if net not flat.
                     acts: copy of network.acts if network flat.
                     ts: copy of network.ts if network flat.
+                    lpf: buffers used for low-pass filtered activity.
         """
         state = {}
         state['units'] = [u.type for u in self.units]
@@ -1173,19 +1174,30 @@ class network():
                                  syn in self.plants[pl_idx].inp_syns[port]])
         state['delays'] = self.delays
         state['flat'] = self.flat
-        state['unit_buff_t'] = [() for _ in self.units]
-        state['plant_buff_t'] = [() for _ in self.plants]
         if not self.flat:
+            state['unit_buff_t'] = [() for _ in self.units]
+            state['plant_buff_t'] = [() for _ in self.plants]
             for uid, u in enumerate(self.units):
                 if hasattr(u, 'buffer'):
                     state['unit_buff_t'][uid] = (u.buffer, u.times)
             for pid, p in enumerate(self.plants):
                 state['plant_buff_t'][pid] = (p.buffer, p.times)
+        else:
+            state['acts'] = self.acts
+            state['ts'] = self.ts
+        state['lpf'] = [{} for _ in self.units]
+        for uid, u in enumerate(self.units):
+            if hasattr(u, 'lpf_fast_buff'):
+                state['lpf'][uid]['lpf_fast_buff'] = u.lpf_fast_buff
+            if hasattr(u, 'lpf_mid_buff'):
+                state['lpf'][uid]['lpf_mid_buff'] = u.lpf_mid_buff
+            if hasattr(u, 'lpf_slow_buff'):
+                state['lpf'][uid]['lpf_slow_buff'] = u.lpf_slow_buff
+            if hasattr(u, 'lpf_mid_inp_sum'):
+                state['lpf'][uid]['lpf_mid_inp_sum'] = u.lpf_mid_inp_sum
 
         return state
                 
-
-
 
     def set_state(self, state):
         """ Set the network to a previously saved state.

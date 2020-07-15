@@ -195,7 +195,6 @@ class unit():
         """
         assert self.net.sim_time == 0., 'Buffers are being reset when the simulation time is not zero'
         assert not self.net.flat, 'init_buffers should not be run with flat networks'
-
         min_del = self.min_delay  # just to have shorter lines below
         self.steps = int(round(self.delay/min_del)) # delay, in units of the minimum delay
         self.bf_type = np.float64  # data type of the buffer when it is a numpy array
@@ -214,6 +213,8 @@ class unit():
         if syn_reqs.lpf_mid_inp_sum in self.syn_needs:
             self.lpf_mid_inp_sum_buff = np.array( [self.init_act]*self.steps,
                                                   dtype=self.bf_type)
+        # if you add another lpf buffer, make sure to also include it in
+        # network.save_state and network.set_state
 
         # 'source' units don't use activity buffers, so for them the method ends here
         if self.type == unit_types.source:
