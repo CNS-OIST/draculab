@@ -1139,7 +1139,7 @@ class network():
             buffer contents, synaptic weights), and some information regarding
             the network structure (for sanity tests in the set_state method). 
             
-            It is assumed that save_state and set_statet will be used in
+            It is assumed that save_state and set_state will be used in
             almost identical networks. The only differences contemplated are in
             how much each network has been simulated, the functions of the
             source units, and the state of the plants.
@@ -1147,15 +1147,15 @@ class network():
             Returns:
                 state: A dictionary with the information necessary to update the
                        simulation. The dictionary contains these entries:
-                    units: list with the type of each units
+                    units: list with the type of each unit.
                     syns: for each synapse: (source, type, weight).
                     plants: list with the type of each plant.
                     pl_syns: for each plant input and port: (source, weight).
                     delays: a copy of network.delays
                     flat: a copy of network.flat (True if network is flat).
-                    unit_buff_t: buffers and times for units if network not flat.
-                    plant_buff_t: buffers and times for plants if network not flat.
-                    act: copy of network.act if network flat.
+                    unit_buff_t: buffers and times for units if net not flat.
+                    plant_buff_t: buffers and times for plants if net not flat.
+                    acts: copy of network.acts if network flat.
                     ts: copy of network.ts if network flat.
         """
         state = {}
@@ -1164,13 +1164,13 @@ class network():
         for syn_idx in range(len(self.units)):
             for syn in self.syns[syn_idx]:
                 state['syns'][syn_idx].append(
-                                     (syn.preID,syn.type,syn.weight))
+                                     (syn.preID,syn.type,syn.w))
         state['plants'] = [p.type for p in self.plants]
-        state['pl_syns'] = [[[] for _ in range(p.inp_dim)] for p in self.plants]
+        state['pl_syns'] = [[] for p in self.plants]
         for pl_idx in range(len(self.plants)):
             for port in range(self.plants[pl_idx].inp_dim):
-                state['pl_syns'][p_idx][port].append((syn.preID,syn.weight) for 
-                                 syn in self.plants[pl_idx].inp_syns[port])
+                state['pl_syns'][pl_idx].append([(syn.preID,syn.w) for 
+                                 syn in self.plants[pl_idx].inp_syns[port]])
         state['delays'] = self.delays
         state['flat'] = self.flat
         state['unit_buff_t'] = [() for _ in self.units]
@@ -1181,6 +1181,8 @@ class network():
                     state['unit_buff_t'][uid] = (u.buffer, u.times)
             for pid, p in enumerate(self.plants):
                 state['plant_buff_t'][pid] = (p.buffer, p.times)
+
+        return state
                 
 
 

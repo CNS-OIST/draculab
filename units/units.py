@@ -696,9 +696,12 @@ class unit():
         for syn, delay in zip(self.net.syns[self.ID], self.net.delays[self.ID]):
             # The -1 below is because get_lpf_fast etc. return lpf_fast_buff[-1-steps], 
             # corresponding to the assumption that buff[-1] is the value zero steps back
-            syn.delay_steps = min(self.net.units[syn.preID].steps-1, 
-                                  int(round(delay/self.min_delay)))
-
+            if not hasattr(syn, 'plant_id'): # if not from a plant
+                syn.delay_steps = min(self.net.units[syn.preID].steps-1, 
+                                      int(round(delay/self.min_delay)))
+            else: # from a plant
+                syn.delay_steps = min(self.net.plants[syn.preID].steps-1, 
+                                      int(round(delay/self.min_delay)))
         # For each synapse you receive, add its requirements
         for syn in self.net.syns[self.ID]:
             self.syn_needs.update(syn.upd_requirements)
