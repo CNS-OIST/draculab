@@ -1174,27 +1174,28 @@ class network():
                                  syn in self.plants[pl_idx].inp_syns[port]])
         state['delays'] = self.delays
         state['flat'] = self.flat
+        # all buffers should be copies, otherwise they'll continue to update
         if not self.flat:
             state['unit_buff_t'] = [() for _ in self.units]
             state['plant_buff_t'] = [() for _ in self.plants]
             for uid, u in enumerate(self.units):
                 if hasattr(u, 'buffer'):
-                    state['unit_buff_t'][uid] = (u.buffer, u.times)
+                    state['unit_buff_t'][uid] = (u.buffer.copy(),u.times.copy())
             for pid, p in enumerate(self.plants):
-                state['plant_buff_t'][pid] = (p.buffer, p.times)
+                state['plant_buff_t'][pid] = (p.buffer.copy(), p.times.copy())
         else:
-            state['acts'] = self.acts
-            state['ts'] = self.ts
+            state['acts'] = self.acts.copy()
+            state['ts'] = self.ts.copy()
         state['lpf'] = [{} for _ in self.units]
         for uid, u in enumerate(self.units):
             if hasattr(u, 'lpf_fast_buff'):
-                state['lpf'][uid]['lpf_fast_buff'] = u.lpf_fast_buff
+                state['lpf'][uid]['lpf_fast_buff'] = u.lpf_fast_buff.copy()
             if hasattr(u, 'lpf_mid_buff'):
-                state['lpf'][uid]['lpf_mid_buff'] = u.lpf_mid_buff
+                state['lpf'][uid]['lpf_mid_buff'] = u.lpf_mid_buff.copy()
             if hasattr(u, 'lpf_slow_buff'):
-                state['lpf'][uid]['lpf_slow_buff'] = u.lpf_slow_buff
+                state['lpf'][uid]['lpf_slow_buff'] = u.lpf_slow_buff.copy()
             if hasattr(u, 'lpf_mid_inp_sum'):
-                state['lpf'][uid]['lpf_mid_inp_sum'] = u.lpf_mid_inp_sum
+                state['lpf'][uid]['lpf_mid_inp_sum'] = u.lpf_mid_inp_sum.copy()
 
         return state
                 
@@ -1205,10 +1206,44 @@ class network():
             This method receives a state dictionary created with the
             save_state() function, and transfers its values into the network.
 
-            Args:gtj
+            Args:
                 state: see network.save_state
+                    units: list with the type of each unit.
+                    syns: for each synapse: (source, type, weight).
+                    plants: list with the type of each plant.
+                    pl_syns: for each plant input and port: (source, weight).
+                    delays: a copy of network.delays
+                    flat: a copy of network.flat (True if network is flat).
+                    unit_buff_t: buffers and times for units if net not flat.
+                    plant_buff_t: buffers and times for plants if net not flat.
+                    acts: copy of network.acts if network flat.
+                    ts: copy of network.ts if network flat.
+                    lpf: buffers used for low-pass filtered activity.
         """
-        pass
+        # testing network has the same signature
+        for uid, u in enumerate(self.units):
+            if u.type != state['units'][uid]:
+                raise ValueError('Corresponding units are not of the same ' +
+                        'type in received state and in the network')
+        for uid, syn_list in enumerate(self.syns):
+            for syn_id, syn in enumerate(syn_list):
+                if syn.preID != state['syns'][uid][syn_id][0]:
+                    raise ValueError('Connectivity structure differs ' +
+                            'in the received state and in the network')
+                if syn.type != state['syns'][uid][syn_id][1]:
+                    raise ValueError('Synapse types differ in the ' +
+                            'received state and in the network')
+        for pl_id, plant in enumerate(self.plants):
+            for po_id, syn_list in enumerate(plant.inp_syns):
+                for syn_id, syn in enumerate(syn_list):
+                    if syn.preID != state['pl_syns'][pl_id][po_id][syn_id][0]:
+                        raise ValueError('Connections to plants differ ' +
+                                'in received state and in the network')
+        if self.flat != state['flat']:
+            raise ValueError('Received state does not agree on flattening')
+        if self.delays != state['delays']:
+            raise ValueError('Delays do not agree in received state and ' +
+                             'in the network')
         # set sim_time to the last element of times
 
 
