@@ -1158,6 +1158,7 @@ class network():
                     acts: copy of network.acts if network flat.
                     ts: copy of network.ts if network flat.
                     lpf: buffers used for low-pass filtered activity.
+                    sim_time: a copy of network.sim_time
         """
         state = {}
         state['units'] = [u.type for u in self.units]
@@ -1196,6 +1197,7 @@ class network():
                 state['lpf'][uid]['lpf_slow_buff'] = u.lpf_slow_buff.copy()
             if hasattr(u, 'lpf_mid_inp_sum'):
                 state['lpf'][uid]['lpf_mid_inp_sum'] = u.lpf_mid_inp_sum.copy()
+        state['sim_time'] = self.sim_time
 
         return state
                 
@@ -1207,7 +1209,7 @@ class network():
             save_state() function, and transfers its values into the network.
 
             Args:
-                state: see network.save_state
+                state: A dictionary. See network.save_state.
                     units: list with the type of each unit.
                     syns: for each synapse: (source, type, weight).
                     plants: list with the type of each plant.
@@ -1219,6 +1221,7 @@ class network():
                     acts: copy of network.acts if network flat.
                     ts: copy of network.ts if network flat.
                     lpf: buffers used for low-pass filtered activity.
+                    sim_time: a copy of network.sim_time
         """
         # testing network has the same signature
         for uid, u in enumerate(self.units):
@@ -1244,7 +1247,42 @@ class network():
         if self.delays != state['delays']:
             raise ValueError('Delays do not agree in received state and ' +
                              'in the network')
-        # set sim_time to the last element of times
+        # restoring the state
+        if not self.flat: # when network not flat
+            # copying buffers and times into the units
+            for uid, u in enumerate(self.units):
+                if hasattr(u, 'buffer'):
+                    u.buffer = state['unit_buff_t'][uid][0]
+                    u.times = state['unit_buff_t'][uid][1]
+                    if u.multidim:
+                        u.act_buff = u.buffer[0,:]
+                    else:
+                        u.act_buff = u.buffer.view()
+                    if u.using_interp1d:
+                        u.upd_interpolator()
+            # copying buffers and times into the plants
+            for pid, p in enumerate(self.plants):
+                p.buffer = state['plant_buff_t'][pid][0]
+                p.times = state['plant_buff_t'][pid][1]
+            # copying synaptic weights
+            for uid, syn_list in enumerate(self.syns):
+                for sid, syn in enumerate(syn_list):
+                    syn.w = state['syns'][uid][sid][2]
+        else: # flat network
+            self.acts = state['acts']
+            self.ts = state['ts']
+            # link buffers as in self.flatten()
+            self.link_unit_buffers()
+            for plant in self.plants:
+                svi = self.p_st_var_idx[plant.ID][0]
+                plant.buffer = np.ndarray(shape=(plant.dim, self.ts.size),
+                            buffer=self.acts[svi:svi+plant.dim, :],
+                            dtype=self.bf_type) 
+                plant.times = self.ts.view()
+                plant.buff_width = self.ts.size
+                plant.offset = plant.buff_width - self.min_buff_size
+           
+        self.sim_time = state['sim_time']
 
 
     def run(self, total_time):
