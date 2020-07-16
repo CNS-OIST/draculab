@@ -725,3 +725,27 @@ class bouncy_planar_arm_v3(planar_arm_v3):
             lengths.append(np.linalg.norm(ips[idx]-ips[idx+1]))
         return np.array(lengths)
 
+    def place_hand(self, coords):
+        """ Place the hand at the given coordinates.
+
+            This method will alter the values in the buffer to reflect an arm
+            with the hand at the given position, and zero initial velocities.
+
+            Args:
+                coords : list-like with [x,y] coordinates.
+        """
+        qs, qe = self.coords_to_angs(coords)
+        init4 = np.array([qs, 0., qe, 0.])
+        if self.net.flat:
+            self.buffer[:4,-1] = init4 # so upd_ip gets the angles
+        else:
+            self.buffer[-1,:4] = init4
+        self.init_state[0:4] = init4
+        self.upd_ip() # update c_hand, c_elbow, ip
+        self.init_muscles() # set tensions and afferent outputs in init_state
+        if self.net.flat:
+            self.buffer[:,-1] = self.init_state
+        else:
+            self.buffer[-1,:] = self.init_state
+
+
