@@ -1282,6 +1282,15 @@ class network():
                 plant.buff_width = self.ts.size
                 plant.offset = plant.buff_width - self.min_buff_size
            
+        ## linking plants...
+        ## TODO: Might need to update plant.inputs, plant.inp_syns as in append_inputs
+        if self.n_plants > 0:
+            for idx_l, l in enumerate(self.syns):
+                for idx_s, syn in enumerate(l):
+                    if hasattr(syn, 'plant_out'): # synapse comes from a plant
+                        self.act[idx_l][idx_s] = \
+                            self.plants[syn.plant_id].get_state_var_fun(syn.plant_out)
+
         self.sim_time = state['sim_time']
 
 

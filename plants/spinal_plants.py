@@ -744,8 +744,10 @@ class bouncy_planar_arm_v3(planar_arm_v3):
         self.upd_ip() # update c_hand, c_elbow, ip
         self.init_muscles() # set tensions and afferent outputs in init_state
         if self.net.flat:
-            self.buffer[:,-1] = self.init_state
+            for idx in range(self.buff_width):
+                self.buffer[:,idx] = self.init_state
         else:
-            self.buffer[-1,:] = self.init_state
+            for idx in range(self.buff_width):
+                self.buffer[idx,:] = self.init_state
 
 
