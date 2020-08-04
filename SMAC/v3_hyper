@@ -809,7 +809,7 @@ if __name__=='__main__':
         net, pops_dict, hand_coords, m_idxs, t_pres = net_from_cfg(cfg)
         
         # run the network
-        run_time = 4000.
+        run_time = 4. #4000. debugging
         #start_time = time.time()
         times, data, plant_data  = net.flat_run(run_time)
         #print('Execution time is %s seconds' % (time.time() - start_time))
@@ -837,7 +837,7 @@ if __name__=='__main__':
     
     # 5) The scenario object
     scenario = Scenario({"run_obj": "quality",   # we optimize quality (alternatively runtime)
-                        "runcount-limit": 100,   # maximum function evaluations
+                        "runcount-limit": 1, #100,   # maximum function evaluations
                         "cs": cs,               # configuration space
                         "deterministic": "false",
                         "shared_model": True,

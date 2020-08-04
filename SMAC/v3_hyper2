@@ -91,7 +91,7 @@ if __name__=='__main__':
         
         # First the network object, the plant, the list of coordinates
         net_params = {'min_delay' : 0.005,
-                    'min_buff_size' : 10 }
+                    'min_buff_size' : 6 }
         P_params = {  'type' : plant_models.bouncy_planar_arm_v3,
                 'mass1': 1.,
                 'mass2': 1.,
@@ -539,12 +539,11 @@ if __name__=='__main__':
 	#*************************************
 	# CHANGING SOME DEFAULT VALUES
 	#*************************************
-	CE_params['tau'] = 0.02
-	CI_params['tau'] = 0.1
-	ACT_params['y_min'] = 0.2
-	ACT_params['tau_u'] = 7.
-	CI__CE_syn['init_w'] = -2.
-
+        CE_params['tau'] = 0.02
+        CI_params['tau'] = 0.1
+        ACT_params['y_min'] = 0.2
+        ACT_params['tau_u'] = 7.
+        CI__CE_syn['init_w'] = -2.
 
         #*************************************************************
         # Setting the right delay for AF-->M
