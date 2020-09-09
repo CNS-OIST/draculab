@@ -1252,7 +1252,7 @@ class act(unit, lpf_sc_inp_sum_mp_reqs):
             else:
                 du = Y_dist*(1. - y + self.gamma*dY) / self.tau_u
         else:
-            du = -40.*y[0] # rushing towards 0
+            du = -20.*y[0] # rushing towards 0
         return du
 
     def dt_fun(self, y, s):

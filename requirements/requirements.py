@@ -964,6 +964,8 @@ def add_double_del_inp_deriv_mp(unit):
                 (syns[unit.ID][syn_idx].type is 
                     synapse_types.gated_normal_rga_diff) or
                 (syns[unit.ID][syn_idx].type is 
+                    synapse_types.noisy_gated_normal_rga_diff) or
+                (syns[unit.ID][syn_idx].type is 
                     synapse_types.gated_normal_slide_rga_diff)):
                 setattr(syns[unit.ID][syn_idx], 'ddidm_idx', loc_idx)
                 assert pre_list_mp[p][loc_idx] == syns[unit.ID][syn_idx].preID, [

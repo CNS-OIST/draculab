@@ -6,14 +6,30 @@
 
 from draculab import *
 
-def net_from_cfg(cfg):
+def net_from_cfg(cfg,
+                 t_pres=30.,
+                 rand_w=True,
+                 rga_diff=True,
+                 rand_targets=True,
+                 lowpass_SP=True,
+                 par_heter=0.001,
+                 noisy_syns = False):
     """ Create a draculab network with the given configuration. 
 
         Args:
             cfg : a parameter dictionary
+            
+            Optional keyword arguments:
+            t_pres: number of seconds to hold each set of target lengths
+            rand_w: whether to use random weights in M->C, AF->M
+            rga_diff: if True use gated_normal_rga_diff, if False gated_normal_rga
+            rand_targets: whether to train using a large number of random targets
+            par_heter: range of heterogeneity as a fraction of the original value
+            lowpass_SP: whether to filter SP's output with slow-responding linear units
+            noisy_syns: whether to use noisy versions of the M__C, AF__M synapses
 
         Returns:
-            net, pops_dict
+            A tuple with the following entries:
             net : A draculab network as in v3_nst_afx, with the given configuration.
             pops_dict : a dictionary with the list of ID's for each population in net.
             hand_coords : list with the coordinates for all possible targets
@@ -21,13 +37,9 @@ def net_from_cfg(cfg):
             t_pres : number of seconds each target is presented
             pds : some parameter dictionaries used to set new targets
     """
-
-    t_pres = 30. # number of seconds to hold each set of target lengths
-    rand_w = True # whether to use random weights in M->C, AF->M
-    rga_diff = True # if True use gated_normal_rga_diff, if False gated_normal_rga
-    rand_targets = True # whether to train using a large number of random targets
-    par_heter = 0.001 # range of heterogeneity as a fraction of the original value
-
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Parameter dictionaries for the network and the plant
+    #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     net_params = {'min_delay' : 0.005,
               'min_buff_size' : 10 }
 
@@ -74,9 +86,7 @@ def net_from_cfg(cfg):
               'cs' : 0.5,
               'tau' : 0.1   # ficticious time constant used in create_freqs_steps
                }
-    net = network(net_params)
-    #P = net.create(1, P_params)
-    #arm = net.plants[P]
+    net = network(net_params) # network creation
 
     # We organize the spinal connections through 4 types of symmetric relations
     # these lists are used to set intraspinal connections and test connection matrices
@@ -102,12 +112,12 @@ def net_from_cfg(cfg):
     randz36 = lambda : (1. + par_heter*(np.random.rand(36)-0.5))
 
     ACT_params = {'type' : unit_types.act,
-                  'tau_u' : 8.,
-                  'gamma' : 2.,
+                  'tau_u' : 6., #8
+                  'gamma' : 6., #2
                   'g' : 2.,
                   'theta' : 1.,
                   'tau_slow' : 5.,
-                  'y_min' : 0.2,
+                  'y_min' : 0.1, #.2
                   'rst_thr' : 0.1,
                   'init_val' : 0. }
     spf_sum_min = .4 # value where no corrections are needed anymore
@@ -160,6 +170,12 @@ def net_from_cfg(cfg):
                  'adapt_amp' : cfg['adapt_amp'],
                  'delay' : 0.2,
                  'des_out_w_abs_sum' : 1. }
+    LPF_SP_params = {'type' : unit_types.linear,
+                 'init_val' : 0.3 * randz12(),
+                 'tau_fast': 0.005,
+                 'tau_mid': 0.05,
+                 'tau_slow' : 5.,
+                 'tau' : .5 }
     M_params = {'type' : unit_types.gated_out_norm_am_sig,
                 'thresh' : 0. * randz12(),
                 'slope' : 3. * randz12(),
@@ -173,7 +189,8 @@ def net_from_cfg(cfg):
                 'des_out_w_abs_sum' : 2. }
     SF_params = {'type' : unit_types.sigmoidal,
                  #'thresh' : np.array([-0.02]*12)
-                 'thresh' : np.array([-0.12, -0.13, -0.05, -0.11, -0.03, -0.05, -0.05, -0.07, 0.05, 0.06, -0.03, -0.02]),
+                 'thresh' : np.array([-0.12, -0.13, -0.05, -0.11, -0.03, -0.05,
+                                      -0.05, -0.07, 0.05, 0.06, -0.03, -0.02]),
                  #'slope' : np.array([np.log(5.)]*12), #np.array([np.log(9.)]*12),
                  'slope' : cfg['SF_slope_factor']*np.array([2.75, 1.7, 1.37, 2.75] + [1.37]*2 + [2., 1.37, 1.37]*2),
                  'init_val' : 0.2 * randz12(),
@@ -282,18 +299,25 @@ def net_from_cfg(cfg):
     else:
         #AF_M = 0.2*(np.random.random((12,12)) - 0.5) # random initial connections!!!!!
         AF_M = 0.2*(np.random.random((12,36)) - 0.5) # random initial connections!!!!!
+    if noisy_syns:
+        AF__M_syn_type = synapse_types.noisy_gated_diff_inp_sel
+    else:
+        AF__M_syn_type = synapse_types.gated_diff_inp_sel
     AF__M_conn = {'rule' : 'all_to_all',
                  'delay' : 0.02 }
-    AF__M_syn = {'type' : synapse_types.gated_diff_inp_sel,
-                'aff_port' : 0,
-                'error_port' : 1,
-                'normalize' : True,
-                'w_sum' : 10.,
-                'inp_ports' : 0, # afferent for out_norm_am_sig
-                'input_type' : 'pred', # if using inp_corr
-                'lrate' : 15., #10.
-                'extra_steps' : None, # placeholder value; filled below,
-                'init_w' : AF_M.flatten() }
+    AF__M_syn = {'type' : AF__M_syn_type,
+                 'aff_port' : 0,
+                 'error_port' : 1,
+                 'normalize' : True,
+                 'w_sum' : 10.,
+                 'inp_ports' : 0, # afferent for out_norm_am_sig
+                 'input_type' : 'pred', # if using inp_corr
+                 'lrate' : 15., #10.
+                 'decay' : False, # for noisy_gated_normal_rga_diff
+                 'de_amp' : 0.01, # decay amplitude (noisy_gated_normal_rga_diff)
+                 'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
+                 'extra_steps' : None, # placeholder value; filled below,
+                 'init_w' : AF_M.flatten() }
     # AF to SF ------------------------------------------------
     AF__SF_dubya = np.array([0.57, 0.56, 0.56, 0.57, 0.55, 0.55, 0.57, 0.56, 0.56, 0.57, 0.55, 0.55])
     AFe__SF_conn = {'rule' : 'one_to_one',
@@ -366,6 +390,22 @@ def net_from_cfg(cfg):
                        'inp_ports': 2, #1, # IN AFFERENT PORT!!!!!!!!!!!!!!!!!!!!!! May affect normalization of afferent inputs
                        'lrate' : 1.,
                        'init_w' : 0. }
+    
+    # LPF_SP to SPF (optional) ---------------------------------
+    LPF_SPe__SPF_conn = {'rule': 'one_to_one',
+                         'delay': 0.01 }
+    LPF_SPe__SPF_syn = {'type' : synapse_types.static,
+                        'inp_ports' : 1,
+                        'lrate' : 0.,
+                        'input_type' : 'error', # if using inp_corr
+                        'init_w' : cfg['SPF_w'] }
+    LPF_SPi__SPF_conn = {'rule': 'one_to_one',
+                         'delay': 0.02 }
+    LPF_SPi__SPF_syn = {'type' : synapse_types.static,
+                        'inp_ports' : 1,
+                        'lrate' : 0.,
+                        'input_type' : 'error', # if using inp_corr
+                        'init_w' : -cfg['SPF_w'] }
 
     # M to CE,CI ----------------------------------------------
     # creating a test matrix
@@ -389,9 +429,15 @@ def net_from_cfg(cfg):
         M_CE = 0.4*(np.random.random((12,6)) - 0.5) # random initial connections!!!!!
         M_CI = 0.4*(np.random.random((12,6)) - 0.5) # random initial connections!!!!!
     if rga_diff:
-        M__C_type = synapse_types.gated_normal_rga_diff
+        if noisy_syns:
+            M__C_type = synapse_types.noisy_gated_normal_rga_diff
+        else:
+            M__C_type = synapse_types.gated_normal_rga_diff
     else:
-        M__C_type = synapse_types.gated_normal_rga
+        if noisy_syns:
+            raise NotImplementedError('noisy_gated_normal_rga not implemented')
+        else:
+            M__C_type = synapse_types.gated_normal_rga
     M__CE_conn = {'rule': 'all_to_all',
                  'delay': 0.02 }
     M__CE_syn = {'type' : M__C_type,
@@ -402,6 +448,9 @@ def net_from_cfg(cfg):
                  'sig2' : cfg['sig2'],
                  'w_thresh' : 0.05,
                  'w_decay': 0.005,
+                 'decay' : False, # for noisy_gated_normal_rga_diff
+                 'de_amp' : 0.01, # decay amplitude (noisy_gated_normal_rga_diff)
+                 'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
                  'w_tau' : 60.,
                  'init_w' : M_CE.flatten() }
     M__CI_conn = {'rule': 'all_to_all',
@@ -415,6 +464,9 @@ def net_from_cfg(cfg):
                  'w_thresh' : 0.05,
                  'w_tau' : 60.,
                  'w_decay': 0.005,
+                 'decay' : False, # for noisy_gated_normal_rga_diff
+                 'de_amp' : 0.01, # decay amplitude (noisy_gated_normal_rga_diff)
+                 'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
                  'init_w' : M_CI.flatten() }
     # P to AF  ---------------------------------------------------
     idx_aff = np.arange(22,40) # indexes for afferent output in the arm
@@ -424,6 +476,11 @@ def net_from_cfg(cfg):
                   'init_w' : [1.]*18 } 
     Pi__AF_syn = {'type' : synapse_types.static,
                 'init_w' :  [-1.]*18 }
+    # SP to LPF_SP ----------------------------------------------
+    SP__LPF_SP_conn = {'rule': 'one_to_one',
+                       'delay': 0.01 }
+    SP__LPF_SP_syn = {'type' : synapse_types.static,
+                      'init_w' : 1. }
     # SF, SP to SPF ------------------------------------------------
     SFe__SPF_conn = {'rule' : "one_to_one",
                      'delay' : 0.01 }
@@ -484,23 +541,6 @@ def net_from_cfg(cfg):
                   'lrate' : 0.,
                   'input_type' : 'error', # if using inp_corr
                   'init_w' : 1. }
-
-    #*************************************************************
-    # PROSPECTIVE CHANGES TO DEFAULTS
-    # to reduce the trajectory asymmetry
-    #C__C_syn_antag['init_w'] = .7
-    #C__C_syn_p_antag['init_w'] = .1
-    # to balance the muscles
-    #P_params['g_e'] = 2.3*np.array([18., 20., 20., 18., 22., 23.])
-    #P_params['b_e'] = 3.5
-    #P_params['mu1'] = 2.
-    #P_params['mu2'] = 2.
-    #P_params['l_torque'] = 0.001
-    # to stop circular reaching in high-gain sitauations
-    #CE__CI_syn['init_w'] = 0.7
-    # to adjust dynamic range of SF units
-    #SF_params['slope'] = 8.*np.array([2.75, 1.7, 1.37, 2.75] + [1.37]*2 + [2., 1.37, 1.37]*2)
-    #SF_params['thresh'] = np.array([-0.12, -0.13, -0.05, -0.11, -0.03, -0.05, -0.05, -0.07, 0.05, 0.06, -0.03, -0.02])
 
     #*************************************************************
     # Setting the right delay for AF-->M
@@ -581,6 +621,8 @@ def net_from_cfg(cfg):
     SP = net.create(12, SP_params)
     SP_CHG = net.create(1, SP_CHG_params)
     SPF = net.create(12, SPF_params)
+    if lowpass_SP:
+        LPF_SP = net.create(12, LPF_SP_params)
 
     # SET THE PATTERNS IN SP -----------------------------------------------------
     # list with hand coordinates [x,y] (meters)
@@ -722,11 +764,17 @@ def net_from_cfg(cfg):
     # from AF to CE,CI
     #net.connect(AF, CE, AF__CE_conn, AF__CE_syn)
     #net.connect(AF, CI, AF__CI_conn, AF__CI_syn)
-    # from SF, SP to SPF
+    # from SP to SPF (or LP->LPF_SP->SPF)
+    if lowpass_SP:
+        net.connect(SP, LPF_SP, SP__LPF_SP_conn, SP__LPF_SP_syn)
+        #net.connect(LPF_SP, SPF, LPF_SPe__SPF_conn, LPF_SPe__SPF_syn) # P-F
+        net.connect(LPF_SP, SPF, LPF_SPi__SPF_conn, LPF_SPi__SPF_syn) # F-P
+    else:
+        net.connect(SP, SPF, SPi__SPF_conn, SPi__SPF_syn) # F-P
+        #net.connect(SP, SPF, SPe__SPF_conn, SPe__SPF_syn)  # P-F
+    # from SF to SPF
     net.connect(SF, SPF, SFe__SPF_conn, SFe__SPF_syn) # F-P
     #net.connect(SF, SPF, SFi__SPF_conn, SFi__SPF_syn)  # P-F
-    net.connect(SP, SPF, SPi__SPF_conn, SPi__SPF_syn) # F-P
-    #net.connect(SP, SPF, SPe__SPF_conn, SPe__SPF_syn)  # P-F
     # from SPF to M
     net.connect(SPF, M, SPF__M_conn, SPF__M_syn) # should be after AF-->M
     # from SPF to ACT
@@ -806,6 +854,9 @@ def net_from_cfg(cfg):
     pops_list = [SF, SP, SPF, AL, AF, SP_CHG, CE, CI, M, ACT, P, ipx_track, ipy_track]
     pops_names = ['SF', 'SP', 'SPF', 'AL', 'AF', 'SP_CHG', 'CE', 'CI', 
                   'M', 'ACT', 'P', 'ipx_track', 'ipy_track']
+    if lowpass_SP:
+        pops_list.append(LPF_SP)
+        pops_names.append('LPF_SP')
     pops_dict = {pops_names[idx] : pops_list[idx] for idx in range(len(pops_names))}
     pds = {'Pe__AF_syn' : Pe__AF_syn, 'Pi__AF_syn' :Pi__AF_syn, 'SF_params' : SF_params, 
            'AFe__SF_syn' : AFe__SF_syn, 'AFi__SF_syn' : AFi__SF_syn}

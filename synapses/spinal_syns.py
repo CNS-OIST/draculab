@@ -1720,6 +1720,7 @@ class gated_normal_rga_diff(synapse):
                       port. Default is 1.
             'sig1' : sigma value for postsynaptic normalization. Default is 1.
             'sig2' : sigma value for presynaptic normalization. Default is 1.
+            'normalize' : whether to normalize the weight. Default is True.
 
         Raises:
             AssertionError.
@@ -1739,9 +1740,10 @@ class gated_normal_rga_diff(synapse):
                              syn_reqs.avg_slow_inp_deriv_mp,
                              syn_reqs.l0_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
-        assert self.type is synapse_types.gated_normal_rga_diff, ['Synapse from ' +
-                            str(self.preID) + ' to ' + str(self.postID) + 
-                            ' instantiated with the wrong type']
+        assert self.type is synapse_types.gated_normal_rga_diff or \
+               self.type is synapse_types.noisy_gated_normal_rga_diff, \
+               ['Synapse from ' + str(self.preID) + ' to ' + str(self.postID) + 
+                ' instantiated with the wrong type']
         u = self.net.units[self.postID]
         if not (hasattr(u, 'custom_inp_del') and hasattr(u, 'custom_inp_del2')):
             raise AssertionError('A gated_normal_rga_diff synapse has a postsynaptic' +
@@ -1764,6 +1766,7 @@ class gated_normal_rga_diff(synapse):
         else: self.sig1 = 1.
         if 'sig2' in params: self.sig2 = params['sig2']
         else: self.sig2 = 1.
+        self.normalize = params['normalize'] if 'normalize' in params else True
         # The add_double_del_inp_deriv_mp method of requirements.py will add the
         # ddidm_idx attribute, which is the index of this synapse in the
         # double_del_(avg)_inp_deriv_mp lists.
@@ -1801,13 +1804,50 @@ class gated_normal_rga_diff(synapse):
                               pre.get_lpf_mid(self.delay_steps) )
         spj_del = (normfac2 * 
                    u.double_del_inp_deriv_mp[0][self.port][self.ddidm_idx])
-        self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
+        if self.normalize:
+            self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
                               pre.out_norm_factor)
         
         self.w += u.acc_slow * self.alpha * (up_norm - xp_norm) * (
                               (sp_now - spj_now) - (sp_del - spj_del))
         # next line adds some random drift
                   #+ 0.0002*(np.random.random()-0.5))
+
+
+class noisy_gated_normal_rga_diff(gated_normal_rga_diff):
+    """ A noisy version of gated_normal_rga_diff (see above). 
+        
+        Two different type of perturbations can be chosen. The first one
+        consists of a random drift on the weight on each update. The amplitude
+        of this drift depends on a given 'noise_amp' parameter, multiplied by
+        the square root of the time between updates.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+            Same arguments as gated_normal_rga_diff, with two optional
+            additions:
+            dr_amp: scales the standard deviation of random drift.
+            decay: if True, the weights decay towards zero rather than
+                   having random drift.
+            de_rate: rate of decay, when decay=True.
+    """
+        gated_normal_rga_diff.__init__(self, params, network)
+        if 'decay' in params and params['decay'] is True:
+            self.de_rate = params['de_rate'] if 'de_rate' in params else 0.01
+            self.decay = True
+            self.dc_mult = np.exp(-self.de_rate)
+        else:
+            self.decay = False
+        self.dr_amp = params['dr_amp'] if 'dr_amp' in params else 0.01
+        self.dr_std = np.sqrt(network.min_delay)*self.dr_amp
+        
+    def update(self, time):
+        gated_normal_rga_diff.update(self, time)
+        if self.decay:
+            self.w *=  self.dc_mult
+        else:
+            self.w += np.random.normal(loc=0., scale=self.dr_std)
 
 
 class gated_normal_slide_rga_diff(synapse):
@@ -2306,6 +2346,42 @@ class gated_diff_input_selection_synapse(gated_input_selection_synapse):
         if self.normalize:
             self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
         self.w = self.w + u.acc_slow * self.alpha * Dpre * err_diff
+
+
+class noisy_gated_diff_inp_sel(gated_diff_input_selection_synapse):
+    """ A noisy version of gated_diff_input_selection_synapse(see above). 
+        
+        Two different type of perturbations can be chosen. The first one
+        consists of a random drift on the weight on each update. The amplitude
+        of this drift depends on a given 'noise_amp' parameter, multiplied by
+        the square root of the time between updates.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+            Same arguments as gated_diff_input_selection_synapse with two
+            optional additions:
+            dr_amp: scales the standard deviation of random drift.
+            decay: if True, the weights decay towards zero rather than
+                   having random drift.
+            de_rate: rate of decay, when decay=True.
+    """
+        gated_diff_input_selection_synapse.__init__(self, params, network)
+        if 'decay' in params and params['decay'] is True:
+            self.de_rate = params['de_rate'] if 'de_rate' in params else 0.01
+            self.decay = True
+            self.dc_mult = np.exp(-self.de_rate)
+        else:
+            self.decay = False
+        self.dr_amp = params['dr_amp'] if 'dr_amp' in params else 0.01
+        self.dr_std = np.sqrt(network.min_delay)*self.dr_amp
+        
+    def update(self, time):
+        gated_diff_input_selection_synapse.update(self, time)
+        if self.decay:
+            self.w *=  self.dc_mult
+        else:
+            self.w += np.random.normal(loc=0., scale=self.dr_std)
 
 
 class gated_diff_inp_corr(synapse):
