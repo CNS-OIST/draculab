@@ -13,7 +13,8 @@ def net_from_cfg(cfg,
                  rand_targets=True,
                  lowpass_SP=True,
                  par_heter=0.001,
-                 noisy_syns = False):
+                 noisy_syns = False,
+                 decay = False):
     """ Create a draculab network with the given configuration. 
 
         Args:
@@ -27,6 +28,7 @@ def net_from_cfg(cfg,
             par_heter: range of heterogeneity as a fraction of the original value
             lowpass_SP: whether to filter SP's output with slow-responding linear units
             noisy_syns: whether to use noisy versions of the M__C, AF__M synapses
+            decay: if using noisy_syns, do syns decay rather than drift (replaces normalization)
 
         Returns:
             A tuple with the following entries:
@@ -308,12 +310,12 @@ def net_from_cfg(cfg,
     AF__M_syn = {'type' : AF__M_syn_type,
                  'aff_port' : 0,
                  'error_port' : 1,
-                 'normalize' : True,
+                 'normalize' : not decay if noisy_syns else True,
                  'w_sum' : 10.,
                  'inp_ports' : 0, # afferent for out_norm_am_sig
                  'input_type' : 'pred', # if using inp_corr
                  'lrate' : 15., #10.
-                 'decay' : False, # for noisy_gated_normal_rga_diff
+                 'decay' : decay, # for noisy_gated_normal_rga_diff
                  'de_amp' : 0.01, # decay amplitude (noisy_gated_normal_rga_diff)
                  'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
                  'extra_steps' : None, # placeholder value; filled below,
@@ -448,7 +450,8 @@ def net_from_cfg(cfg,
                  'sig2' : cfg['sig2'],
                  'w_thresh' : 0.05,
                  'w_decay': 0.005,
-                 'decay' : False, # for noisy_gated_normal_rga_diff
+                 'decay' : decay, # for noisy_gated_normal_rga_diff
+                 'normalize' : not decay if noisy_syns else True,
                  'de_amp' : 0.01, # decay amplitude (noisy_gated_normal_rga_diff)
                  'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
                  'w_tau' : 60.,
@@ -464,7 +467,8 @@ def net_from_cfg(cfg,
                  'w_thresh' : 0.05,
                  'w_tau' : 60.,
                  'w_decay': 0.005,
-                 'decay' : False, # for noisy_gated_normal_rga_diff
+                 'decay' : decay, # for noisy_gated_normal_rga_diff
+                 'normalize' : not decay if noisy_syns else True,
                  'de_amp' : 0.01, # decay amplitude (noisy_gated_normal_rga_diff)
                  'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
                  'init_w' : M_CI.flatten() }
