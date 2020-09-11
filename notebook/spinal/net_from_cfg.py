@@ -316,7 +316,7 @@ def net_from_cfg(cfg,
                  'input_type' : 'pred', # if using inp_corr
                  'lrate' : 15., #10.
                  'decay' : decay, # for noisy_gated_normal_rga_diff
-                 'de_amp' : 0.01, # decay amplitude (noisy_gated_normal_rga_diff)
+                 'de_rate' : 0.01, # rate amplitude (noisy_gated_normal_rga_diff)
                  'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
                  'extra_steps' : None, # placeholder value; filled below,
                  'init_w' : AF_M.flatten() }
@@ -452,7 +452,7 @@ def net_from_cfg(cfg,
                  'w_decay': 0.005,
                  'decay' : decay, # for noisy_gated_normal_rga_diff
                  'normalize' : not decay if noisy_syns else True,
-                 'de_amp' : 0.01, # decay amplitude (noisy_gated_normal_rga_diff)
+                 'de_rate' : 0.01, # rate amplitude (noisy_gated_normal_rga_diff) 
                  'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
                  'w_tau' : 60.,
                  'init_w' : M_CE.flatten() }
@@ -469,7 +469,7 @@ def net_from_cfg(cfg,
                  'w_decay': 0.005,
                  'decay' : decay, # for noisy_gated_normal_rga_diff
                  'normalize' : not decay if noisy_syns else True,
-                 'de_amp' : 0.01, # decay amplitude (noisy_gated_normal_rga_diff)
+                 'de_rate' : 0.01, # rate amplitude (noisy_gated_normal_rga_diff)
                  'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
                  'init_w' : M_CI.flatten() }
     # P to AF  ---------------------------------------------------

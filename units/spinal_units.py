@@ -913,13 +913,17 @@ class gated_out_norm_am_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, acc_sda_reqs):
         I = [(w*i).sum() for w, i in zip(self.get_mp_weights(t), 
                                          self.get_mp_inputs(t))]
         #return ( I[1]*self.f(I[0]) - y[0] ) * self.rtau
-        return ( I[1]*self.f(I[0] + self.p0_inp*I[1]) - y[0] ) * self.rtau
+        #return ( I[1]*self.f(I[0] + self.p0_inp*I[1] - 
+        #                     self.thresh) - y[0] ) * self.rtau
+        return ( self.f(I[0] + self.p0_inp*I[1] - self.thresh) - y[0] ) * self.rtau
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
         #return ( self.mp_inp_sum[1][s] * self.f(self.mp_inp_sum[0][s]) - y ) * self.rtau
-        return ( self.mp_inp_sum[1][s] * self.f(self.mp_inp_sum[0][s] +
-                 self.p0_inp*self.mp_inp_sum[1][s]) - y ) * self.rtau
+        #return ( self.mp_inp_sum[1][s] * self.f(self.mp_inp_sum[0][s] +
+        #         self.p0_inp*self.mp_inp_sum[1][s] - self.thresh) - y ) * self.rtau
+        return ( self.f(self.mp_inp_sum[0][s] +
+                 self.p0_inp*self.mp_inp_sum[1][s] - self.thresh) - y ) * self.rtau
 
 
 class am_pulse(unit, rga_reqs):
