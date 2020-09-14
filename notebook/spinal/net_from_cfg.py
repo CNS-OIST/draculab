@@ -11,10 +11,12 @@ def net_from_cfg(cfg,
                  rand_w=True,
                  rga_diff=True,
                  rand_targets=True,
+                 M_mod=True,
                  lowpass_SP=True,
                  par_heter=0.001,
                  noisy_syns = False,
-                 decay = False):
+                 M__C_decay = False,
+                 AF__M_decay = False):
     """ Create a draculab network with the given configuration. 
 
         Args:
@@ -25,10 +27,12 @@ def net_from_cfg(cfg,
             rand_w: whether to use random weights in M->C, AF->M
             rga_diff: if True use gated_normal_rga_diff, if False gated_normal_rga
             rand_targets: whether to train using a large number of random targets
+            M_mod = True # whether M units are amplitude-modulated by the SPF input
             par_heter: range of heterogeneity as a fraction of the original value
             lowpass_SP: whether to filter SP's output with slow-responding linear units
             noisy_syns: whether to use noisy versions of the M__C, AF__M synapses
-            decay: if using noisy_syns, do syns decay rather than drift (replaces normalization)
+            M__C_decay: if using noisy_syns, replace normalization and drift with decay
+            AF__M_decay: if using noisy_syns, replace normalization and drift with decay
 
         Returns:
             A tuple with the following entries:
@@ -178,16 +182,17 @@ def net_from_cfg(cfg,
                  'tau_mid': 0.05,
                  'tau_slow' : 5.,
                  'tau' : .5 }
-    M_params = {'type' : unit_types.gated_out_norm_am_sig,
-                'thresh' : 0. * randz12(),
-                'slope' : 3. * randz12(),
+    M_type = unit_types.gated_out_norm_am_sig if M_mod else unit_types.gated_out_norm_sig
+    M_params = {'type' : M_type,
+                'thresh' : (cfg['M_thresh'] if 'M_thresh' in cfg else 0.1) * randz12(),
+                'slope' : (cfg['M_slope'] if 'M_slope' in cfg else 3.) * randz12(),
                 'init_val' : 0.2 * randz12(),
                 'delay' : 0.2,
                 'tau_fast': 0.15,
                 'tau_mid': 1.5,
                 'tau_slow' : 10.,
                 'tau' : 0.01 * randz12(),
-                'p0_inp' : 0.0,
+                'p1_inp' : cfg['M_p1_inp'] if 'M_p1_inp' in cfg else 0.,
                 'des_out_w_abs_sum' : 2. }
     SF_params = {'type' : unit_types.sigmoidal,
                  #'thresh' : np.array([-0.02]*12)
@@ -310,13 +315,13 @@ def net_from_cfg(cfg,
     AF__M_syn = {'type' : AF__M_syn_type,
                  'aff_port' : 0,
                  'error_port' : 1,
-                 'normalize' : not decay if noisy_syns else True,
-                 'w_sum' : 10.,
+                 'normalize' : not AF__M_decay if noisy_syns else True,
+                 'w_sum' : cfg['AF__M_w_sum'] if 'AF__M_w_sum' in cfg else 10.,
                  'inp_ports' : 0, # afferent for out_norm_am_sig
                  'input_type' : 'pred', # if using inp_corr
                  'lrate' : 15., #10.
-                 'decay' : decay, # for noisy_gated_normal_rga_diff
-                 'de_rate' : 0.01, # rate amplitude (noisy_gated_normal_rga_diff)
+                 'decay' : AF__M_decay, # for noisy_gated_normal_rga_diff
+                 'de_rate' : cfg['AF__M_de_rate'] if 'AF__M_de_rate' in cfg else 0.01, 
                  'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
                  'extra_steps' : None, # placeholder value; filled below,
                  'init_w' : AF_M.flatten() }
@@ -450,10 +455,10 @@ def net_from_cfg(cfg,
                  'sig2' : cfg['sig2'],
                  'w_thresh' : 0.05,
                  'w_decay': 0.005,
-                 'decay' : decay, # for noisy_gated_normal_rga_diff
-                 'normalize' : not decay if noisy_syns else True,
-                 'de_rate' : 0.01, # rate amplitude (noisy_gated_normal_rga_diff) 
-                 'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
+                 'decay' : M__C_decay, # for noisy_gated_normal_rga_diff
+                 'normalize' : not M__C_decay if noisy_syns else True,
+                 'de_rate' : cfg['M__C_de_rate'] if 'M__C_de_rate'] in cfg else 0.01,
+                 'dr_amp' : cfg['M__C_dr_amp'] if 'M__C_dr_amp' in cfg else 0.01,
                  'w_tau' : 60.,
                  'init_w' : M_CE.flatten() }
     M__CI_conn = {'rule': 'all_to_all',
@@ -467,10 +472,10 @@ def net_from_cfg(cfg,
                  'w_thresh' : 0.05,
                  'w_tau' : 60.,
                  'w_decay': 0.005,
-                 'decay' : decay, # for noisy_gated_normal_rga_diff
-                 'normalize' : not decay if noisy_syns else True,
-                 'de_rate' : 0.01, # rate amplitude (noisy_gated_normal_rga_diff)
-                 'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
+                 'decay' : M__C_decay, # for noisy_gated_normal_rga_diff
+                 'normalize' : not M__C_decay if noisy_syns else True,
+                 'de_rate' : cfg['M__C_de_rate'] if 'M__C_de_rate'] in cfg else 0.01,
+                 'dr_amp' : cfg['M__C_dr_amp'] if 'M__C_dr_amp' in cfg else 0.01,
                  'init_w' : M_CI.flatten() }
     # P to AF  ---------------------------------------------------
     idx_aff = np.arange(22,40) # indexes for afferent output in the arm

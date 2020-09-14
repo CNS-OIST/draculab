@@ -847,6 +847,76 @@ class out_norm_am_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs):
         return ( self.mp_inp_sum[1][s]*self.f(self.mp_inp_sum[0][s]) - y ) * self.rtau
 
 
+class gated_out_norm_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, acc_sda_reqs):
+    """ A sigmoidal with modulated plasticity and output normaliztion.
+
+        The output of the unit is the sigmoidal function applied to the
+        scaled sum of port 0 inputs, plus a `p1_inp` factor times the scaled sum
+        of port 1 inputs.
+        Inputs at port 2 reset the acc_slow variable, which is used by the 
+        gated_corr_inh synapses in order to modulate plasticity.
+
+        This model also includes the 'des_out_w_abs_sum' attribute, so the
+        synapses that have this as their presynaptic unit can have the
+        'out_norm_factor' requirement for presynaptic weight normalization.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'slope' : Slope of the sigmoidal function.
+                    'thresh' : Threshold of the sigmoidal function.
+                    'tau' : Time constant of the update dynamics.
+                    'des_out_w_abs_sum' : desired sum of absolute weight values
+                                          for the outgoing connections.
+                    'tau_slow' : slow LPF time constant.
+                    OPTIONAL PARAMETERS
+                    'p1_inp' : The scaled sum of port 0 inputs is multiplied by
+                               this parameter before becoming being added to the
+                               arguments of the sigmoidal. Default 0.
+                    'out_norm_type' : a synapse type's integer value. If included,
+                                 the sum of absolute weights for outgoing
+                                 connections will only consider synapses of
+                                 that type. For example, you may set it as:
+                                 {...,
+                                 'out_norm_type' : synapse_types.gated_rga_diff.value}
+            Raises:
+                AssertionError.
+        """
+        if 'n_ports' in params and params['n_ports'] != 3:
+            raise AssertionError('gated_out_norm_sig units must have n_ports=3')
+        else:
+            params['n_ports'] = 3
+        sigmoidal.__init__(self, ID, params, network)
+        self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        if 'out_norm_type' in params:
+            self.out_norm_type = params['out_norm_type']
+        self.syn_needs.update([syn_reqs.acc_slow, syn_reqs.mp_inputs, 
+                               syn_reqs.mp_weights])
+        self.needs_mp_inp_sum = True # in case we flatten
+        lpf_sc_inp_sum_mp_reqs.__init__(self, params)
+        params['acc_slow_port'] = 2 # so inputs at port 2 reset acc_slow
+        acc_sda_reqs.__init__(self, params)
+        if 'p1_inp' in params:
+            self.p1_inp = params['p1_inp']
+        else:
+            self.p1_inp = 0.
+      
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity at time t. """
+        I = [(w*i).sum() for w, i in zip(self.get_mp_weights(t), 
+                                         self.get_mp_inputs(t))]
+        return ( self.f(I[0] + self.p1_inp*I[1]) - y[0] ) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        return ( self.f(self.mp_inp_sum[0][s] + 
+                 self.p1_inp*self.mp_inp_sum[1][s]) - y ) * self.rtau
+
+
 class gated_out_norm_am_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, acc_sda_reqs):
     """ A sigmoidal with modulated amplitude and plasticity.
 
@@ -855,8 +925,8 @@ class gated_out_norm_am_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, acc_sda_reqs):
         Inputs at port 2 reset the acc_slow variable, which is used by the 
         gated_corr_inh synapses in order to modulate plasticity.
 
-        Optionally, the scaled sum of port 0 inputs can also appear in the
-        argument to the sigmoidal function. This is controlled by the p0_inp
+        Optionally, the scaled sum of port 1 inputs can also appear in the
+        argument to the sigmoidal function. This is controlled by the p1_inp
         parameter.
 
         This model also includes the 'des_out_w_abs_sum' attribute, so the
@@ -877,7 +947,7 @@ class gated_out_norm_am_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, acc_sda_reqs):
                                           for the outgoing connections.
                     'tau_slow' : slow LPF time constant.
                     OPTIONAL PARAMETERS
-                    'p0_inp' : The scaled sum of port 0 inputs is multiplied by
+                    'p1_inp' : The scaled sum of port 0 inputs is multiplied by
                                this parameter before becoming being added to the
                                arguments of the sigmoidal. Default 0.
                     'out_norm_type' : a synapse type's integer value. If included,
@@ -903,27 +973,21 @@ class gated_out_norm_am_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, acc_sda_reqs):
         lpf_sc_inp_sum_mp_reqs.__init__(self, params)
         params['acc_slow_port'] = 2 # so inputs at port 2 reset acc_slow
         acc_sda_reqs.__init__(self, params)
-        if 'p0_inp' in params:
-            self.p0_inp = params['p0_inp']
+        if 'p1_inp' in params:
+            self.p1_inp = params['p1_inp']
         else:
-            self.p0_inp = 0.
+            self.p1_inp = 0.
       
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. """
         I = [(w*i).sum() for w, i in zip(self.get_mp_weights(t), 
                                          self.get_mp_inputs(t))]
-        #return ( I[1]*self.f(I[0]) - y[0] ) * self.rtau
-        #return ( I[1]*self.f(I[0] + self.p0_inp*I[1] - 
-        #                     self.thresh) - y[0] ) * self.rtau
-        return ( self.f(I[0] + self.p0_inp*I[1] - self.thresh) - y[0] ) * self.rtau
+        return ( I[1]*self.f(I[0] + self.p1_inp*I[1]) - y[0] ) * self.rtau
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
-        #return ( self.mp_inp_sum[1][s] * self.f(self.mp_inp_sum[0][s]) - y ) * self.rtau
-        #return ( self.mp_inp_sum[1][s] * self.f(self.mp_inp_sum[0][s] +
-        #         self.p0_inp*self.mp_inp_sum[1][s] - self.thresh) - y ) * self.rtau
-        return ( self.f(self.mp_inp_sum[0][s] +
-                 self.p0_inp*self.mp_inp_sum[1][s] - self.thresh) - y ) * self.rtau
+        return ( self.mp_inp_sum[1][s] * self.f(self.mp_inp_sum[0][s] +
+                 self.p1_inp*self.mp_inp_sum[1][s]) - y ) * self.rtau
 
 
 class am_pulse(unit, rga_reqs):

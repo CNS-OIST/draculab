@@ -1836,7 +1836,7 @@ class noisy_gated_normal_rga_diff(gated_normal_rga_diff):
         if 'decay' in params and params['decay'] is True:
             self.de_rate = params['de_rate'] if 'de_rate' in params else 0.01
             self.decay = True
-            self.dc_mult = np.exp(-self.de_rate)
+            self.dc_fac = self.de_rate*network.min_delay #np.exp(-self.de_rate)
         else:
             self.decay = False
         self.dr_amp = params['dr_amp'] if 'dr_amp' in params else 0.01
@@ -1845,7 +1845,7 @@ class noisy_gated_normal_rga_diff(gated_normal_rga_diff):
     def update(self, time):
         gated_normal_rga_diff.update(self, time)
         if self.decay:
-            self.w *=  self.dc_mult
+            self.w -=  self.dc_fac*self.w
         else:
             self.w += np.random.normal(loc=0., scale=self.dr_std)
 
@@ -2370,7 +2370,7 @@ class noisy_gated_diff_inp_sel(gated_diff_input_selection_synapse):
         if 'decay' in params and params['decay'] is True:
             self.de_rate = params['de_rate'] if 'de_rate' in params else 0.01
             self.decay = True
-            self.dc_mult = np.exp(-self.de_rate)
+            self.dc_fac = self.de_rate*network.min_delay #np.exp(-self.de_rate)
         else:
             self.decay = False
         self.dr_amp = params['dr_amp'] if 'dr_amp' in params else 0.01
@@ -2379,7 +2379,7 @@ class noisy_gated_diff_inp_sel(gated_diff_input_selection_synapse):
     def update(self, time):
         gated_diff_input_selection_synapse.update(self, time)
         if self.decay:
-            self.w *=  self.dc_mult
+            self.w -=  self.dc_fac*self.w
         else:
             self.w += np.random.normal(loc=0., scale=self.dr_std)
 
