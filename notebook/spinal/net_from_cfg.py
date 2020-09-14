@@ -319,7 +319,7 @@ def net_from_cfg(cfg,
                  'w_sum' : cfg['AF__M_w_sum'] if 'AF__M_w_sum' in cfg else 10.,
                  'inp_ports' : 0, # afferent for out_norm_am_sig
                  'input_type' : 'pred', # if using inp_corr
-                 'lrate' : 15., #10.
+                 'lrate' : cfg['AF__M_lrate'] if 'AF__M_lrate' in cfg else 15., 
                  'decay' : AF__M_decay, # for noisy_gated_normal_rga_diff
                  'de_rate' : cfg['AF__M_de_rate'] if 'AF__M_de_rate' in cfg else 0.01, 
                  'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
@@ -457,7 +457,7 @@ def net_from_cfg(cfg,
                  'w_decay': 0.005,
                  'decay' : M__C_decay, # for noisy_gated_normal_rga_diff
                  'normalize' : not M__C_decay if noisy_syns else True,
-                 'de_rate' : cfg['M__C_de_rate'] if 'M__C_de_rate'] in cfg else 0.01,
+                 'de_rate' : cfg['M__C_de_rate'] if 'M__C_de_rate' in cfg else 0.01,
                  'dr_amp' : cfg['M__C_dr_amp'] if 'M__C_dr_amp' in cfg else 0.01,
                  'w_tau' : 60.,
                  'init_w' : M_CE.flatten() }
@@ -474,7 +474,7 @@ def net_from_cfg(cfg,
                  'w_decay': 0.005,
                  'decay' : M__C_decay, # for noisy_gated_normal_rga_diff
                  'normalize' : not M__C_decay if noisy_syns else True,
-                 'de_rate' : cfg['M__C_de_rate'] if 'M__C_de_rate'] in cfg else 0.01,
+                 'de_rate' : cfg['M__C_de_rate'] if 'M__C_de_rate' in cfg else 0.01,
                  'dr_amp' : cfg['M__C_dr_amp'] if 'M__C_dr_amp' in cfg else 0.01,
                  'init_w' : M_CI.flatten() }
     # P to AF  ---------------------------------------------------
