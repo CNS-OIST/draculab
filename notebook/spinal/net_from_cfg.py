@@ -322,7 +322,7 @@ def net_from_cfg(cfg,
                  'lrate' : cfg['AF__M_lrate'] if 'AF__M_lrate' in cfg else 15., 
                  'decay' : AF__M_decay, # for noisy_gated_normal_rga_diff
                  'de_rate' : cfg['AF__M_de_rate'] if 'AF__M_de_rate' in cfg else 0.01, 
-                 'dr_amp' : 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
+                 'dr_amp' : cfg['AF__M_dr_amp'] if 'AF__M_dr_amp' in cfg else 0.01, # drift amplitude (noisy_gated_normal_rga_diff)
                  'extra_steps' : None, # placeholder value; filled below,
                  'init_w' : AF_M.flatten() }
     # AF to SF ------------------------------------------------
