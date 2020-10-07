@@ -438,7 +438,8 @@ def add_lpf_slow_mp_inp_sum(unit):
         Units of the am_pm_oscillator class have their own implementation.
     """
     if not hasattr(unit,'tau_slow'): 
-        raise NameError( 'Requirement lpf_slow_mp_inp_sum requires parameter tau_slow, not yet set' )
+        raise NameError('Requirement lpf_slow_mp_inp_sum ' +
+                        'requires parameter tau_slow, not yet set')
     if not syn_reqs.mp_inputs in unit.syn_needs:
         raise AssertionError('lpf_slow_mp_inp_sum requires the mp_inputs requirement')
     if not syn_reqs.mp_weights in unit.syn_needs:
@@ -478,7 +479,8 @@ def add_balance(unit):
         various trdc and ssrdc models.
     """
     if not syn_reqs.inp_vector in unit.syn_needs:
-        raise AssertionError('balance requirement has the inp_vector requirement as a prerequisite')
+        raise AssertionError('Balance requirement has the inp_vector ' +
+                             'requirement as a prerequisite')
     setattr(unit, 'below', 0.5)
     setattr(unit, 'above', 0.5)
 
@@ -495,7 +497,8 @@ def add_balance_mp(unit):
         This is the same as upd_balance, but ports other than the rdc_port are ignored.
     """
     if not syn_reqs.mp_inputs in unit.syn_needs:
-        raise AssertionError('balance_mp requirement has the mp_inputs requirement as a prerequisite')
+        raise AssertionError('Balance_mp requirement has the mp_inputs ' +
+                             'requirement as a prerequisite')
     setattr(unit, 'below', 0.5)
     setattr(unit, 'above', 0.5)
 
@@ -1437,11 +1440,9 @@ def add_sc_inp_sum_mp(unit):
                              'the mp_weights and mp_inputs requirements.')
     mp_weights = [np.array([unit.net.syns[unit.ID][idx].w for idx in idx_list])
                   for idx_list in unit.port_idx]
-    mp_weights = np.array(mp_weights)
     ia = unit.init_act
     mp_inputs = [np.array([ia]*len(prt_lst)) for prt_lst in unit.port_idx] 
-    mp_inputs = np.array(mp_inputs) 
-    sc_inp_sum_mp = np.fromiter(map(np.sum, mp_inputs*mp_weights), float)
+    sc_inp_sum_mp = [(i*w).sum() for i,w in zip(mp_inputs, mp_weights)]
     setattr(unit, 'sc_inp_sum_mp', sc_inp_sum_mp)
 
 

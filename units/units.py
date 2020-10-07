@@ -626,22 +626,24 @@ class unit():
         """
         Configure the pre_syn_update function according to current synaptic requirements.
 
-        Correlational learning rules require the pre- and post-synaptic activity, in this
-        case low-pass filtered in order to implement a running average. Moreover, for
-        heterosynaptic plasticity individual synapses need information about all the
-        other synapses on the unit. It is inefficient for each synapse to maintain
-        low-pass filtered versions of pre- and post-synaptic activity, as well as to
-        obtain by itself all the values required for its update.
+        Correlational learning rules require the pre- and post-synaptic
+        activity, in this case low-pass filtered in order to implement a running
+        average. Moreover, for heterosynaptic plasticity individual synapses
+        need information about all the other synapses on the unit. It is
+        inefficient for each synapse to maintain low-pass filtered versions of
+        pre- and post-synaptic activity, as well as to obtain by itself all
+        the values required for its update.
         The function pre_syn_update(), initialized by init_pre_syn_update(), 
-        is tasked with updating all the 'slow' unit variables, which can be either used by
-        the synapses, or by the unit itself.
-        pre_syn_update() is called once per simulation step (i.e. every min_delay period).
+        is tasked with updating all the 'slow' unit variables, which can be
+        either used by the synapses, or by the unit itself.
+        pre_syn_update() is called once per simulation step (i.e. every
+        min_delay period).
 
-        In addition, for each one of the unit's synapses, init_pre_syn_update will initialize 
-        its delay value.
+        In addition, for each one of the unit's synapses, init_pre_syn_update
+        will initialize its delay value.
 
-        An extra task done here is to prepare the 'port_idx' list used by units with multiple 
-        input ports.
+        An extra task done here is to prepare the 'port_idx' list used by units
+        with multiple input ports.
 
         init_pre_syn_update is called after the unit is created, and everytime 
         network.connect() connects the unit, which may be more than once.
