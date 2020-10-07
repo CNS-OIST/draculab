@@ -2502,15 +2502,81 @@ class gated_diff_inp_corr(synapse):
                                       syn_reqs.mp_inputs,
                                       syn_reqs.inp_avg_mp])
 
+
+class static_l0_normal(synapse):
+    """ A static synapse with multiplicative normalization.
+        NOT RECOMMENDED FOR GENERAL USE
+        You can instead normalize the weights on initialization.
+        Weigths for all synapses of this type in a unit are scaled so that the
+        sum of their absolute values is 'w_sum'.
+        This is done by adding the l0_norm_factor to the postsynaptic unit.
+        Weights are not normalized instantly, but instead change with a given
+        time constant.
+    """
+    def __init__(self, params, network):
+        """
+            Constructor of the static_l0_normal synapse.
+    
+            Args:
+                params: same as the synapse class. 
+                REQUIRED PARAMETERS
+                'w_sum' : the sum of absolute weight values will add to this.
+                        Must be the same for all normalized synapses.
+                'tau_norml' : time constant for normalization.
+            Raises:
+                ValueError
+        """
+        synapse.__init__(self, params, network)
+        self.tau_norml = params['tau_norml'] 
+        self.w_sum = params['w_sum']
+        if self.tau_norml <= 0.:
+            raise ValueError('tau_norml should be a positive value')
+        if self.w_sum <= 0.:
+            raise ValueError('w_sum should be a positive value')
+        self.alpha = self.net.min_delay / self.tau_norml
+        self.upd_requirements.update([syn_reqs.l0_norm_factor])
+
+    def update(self, time):
+        """ Update the weight normalization. """
+        nf = self.net.units[self.postID].l0_norm_factor
+        self.w = self.w + self.alpha * self.w * (nf*self.w_sum - 1.)
+
+
+class comp_pot(synapse):
+    """ Competitive potentiation synapse.
+        The weight increases according to how large the presynaptic input is,
+        compared to the average of port 0 inputs. This requires the inp_avg_mp
+        reqirement, which in turn depends on the mp_inputs requirement.
+        Weights are normalized so they add to a value 'w_sum'. This uses the
+        l0_norm_factor requirement.
+    """
+    def __init__(self, params, network):
+        """ Constructor of the comp_pot synapse.
+            Args:
+                params: same as the synapse class with two additions.
+                REQUIRED PARAMETERS
+                'lrate' : learning rate for the potentiation.
+                'w_sum' : the sum of absolute weight values will add to this.
+                        Must be the same for all normalized synapses.
+                'tau_norml' : time constant for normalization.
+            Raises:
+                ValueError
+        """
+        synapse.__init__(self, params, network)
+        self.tau_norml = params['tau_norml'] 
+        self.w_sum = params['w_sum']
+        if self.tau_norml <= 0.:
+            raise ValueError('tau_norml should be a positive value')
+        if self.w_sum <= 0.:
+            raise ValueError('w_sum should be a positive value')
+        self.alpha1 = self.lrate * self.net.min_delay # scales the update rule
+        self.alpha2 = self.net.min_delay / self.tau_norml # scales normalization
+        self.upd_requirements.update([syn_reqs.l0_norm_factor,
+                                      syn_reqs.mp_inputs,
+                                      syn_reqs.inp_avg_mp])
+
     def update(self, time):
         """ Update the comp_pot synapse. """
-        post = self.net.units[self.postID]
-        pre = self.net.units[self.preID]
-        self.w += (self.w * self.alpha1 * (pre.act_buff[-1] - post.inp_avg_mp[0]) +
-               self.alpha2 * self.w * (post.l0_norm_factor_mp[0]*self.w_sum - 1.))
-
-        
-
-
-
-
+        u = self.net.units[self.postID]
+        self.w += (self.alpha1 * (u.act_buff[0] - u.inp_avg_mp[0]) +
+                   self.alpha2 * self.w * (u.l0_norm_factor*self.w_sum - 1.))
