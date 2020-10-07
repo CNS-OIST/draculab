@@ -446,6 +446,162 @@ class rga_ge(synapse):
         self.w -= self.alpha * ((gep*up + gepp*upp)*(sj - s) + up * xp_now)
 
 
+class node_pert(synapse):
+    """ A rule inspired on the node perturbation method.
+    
+        As in the 10/7/20 entry of the log, the rule is:
+        w'_{ij}(t) = -alpha * ||e'(t)|| c'_j(t)c_i(t - \Delta t), where:
+            alpha = learning rate, 
+            e = global error vector (vector of presynaptic inputs)
+            ||.|| = L1 norm, or sum of absolute values
+            c_i = postsynaptic output i 
+            Delta_t = time delay
+
+
+        It is assumed that ||e|| is an input received at port 1.
+
+        Presynaptic units are given the lpf_fast and lpf_mid requirements.
+
+        Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
+        avg_inp_deriv_mp, del_inp_deriv_mp, del_avg_inp_deriv_mp, 
+        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        
+        The update methods for most of these requirements are currently in the
+        rga_reqs class of the spinal_units.py file.        
+
+        In addition, units using this type of synapse need to have a
+        'custom_inp_del' attribute to indicate the extra delay steps in the 
+        'lateral' inputs. The synapse will use this delay for the activities of
+        its postsynaptic unit and for the 'lateral' inputs.
+
+        The current implementation normalizes the sum of the absolute values for
+        the weights at the 'error' port, making them add to 1.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        For this synapse we will assume that port 0 is for the regular inputs,
+        whereas the global error is received on port 1.
+        
+        Args:
+            params: same as the parent class, with two additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            'post_delay': NOT USING. delay steps in the post-synaptic activity.
+            OPTIONAL PARAMETERS
+            'err_port' : port for "error" inputs. Default is 0.
+            'lat_port' : port for "lateral" inputs. Default is 1.
+            'ge_port' : port for "global error" inputs. Default is 2.
+
+        Raises:
+            AssertionError.
+        """
+        #TODO: check if requirements still needed
+        synapse.__init__(self, params, network)
+        self.lrate = params['lrate'] # learning rate for the synaptic weight
+        self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
+        # most of the heavy lifting is done by requirements
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast,
+                             syn_reqs.pre_lpf_mid, 
+                             syn_reqs.pre_lpf_slow, # experimental
+                             syn_reqs.del_inp_mp, # testing
+                             syn_reqs.del_inp_avg_mp, # testing
+                             syn_reqs.lpf_slow, # testing
+                             syn_reqs.mp_inputs, # testing
+                             syn_reqs.mp_weights, # testing
+                             syn_reqs.inp_avg_mp, # testing
+                             syn_reqs.lpf_fast,
+                             syn_reqs.lpf_mid, 
+                             syn_reqs.inp_deriv_mp, 
+                             syn_reqs.avg_inp_deriv_mp,
+                             syn_reqs.del_inp_deriv_mp,
+                             syn_reqs.del_avg_inp_deriv_mp,
+                             syn_reqs.sc_inp_sum_deriv_mp,
+                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.pre_out_norm_factor])
+        assert self.type is synapse_types.rga_ge, ['Synapse from ' + str(self.preID) + 
+                   ' to ' + str(self.postID) + ' instantiated with the wrong type']
+        if not hasattr(self.net.units[self.postID], 'custom_inp_del'):
+            raise AssertionError('An rga_ge synapse has a postsynaptic unit ' +
+                                 'without the custom_inp_del attribute')
+        # po_de is the delay in postsynaptic activity for the learning rule
+        # It is set to match the delay in the 'lateral' input ports of the post unit
+        self.po_de = self.net.units[self.postID].custom_inp_del
+        if 'lat_port' in params: self.lat_port = params['lat_port']
+        else: self.lat_port = 1 
+        if 'err_port' in params: self.err_port = params['err_port']
+        else: self.err_port = 0 
+        if 'ge_port' in params: self.err_port = params['ge_port']
+        else: self.ge_port = 2 
+        self.gep_slow = 0. # used to obtain the error's second derivative
+        self.xp_slow = 0. # to obtain the lateral inputs' second derivative
+        self.up_slow = 0. # ditto
+        
+    def update(self, time):
+        """ Update the weight using the RGA-inspired learning rule.
+        
+            If the network is correctly initialized, the pre-synaptic unit 
+            updates lpf_fast, and lpf_mid, whereas the post-synaptic unit
+            updates lpf_fast, lpf_mid, and the average of approximate input
+            derivatives for each port.
+
+        """
+        #TODO: move calculations into unit requirements
+        u = self.net.units[self.postID]
+        xp = u.del_avg_inp_deriv_mp[self.lat_port]
+        up = u.get_lpf_fast(self.po_de) - u.get_lpf_mid(self.po_de)
+        #upp = up - u.get_lpf_mid(self.po_de) + u.get_lpf_slow(self.po_de)
+        #sp = u.avg_inp_deriv_mp[self.err_port]
+        #sp = u.del_avg_inp_deriv_mp[self.err_port]
+        pre = self.net.units[self.preID]
+        #spj = (pre.get_lpf_fast(self.delay_steps) -
+        #       pre.get_lpf_mid(self.delay_steps) )
+
+        norm_fac = .5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
+
+        gep = u.inp_deriv_mp[self.ge_port][0] # only one GE input
+        self.gep_slow += 10.*self.net.min_delay*(gep - self.gep_slow)
+        gepp = gep - self.gep_slow
+        self.up_slow += 10.*self.net.min_delay*(up - self.up_slow)
+        upp = up - self.up_slow
+        self.xp_slow += 10.*self.net.min_delay*(xp - self.xp_slow)
+        xpp = xp - self.xp_slow
+
+        #self.w += self.alpha * (up - xp) * (sp - spj) # normal rga
+        #self.w += -self.alpha * gep * (up - xp) * (sp - spj) # modulated rga
+        #self.w += self.alpha * ((up - xp) * (sp - spj) - gep*self.w*spj)
+        #self.w += self.alpha * ((up - xp) * (sp - spj) - gep*spj)
+        u_act = u.act_buff[-1-self.po_de]
+        #pre_act = pre.act_buff[-1-self.po_de]
+        #self.w -= gep * u_act * pre_act # Hebbian-descent simile
+        #self.w += self.alpha * ((up - xp) * (sp - spj) - gep*u_act*spj)
+        #up_del = (u.get_lpf_fast(self.po_de) -
+        #          u.get_lpf_mid(self.po_de) )
+        #spj = (pre.get_lpf_fast(self.po_de+self.delay_steps) -
+        #       pre.get_lpf_slow(self.po_de+self.delay_steps) )
+        #sj = pre.act_buff[-1-self.po_de-self.delay_steps]
+        sj = pre.act_buff[-1-self.delay_steps]
+        #s = sum(u.del_inp_mp[self.err_port])/len(u.del_inp_mp[self.err_port])
+        #s = u.del_inp_avg_mp[self.err_port]
+        s = u.inp_avg_mp[self.err_port]
+        #self.w -= self.alpha*gep*u_act*(spj - sp)
+        #self.w -= self.alpha*gep*u_act*(sj - s)
+        #self.w -= self.alpha*(gep*up + gepp*upp)*(sj - s)
+        # see 05/07/20 scrap notes
+        #self.w -= self.alpha * (gep*(up-xp) + gepp*upp)*(sj - s)
+        #self.w -= self.alpha * (gep*(up-xp) + gepp*(upp-xpp))*(sj - s)
+        #self.w -= self.alpha * ((gep*(up-xp) + gepp*(upp-xpp))*
+        #                        (sj - s + spj - sp))
+        #xp_now = u.avg_inp_deriv_mp[self.lat_port]
+        xp_now = u.sc_inp_sum_deriv_mp[self.lat_port]
+        #self.w -= self.alpha * ((gep*(up-xp) + gepp*(upp-xpp))*(sj - s) -
+        #          up * xp_now)
+        self.w -= self.alpha * ((gep*up + gepp*upp)*(sj - s) + up * xp_now)
+
+
+
+
 class rga_21(synapse):
     """ The RGA rule modulated with a second derivative for the errors.
     
