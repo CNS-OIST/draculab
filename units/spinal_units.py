@@ -499,8 +499,8 @@ class am_oscillator(unit, rga_reqs):
     element corresponds to the constant part of the output. The third element
     is a bounded LPF'd scaled sum of inputs.
 
-    For the sake of RGA synapses two ports are used. Port 0 is assumed to be
-    the "error" port.
+    For the sake of RGA synapses two ports are assumed, with port 0 being
+    the "error" port. Using a different number of ports causes a warning.
     
     The equations of the model currently look like this:
     tau_u * u'   = u*(1-u)*[c' + (c-u) + <I>'*sin(wt) + <I>wcos(wt)]
@@ -549,7 +549,11 @@ class am_oscillator(unit, rga_reqs):
                              "consist of a 3-element array.")
         if 'n_ports' in params:
             if params['n_ports'] != 2:
-                raise ValueError("am_oscillator units use two input ports.")
+                from warnings import warn
+                warn("am_oscillator uses two input ports with rga synapses.",
+                 UserWarning)
+                #raise ValueError("am_oscillator units use two input ports.")
+
         else:
             params['n_ports'] = 2
         unit.__init__(self, ID, params, network) # parent's constructor
@@ -887,7 +891,7 @@ class gated_out_norm_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, acc_sda_reqs):
                 AssertionError.
         """
         if 'n_ports' in params and params['n_ports'] != 3:
-            raise AssertionError('gated_out_norm_sig units must have n_ports=3')
+            raise AssertionError('gated_out_norm_am_sig units must have n_ports=3')
         else:
             params['n_ports'] = 3
         sigmoidal.__init__(self, ID, params, network)

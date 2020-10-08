@@ -305,6 +305,7 @@ class synapse_types(Enum):
     gated_normal_rga_diff_dc = 224 # gnrd with an extra differential correlation
     noisy_gated_normal_rga_diff = 225 # noisy version of gated_normal_rga_diff
     noisy_gated_diff_inp_sel = 226 # a noisy gated_diff_inp_sel
+    node_pert = 227 # inspired by node perturbation
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -445,6 +446,9 @@ class synapse_types(Enum):
         elif self == synapse_types.noisy_gated_diff_inp_sel:
             from synapses.spinal_syns import noisy_gated_diff_inp_sel
             syn_class = noisy_gated_diff_inp_sel
+        elif self == synapse_types.node_pert:
+            from synapses.spinal_syns import node_pert 
+            syn_class =node_pert 
         else:
             raise NotImplementedError('Attempting retrieve the class ' +
                                       'of an unknown synapse model')

@@ -109,7 +109,8 @@ def add_mp_inputs(unit):
         only gets called once per simulation step.
 
         Quoting the docstring of unit.get_mp_inputs:
-        "This method is for units where multiport = True, and that have a port_idx attribute.
+        "This method is for units where multiport = True, and that have a
+        port_idx attribute.
         The i-th element of the returned list is a numpy array containing the raw 
         (not multiplied by the synaptic weight) inputs at port i. The inputs include 
         transmision delays."

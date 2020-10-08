@@ -285,16 +285,19 @@ class unit():
         """
         Returns a list with all the inputs, arranged by input port.
 
-        This method is for units where multiport = True, and that have a port_idx attribute.
+        This method is for units where multiport = True, and that have a
+        port_idx attribute.
 
-        The i-th element of the returned list is a numpy array containing the raw
-        (not multiplied by the synaptic weight) inputs at port i. The inputs include 
-        transmision delays.
+        The i-th element of the returned list is a numpy array containing the
+        raw (not multiplied by the synaptic weight) inputs at port i. The 
+        inputs include transmision delays.
 
-        The time argument should be within the range of values stored in the unit's buffer.
+        The time argument should be within the range of values stored in the
+        unit's buffer.
         """
-        return [ np.array([self.net.act[self.ID][idx](time - self.net.delays[self.ID][idx]) 
-                 for idx in idx_list]) for idx_list in self.port_idx ]
+        return [ np.array([self.net.act[self.ID][idx](time - 
+                   self.net.delays[self.ID][idx]) for idx in idx_list]) 
+                     for idx_list in self.port_idx ]
 
 
     def get_sc_input_sum(self, time):
@@ -597,12 +600,13 @@ class unit():
         ## Values outside the buffer range will fall between buffer[-1] and buffer[-2].
         ## self.using_interp1d should be set to False
         #"""
-        base, rem = divmod(time-self.times[0], self.time_bit)
+        #base, rem = divmod(time-self.times[0], self.time_bit)
         # because time_bit is slightly larger than times[1]-times[0], we can limit
         # base to buff_size-2, even if time = times[-1]
-        base =  max( 0, min(int(base), self.buff_size-2) ) 
-        frac2 = rem/self.time_bit
-        return self.act_buff[base] + frac2 * ( self.act_buff[base+1] - self.act_buff[base] )
+        #base =  max( 0, min(int(base), self.buff_size-2) ) 
+        #frac2 = rem/self.time_bit
+        #return self.act_buff[base] + frac2 * ( self.act_buff[base+1] - 
+        #                                       self.act_buff[base] )
         #"""
         ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         ## This is the second implementation, written in Cython
@@ -612,7 +616,7 @@ class unit():
         ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         ## This is the third implementation, written in Cython
         ## self.using_interp1d should be set to False
-        #return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.act_buff)
+        return cython_get_act3(time, self.times[0], self.time_bit, self.buff_size, self.act_buff)
         ##~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
