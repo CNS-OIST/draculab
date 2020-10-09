@@ -1099,15 +1099,15 @@ class unit():
         self.out_norm_factor = self.des_out_w_abs_sum / (out_w_abs_sum + 1e-32)
 
 
-    def upd_l0_norm_factor(self, time):
+    def upd_l1_norm_factor(self, time):
         """ Update the factor to normalize the L0 norm for the weight vector. """
-        self.l0_norm_factor = 1. / (sum([abs(w) for w in 
+        self.l1_norm_factor = 1. / (sum([abs(w) for w in 
                                     self.get_weights(time)]) + 1e-32) 
 
 
-    def upd_l0_norm_factor_mp(self, time):
+    def upd_l1_norm_factor_mp(self, time):
         """ Update the factors to normalize the L0 norms for weight vectors. """
-        self.l0_norm_factor_mp = [ 1. / (np.absolute(ws).sum() + 1e-32) 
+        self.l1_norm_factor_mp = [ 1. / (np.absolute(ws).sum() + 1e-32) 
                                    for ws in self.get_mp_weights(time)]
 
 

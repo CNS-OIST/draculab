@@ -293,7 +293,7 @@ class synapse_types(Enum):
     gated_normal_rga_diff = 212 # gated_rga_diff with normalized correlations
     gated_normal_slide_rga_diff = 213 # time delay slide, normalized correlations
     gated_normal_rga = 214 # gated_rga with normalized correlation
-    static_l0_normal = 215 # static with multiplicative normalization
+    static_l1_normal = 215 # static with multiplicative normalization
     normal_rga = 216 # rga with normalized correlation
     rga_ge = 217 # rga modulated by the derivative of the global error
     comp_pot = 218 # competitive potentiation
@@ -410,9 +410,9 @@ class synapse_types(Enum):
         elif self == synapse_types.gated_normal_rga:
             from synapses.spinal_syns import gated_normal_rga
             syn_class = gated_normal_rga
-        elif self == synapse_types.static_l0_normal:
-            from synapses.spinal_syns import static_l0_normal
-            syn_class = static_l0_normal
+        elif self == synapse_types.static_l1_normal:
+            from synapses.spinal_syns import static_l1_normal
+            syn_class = static_l1_normal
         elif self == synapse_types.normal_rga:
             from synapses.spinal_syns import normal_rga
             syn_class = normal_rga
@@ -584,7 +584,7 @@ class syn_reqs(Enum):
     avg_inp_deriv_mp = 103 # average of input derivatives for each port
     del_inp_deriv_mp = 104 # version of inp_deriv_mp with custom input delays
     del_avg_inp_deriv_mp = 105 # avg_inp_deriv_mp with custom input delays
-    l0_norm_factor_mp = 106 # Factors to normalize the absolute sum of weight values
+    l1_norm_factor_mp = 106 # Factors to normalize the absolute sum of weight values
     out_norm_factor = 107 # factor to normalize the absolute sum of outgoing weights
     pre_out_norm_factor = 108 # shows that the presynaptic unit needs out_norm_factor 
     sc_inp_sum_diff_mp = 109 # derivative of the scaled input sum for each port
@@ -602,7 +602,7 @@ class syn_reqs(Enum):
     double_del_avg_inp_deriv_mp = 121 # del_avg_inp_deriv_mp with two delays
     slow_inp_deriv_mp = 122 # derivative of the inputs using lpf_mid and lpf_slow
     avg_slow_inp_deriv_mp = 123 # avarage of all slow_inp_deriv_mp values per port
-    l0_norm_factor = 124 # factor to normalized the sum of absolute weight values
+    l1_norm_factor = 124 # factor to normalized the sum of absolute weight values
     del_inp_mp = 125 # raw inputs at each port with a custom delay
     del_inp_avg_mp = 126 # average of raw inputs at each port with a custom delay
     inp_avg_mp = 127 # average of the raw inputs at each port

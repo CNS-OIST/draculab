@@ -103,7 +103,7 @@ class rga_synapse(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         avg_inp_deriv_mp, del_inp_deriv_mp, del_avg_inp_deriv_mp, 
-        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        l1_norm_factor_mp, and pre_out_norm_factor requirements. 
         
         The update methods for most of these requirements are currently in the
         rga_reqs class of the spinal_units.py file.        
@@ -144,7 +144,7 @@ class rga_synapse(synapse):
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.rga, ['Synapse from ' + str(self.preID) + 
                    ' to ' + str(self.postID) + ' instantiated with the wrong type']
@@ -184,7 +184,7 @@ class rga_synapse(synapse):
         spj = (pre.get_lpf_fast(self.delay_steps) -
                pre.get_lpf_mid(self.delay_steps) )
         # weight normalization
-        norm_fac = .5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        norm_fac = .5*(u.l1_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w
         # weight update
         #self.w += self.alpha * max(up - xp, 0.) * (sp - spj)
@@ -203,7 +203,7 @@ class gated_rga_synapse(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         avg_inp_deriv_mp, del_inp_deriv_mp, del_avg_inp_deriv_mp, 
-        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        l1_norm_factor_mp, and pre_out_norm_factor requirements. 
         Postsynaptic units are also expected to include the acc_slow
         requirement, which is used to modulate the learning rate.
         
@@ -217,7 +217,7 @@ class gated_rga_synapse(synapse):
 
         The current implementation normalizes the sum of the absolute values for
         the weights at the 'error' port, making them add to a parameter 'w_sum'
-        times the sum of l0_norm_factor and the out_norm_factor of the 
+        times the sum of l1_norm_factor and the out_norm_factor of the 
         presynaptic unit.
         
     """
@@ -251,7 +251,7 @@ class gated_rga_synapse(synapse):
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_rga, ['Synapse from ' + str(self.preID) + 
                    ' to ' + str(self.postID) + ' instantiated with the wrong type']
@@ -291,7 +291,7 @@ class gated_rga_synapse(synapse):
         pre = self.net.units[self.preID]
         spj = (pre.get_lpf_fast(self.delay_steps) -
                pre.get_lpf_mid(self.delay_steps) )
-        self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
+        self.w *= self.w_sum*(u.l1_norm_factor_mp[self.err_port] + 
                               pre.out_norm_factor)
         #self.w += u.acc_mid * self.alpha * (up - xp) * (sp - spj)
         self.w += u.acc_slow * self.alpha * (up - xp) * (sp - spj)
@@ -307,7 +307,7 @@ class rga_ge(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         avg_inp_deriv_mp, del_inp_deriv_mp, del_avg_inp_deriv_mp, 
-        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        l1_norm_factor_mp, and pre_out_norm_factor requirements. 
         
         The update methods for most of these requirements are currently in the
         rga_reqs class of the spinal_units.py file.        
@@ -363,7 +363,7 @@ class rga_ge(synapse):
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
                              syn_reqs.sc_inp_sum_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.rga_ge, ['Synapse from ' + str(self.preID) + 
                    ' to ' + str(self.postID) + ' instantiated with the wrong type']
@@ -403,7 +403,7 @@ class rga_ge(synapse):
         #spj = (pre.get_lpf_fast(self.delay_steps) -
         #       pre.get_lpf_mid(self.delay_steps) )
 
-        norm_fac = .5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        norm_fac = .5*(u.l1_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
 
         gep = u.inp_deriv_mp[self.ge_port][0] # only one GE input
@@ -464,7 +464,7 @@ class node_pert(synapse):
         requirements.
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
-        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        l1_norm_factor_mp, and pre_out_norm_factor requirements. 
         
         The update methods for most of these requirements are currently in the
         rga_reqs class of the spinal_units.py file.        
@@ -506,7 +506,7 @@ class node_pert(synapse):
                              syn_reqs.lpf_fast,
                              syn_reqs.lpf_mid, 
                              syn_reqs.inp_deriv_mp, 
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.node_pert, ['Synapse from ' + 
                              str(self.preID) + ' to ' + str(self.postID) +
@@ -537,7 +537,7 @@ class node_pert(synapse):
         ej_avg = pre.get_lpf_slow(self.delay_steps)
         ep = post.inp_deriv_mp[self.ge_port][0] # assuming a single GE input
         
-        norm_fac = .5*(post.l0_norm_factor_mp[self.err_port] + 
+        norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
                        pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
 
@@ -555,7 +555,7 @@ class rga_21(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         del_inp_deriv_mp, del_avg_inp_deriv_mp,
-        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        l1_norm_factor_mp, and pre_out_norm_factor requirements. 
         
         The update methods for most of these requirements are currently in the
         rga_reqs class of the spinal_units.py file.        
@@ -609,7 +609,7 @@ class rga_21(synapse):
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
                              #syn_reqs.sc_inp_sum_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.rga_21, ['Synapse from ' + str(self.preID) + 
                    ' to ' + str(self.postID) + ' instantiated with the wrong type']
@@ -669,7 +669,7 @@ class rga_21(synapse):
         epp = ep - self.ep_slow
         ejpp = ejp - self.ejp_slow
         # normalization 
-        norm_fac = .5*(post.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w 
         # plasticity equation
         self.w -= self.alpha * (ejpp - epp) * (cip - cp)
@@ -687,7 +687,7 @@ class gated_rga_21(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         del_inp_deriv_mp, del_avg_inp_deriv_mp,
-        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        l1_norm_factor_mp, and pre_out_norm_factor requirements. 
         
         The update methods for most of these requirements are currently in the
         rga_reqs class of the spinal_units.py file.        
@@ -733,7 +733,7 @@ class gated_rga_21(synapse):
                              syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_rga_21, ['Synapse from ' + str(self.preID) + 
                    ' to ' + str(self.postID) + ' instantiated with the wrong type']
@@ -779,7 +779,7 @@ class gated_rga_21(synapse):
         epp = ep - self.ep_slow
         ejpp = ejp - self.ejp_slow
         # normalization 
-        norm_fac = .5*(post.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w 
         # plasticity equation
         self.w -= post.acc_slow * self.alpha * (ejpp - epp) * (cip - cp)
@@ -846,7 +846,7 @@ class gated_rga_21_dc(synapse):
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
                              syn_reqs.sc_inp_sum_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_rga_21_dc, ['Synapse from ' + str(self.preID) + 
                    ' to ' + str(self.postID) + ' instantiated with the wrong type']
@@ -893,7 +893,7 @@ class gated_rga_21_dc(synapse):
         ejpp = ejp - self.ejp_slow
         cp_now = post.sc_inp_sum_deriv_mp[self.lat_port]
         # normalization 
-        norm_fac = .5*(post.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w 
         # plasticity equation
         self.w -= post.acc_slow * self.alpha * ((ejpp - epp) * (cip - cp) + cip*cp_now) 
@@ -923,7 +923,7 @@ class gated_normal_rga_21(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         del_inp_deriv_mp, del_avg_inp_deriv_mp,
-        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        l1_norm_factor_mp, and pre_out_norm_factor requirements. 
         
         The update methods for most of these requirements are currently in the
         rga_reqs class of the spinal_units.py file.        
@@ -975,7 +975,7 @@ class gated_normal_rga_21(synapse):
                              syn_reqs.avg_slow_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_normal_rga_21, ['Synapse from ' + 
                     str(self.preID) + ' to ' + str(self.postID) + 
@@ -1035,7 +1035,7 @@ class gated_normal_rga_21(synapse):
         epp = ep - self.ep_slow
         ejpp = ejp - self.ejp_slow
         # weight normalization 
-        norm_fac = .5*(post.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w 
         # plasticity equation
         #self.w -= post.acc_slow * self.alpha * (ejpp - epp) * (cip - cp)
@@ -1069,7 +1069,7 @@ class normal_rga(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         avg_inp_deriv_mp, del_inp_deriv_mp, del_avg_inp_deriv_mp, 
-        l0_norm_factor_mp, pre_out_norm_factor, slow_inp_deriv_mp, and
+        l1_norm_factor_mp, pre_out_norm_factor, slow_inp_deriv_mp, and
         slow_avg_inp_deriv_mp requirements. 
         
         The update methods for most of these requirements are currently in the
@@ -1082,7 +1082,7 @@ class normal_rga(synapse):
 
         The current implementation normalizes the sum of the absolute values for
         the weights at the 'error' port, making them add to a parameter 'w_sum'
-        times the sum of l0_norm_factor and the out_norm_factor of the 
+        times the sum of l1_norm_factor and the out_norm_factor of the 
         presynaptic unit.
         
     """
@@ -1123,7 +1123,7 @@ class normal_rga(synapse):
                              syn_reqs.del_avg_inp_deriv_mp,
                              syn_reqs.slow_inp_deriv_mp, 
                              syn_reqs.avg_slow_inp_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.normal_rga, ['Synapse from ' + 
                             str(self.preID) + ' to ' + str(self.postID) + 
@@ -1180,7 +1180,7 @@ class normal_rga(synapse):
         spj = normfac2 * (pre.get_lpf_fast(self.delay_steps) -
                           pre.get_lpf_mid(self.delay_steps) )
         # weight normalization
-        norm_fac = .5*(u.l0_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        norm_fac = .5*(u.l1_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w
         # weight update
         self.w += self.alpha * (up - xp) * (sp - spj)
@@ -1209,7 +1209,7 @@ class gated_normal_rga(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         avg_inp_deriv_mp, del_inp_deriv_mp, del_avg_inp_deriv_mp, 
-        l0_norm_factor_mp, pre_out_norm_factor, slow_inp_deriv_mp, and
+        l1_norm_factor_mp, pre_out_norm_factor, slow_inp_deriv_mp, and
         slow_avg_inp_deriv_mp requirements. 
         Postsynaptic units are also expected to include the acc_slow
         requirement, which is used to modulate the learning rate.
@@ -1224,7 +1224,7 @@ class gated_normal_rga(synapse):
 
         The current implementation normalizes the sum of the absolute values for
         the weights at the 'error' port, making them add to a parameter 'w_sum'
-        times the sum of l0_norm_factor and the out_norm_factor of the 
+        times the sum of l1_norm_factor and the out_norm_factor of the 
         presynaptic unit.
         
     """
@@ -1265,7 +1265,7 @@ class gated_normal_rga(synapse):
                              syn_reqs.del_avg_inp_deriv_mp,
                              syn_reqs.slow_inp_deriv_mp, 
                              syn_reqs.avg_slow_inp_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_normal_rga, ['Synapse from ' + 
                             str(self.preID) + ' to ' + str(self.postID) + 
@@ -1322,7 +1322,7 @@ class gated_normal_rga(synapse):
         spj = normfac2 * (pre.get_lpf_fast(self.delay_steps) -
                           pre.get_lpf_mid(self.delay_steps) )
         # weight normalization
-        self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
+        self.w *= self.w_sum*(u.l1_norm_factor_mp[self.err_port] + 
                               pre.out_norm_factor)
         # weight update
         self.w += u.acc_slow * self.alpha * (up - xp) * (sp - spj)
@@ -1338,7 +1338,7 @@ class gated_bp_rga_synapse(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         avg_inp_deriv_mp, del_inp_deriv_mp, del_avg_inp_deriv_mp, 
-        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        l1_norm_factor_mp, and pre_out_norm_factor requirements. 
         Postsynaptic units are also expected to include the acc_slow
         requirement, which is used to modulate the learning rate.
         
@@ -1352,7 +1352,7 @@ class gated_bp_rga_synapse(synapse):
 
         The current implementation normalizes the sum of the absolute values for
         the weights at the 'error' port, making them add to a parameter 'w_sum'
-        times the sum of l0_norm_factor and the out_norm_factor of the 
+        times the sum of l1_norm_factor and the out_norm_factor of the 
         presynaptic unit.
         
     """
@@ -1390,7 +1390,7 @@ class gated_bp_rga_synapse(synapse):
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_bp_rga, ['Synapse from ' + str(self.preID) + 
                    ' to ' + str(self.postID) + ' instantiated with the wrong type']
@@ -1442,7 +1442,7 @@ class gated_bp_rga_synapse(synapse):
         #delta_w = u.acc_slow * up * (sp - spj)  # FOR TESTING PURPOSES
         #self.delW = delta_w + (self.delW  - delta_w) * self.w_prop
         self.delW += np.abs(self.alpha) * (delta_w - self.w_decay*self.delW)
-        self.w *= 0.5 * self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
+        self.w *= 0.5 * self.w_sum*(u.l1_norm_factor_mp[self.err_port] + 
                             pre.out_norm_factor)
 
         if self.corr_type != 0:
@@ -1477,7 +1477,7 @@ class gated_rga_diff_synapse(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         avg_inp_deriv_mp, double_del_inp_deriv_mp, double_del_avg_inp_deriv_mp,
-        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        l1_norm_factor_mp, and pre_out_norm_factor requirements. 
         Postsynaptic units are also expected to include the acc_slow
         requirement, which is used to modulate (gate) the learning rate of this
         synapse. 
@@ -1494,7 +1494,7 @@ class gated_rga_diff_synapse(synapse):
 
         The current implementation normalizes the sum of the absolute values for
         the weights at the 'error' port, making them add to a parameter 'w_sum'
-        times the sum of l0_norm_factor and the out_norm_factor of the 
+        times the sum of l1_norm_factor and the out_norm_factor of the 
         presynaptic unit.
         
     """
@@ -1527,7 +1527,7 @@ class gated_rga_diff_synapse(synapse):
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.double_del_inp_deriv_mp,
                              syn_reqs.double_del_avg_inp_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_rga_diff, ['Synapse from ' +
                             str(self.preID) + ' to ' + str(self.postID) + 
@@ -1587,7 +1587,7 @@ class gated_rga_diff_synapse(synapse):
         spj_now = (pre.get_lpf_fast(self.delay_steps) -
                    pre.get_lpf_mid(self.delay_steps) )
         spj_del = u.double_del_inp_deriv_mp[0][self.port][self.ddidm_idx]
-        self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
+        self.w *= self.w_sum*(u.l1_norm_factor_mp[self.err_port] + 
                               pre.out_norm_factor)
         self.w += u.acc_slow * self.alpha * (up - xp) * (
                               (sp_now - spj_now) - (sp_del - spj_del))
@@ -1608,7 +1608,7 @@ class gated_slide_rga_diff(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         avg_inp_deriv_mp, double_del_inp_deriv_mp, double_del_avg_inp_deriv_mp,
-        l0_norm_factor_mp, and pre_out_norm_factor requirements. 
+        l1_norm_factor_mp, and pre_out_norm_factor requirements. 
         Postsynaptic units are also expected to include the acc_slow
         requirement, which is used to modulate (gate) the learning rate of this
         synapse. 
@@ -1630,7 +1630,7 @@ class gated_slide_rga_diff(synapse):
 
         The current implementation normalizes the sum of the absolute values for
         the weights at the 'error' port, making them add to a parameter 'w_sum'
-        times the sum of l0_norm_factor and the out_norm_factor of the 
+        times the sum of l1_norm_factor and the out_norm_factor of the 
         presynaptic unit.
         
     """
@@ -1668,7 +1668,7 @@ class gated_slide_rga_diff(synapse):
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.double_del_inp_deriv_mp,
                              syn_reqs.double_del_avg_inp_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_slide_rga_diff, ['Synapse from ' +
                             str(self.preID) + ' to ' + str(self.postID) + 
@@ -1739,7 +1739,7 @@ class gated_slide_rga_diff(synapse):
                    pre.get_lpf_mid(self.delay_steps) )
         spj_del = post.double_del_inp_deriv_mp[0][self.port][self.ddidm_idx]
         # weight normalization
-        self.w *= self.w_sum*(post.l0_norm_factor_mp[self.err_port] + 
+        self.w *= self.w_sum*(post.l1_norm_factor_mp[self.err_port] + 
                               pre.out_norm_factor)
         # delay update
         corr1 = (up - xp) * (sp_del - spj_del)
@@ -1780,7 +1780,7 @@ class gated_normal_rga_diff(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         avg_inp_deriv_mp, double_del_inp_deriv_mp, double_del_avg_inp_deriv_mp,
-        l0_norm_factor_mp, pre_out_norm_factor, slow_inp_deriv_mp, and
+        l1_norm_factor_mp, pre_out_norm_factor, slow_inp_deriv_mp, and
         slow_avg_inp_deriv_mp requirements. 
         Postsynaptic units are also expected to include the acc_slow
         requirement, which is used to modulate (gate) the learning rate of this
@@ -1798,7 +1798,7 @@ class gated_normal_rga_diff(synapse):
 
         The current implementation normalizes the sum of the absolute values for
         the weights at the 'error' port, making them add to a parameter 'w_sum'
-        times the sum of l0_norm_factor and the out_norm_factor of the 
+        times the sum of l1_norm_factor and the out_norm_factor of the 
         presynaptic unit.
         
     """
@@ -1838,7 +1838,7 @@ class gated_normal_rga_diff(synapse):
                              syn_reqs.double_del_avg_inp_deriv_mp,
                              syn_reqs.slow_inp_deriv_mp, 
                              syn_reqs.avg_slow_inp_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_normal_rga_diff or \
                self.type is synapse_types.noisy_gated_normal_rga_diff, \
@@ -1905,7 +1905,7 @@ class gated_normal_rga_diff(synapse):
         spj_del = (normfac2 * 
                    u.double_del_inp_deriv_mp[0][self.port][self.ddidm_idx])
         if self.normalize:
-            self.w *= self.w_sum*(u.l0_norm_factor_mp[self.err_port] + 
+            self.w *= self.w_sum*(u.l1_norm_factor_mp[self.err_port] + 
                               pre.out_norm_factor)
         
         self.w += u.acc_slow * self.alpha * (up_norm - xp_norm) * (
@@ -1977,7 +1977,7 @@ class gated_normal_slide_rga_diff(synapse):
 
         Postsynaptic units are given lpf_fast, lpf_mid, inp_deriv_mp, 
         avg_inp_deriv_mp, double_del_inp_deriv_mp, double_del_avg_inp_deriv_mp,
-        l0_norm_factor_mp, pre_out_norm_factor, slow_inp_deriv_mp, and
+        l1_norm_factor_mp, pre_out_norm_factor, slow_inp_deriv_mp, and
         slow_avg_inp_deriv_mp requirements. 
         Postsynaptic units are also expected to include the acc_slow
         requirement, which is used to modulate (gate) the learning rate of this
@@ -2000,7 +2000,7 @@ class gated_normal_slide_rga_diff(synapse):
 
         The current implementation normalizes the sum of the absolute values for
         the weights at the 'error' port, making them add to a parameter 'w_sum'
-        times the sum of l0_norm_factor and the out_norm_factor of the 
+        times the sum of l1_norm_factor and the out_norm_factor of the 
         presynaptic unit.
         
     """
@@ -2044,7 +2044,7 @@ class gated_normal_slide_rga_diff(synapse):
                              syn_reqs.double_del_avg_inp_deriv_mp,
                              syn_reqs.slow_inp_deriv_mp, 
                              syn_reqs.avg_slow_inp_deriv_mp,
-                             syn_reqs.l0_norm_factor_mp,
+                             syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_normal_slide_rga_diff, ['Synapse from ' +
                             str(self.preID) + ' to ' + str(self.postID) + 
@@ -2133,7 +2133,7 @@ class gated_normal_slide_rga_diff(synapse):
         spj_del = (normfac2 * 
                    post.double_del_inp_deriv_mp[0][self.port][self.ddidm_idx])
         # weight normalization
-        self.w *= self.w_sum*(post.l0_norm_factor_mp[self.err_port] + 
+        self.w *= self.w_sum*(post.l1_norm_factor_mp[self.err_port] + 
                               pre.out_norm_factor)
         # delay update
         corr1 = (up_norm - xp_norm ) * (sp_del - spj_del)
@@ -2162,7 +2162,7 @@ class input_selection_synapse(synapse):
         A second difference with the input correlation model is that weights
         from synapses at the "aff" postsynaptic port will be normalized so their
         absolute values add to a parameter w_sum. This is achieved with the 
-        l0_norm_factor_mp requirement.
+        l1_norm_factor_mp requirement.
 
         The learning equation is: 
         w' = lrate * pre * err_diff,
@@ -2223,7 +2223,7 @@ class input_selection_synapse(synapse):
         # for the derived class gated_diff_inp_sel
         self.upd_requirements = set([syn_reqs.lpf_fast_sc_inp_sum_mp,
                                      syn_reqs.lpf_mid_sc_inp_sum_mp,
-                                     syn_reqs.l0_norm_factor_mp,
+                                     syn_reqs.l1_norm_factor_mp,
                                      syn_reqs.pre_lpf_fast])
 
     def update(self, time):
@@ -2233,7 +2233,7 @@ class input_selection_synapse(synapse):
                     u.lpf_mid_sc_inp_sum_mp[self.error_port]) 
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
             
-        self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
+        self.w *= self.w_sum * u.l1_norm_factor_mp[self.aff_port]
         self.w = self.w + self.alpha * pre * err_diff
 
 
@@ -2292,7 +2292,7 @@ class gated_input_selection_synapse(input_selection_synapse):
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps +
                                                       self.extra_steps)
         if self.normalize:
-            self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
+            self.w *= self.w_sum * u.l1_norm_factor_mp[self.aff_port]
         self.w = self.w + u.acc_slow * self.alpha * pre * err_diff
 
 
@@ -2444,7 +2444,7 @@ class gated_diff_input_selection_synapse(gated_input_selection_synapse):
         Dpre = (preU.get_lpf_fast(self.delay_steps + self.extra_steps) -
                 preU.get_lpf_mid(self.delay_steps + self.extra_steps))
         if self.normalize:
-            self.w *= self.w_sum * u.l0_norm_factor_mp[self.aff_port]
+            self.w *= self.w_sum * u.l1_norm_factor_mp[self.aff_port]
         self.w = self.w + u.acc_slow * self.alpha * Dpre * err_diff
 
 
@@ -2557,7 +2557,7 @@ class gated_diff_inp_corr(synapse):
                                      syn_reqs.inp_deriv_mp,
                                      syn_reqs.xtra_del_inp_deriv_mp,
                                      syn_reqs.xtra_del_inp_deriv_mp_sc_sum,
-                                     syn_reqs.l0_norm_factor_mp])
+                                     syn_reqs.l1_norm_factor_mp])
         # The plasticity in this synapse is driven by two inputs in the
         # postsynaptic unit. One is the presynaptic input of this synapse, and
         # the other is the ascending input to the unit. We need an index to
@@ -2593,29 +2593,29 @@ class gated_diff_inp_corr(synapse):
         Dasc = post.xtra_del_inp_deriv_mp_sc_sum[self.asc_port]
 
         self.w += self.alpha * (post.acc_slow * Derror * Dasc +
-                  (self.w_sum * post.l0_norm_factor_mp[self.error_port] - 1.) 
+                  (self.w_sum * post.l1_norm_factor_mp[self.error_port] - 1.) 
                    * self.w )
 
         self.alpha1 = params['lrate'] * self.net.min_delay # scale update rule
         self.alpha2 = self.net.min_delay / self.tau_norml # scale normalization
-        self.upd_requirements.update([syn_reqs.l0_norm_factor_mp,
+        self.upd_requirements.update([syn_reqs.l1_norm_factor_mp,
                                       syn_reqs.mp_inputs,
                                       syn_reqs.inp_avg_mp])
 
 
-class static_l0_normal(synapse):
+class static_l1_normal(synapse):
     """ A static synapse with multiplicative normalization.
         NOT RECOMMENDED FOR GENERAL USE
         You can instead normalize the weights on initialization.
         Weigths for all synapses of this type in a unit are scaled so that the
         sum of their absolute values is 'w_sum'.
-        This is done by adding the l0_norm_factor to the postsynaptic unit.
+        This is done by adding the l1_norm_factor to the postsynaptic unit.
         Weights are not normalized instantly, but instead change with a given
         time constant.
     """
     def __init__(self, params, network):
         """
-            Constructor of the static_l0_normal synapse.
+            Constructor of the static_l1_normal synapse.
     
             Args:
                 params: same as the synapse class. 
@@ -2634,11 +2634,11 @@ class static_l0_normal(synapse):
         if self.w_sum <= 0.:
             raise ValueError('w_sum should be a positive value')
         self.alpha = self.net.min_delay / self.tau_norml
-        self.upd_requirements.update([syn_reqs.l0_norm_factor])
+        self.upd_requirements.update([syn_reqs.l1_norm_factor])
 
     def update(self, time):
         """ Update the weight normalization. """
-        nf = self.net.units[self.postID].l0_norm_factor
+        nf = self.net.units[self.postID].l1_norm_factor
         self.w = self.w + self.alpha * self.w * (nf*self.w_sum - 1.)
 
 
@@ -2648,7 +2648,7 @@ class comp_pot(synapse):
         compared to the average of port 0 inputs. This requires the inp_avg_mp
         reqirement, which in turn depends on the mp_inputs requirement.
         Weights are normalized so they add to a value 'w_sum'. This uses the
-        l0_norm_factor requirement.
+        l1_norm_factor requirement.
     """
     def __init__(self, params, network):
         """ Constructor of the comp_pot synapse.
@@ -2671,7 +2671,7 @@ class comp_pot(synapse):
             raise ValueError('w_sum should be a positive value')
         self.alpha1 = self.lrate * self.net.min_delay # scales the update rule
         self.alpha2 = self.net.min_delay / self.tau_norml # scales normalization
-        self.upd_requirements.update([syn_reqs.l0_norm_factor,
+        self.upd_requirements.update([syn_reqs.l1_norm_factor,
                                       syn_reqs.mp_inputs,
                                       syn_reqs.inp_avg_mp])
 
@@ -2679,4 +2679,4 @@ class comp_pot(synapse):
         """ Update the comp_pot synapse. """
         u = self.net.units[self.postID]
         self.w += (self.alpha1 * (u.act_buff[0] - u.inp_avg_mp[0]) +
-                   self.alpha2 * self.w * (u.l0_norm_factor*self.w_sum - 1.))
+                   self.alpha2 * self.w * (u.l1_norm_factor*self.w_sum - 1.))

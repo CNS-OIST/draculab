@@ -736,7 +736,7 @@ def add_norm_factor(unit):
     setattr(unit, 's_exc', (1.+unit.OD)/n_exc)
 
 
-def add_l0_norm_factor(unit):
+def add_l1_norm_factor(unit):
     """ Factor to normalize the L0 norm of the weight vector.
 
         This requirement was originially created for the 'normalized' synapse
@@ -744,16 +744,16 @@ def add_l0_norm_factor(unit):
         The requirement  is general enough to be used in any model where the 
         sum of absolute values for the weights should be 1.
 
-        l0_norm_factor is 1 divided by the sum of absolute values for the
+        l1_norm_factor is 1 divided by the sum of absolute values for the
         weights in all the unit's synapses.
         By multiplying all the weights by this factors, the sum of their 
         absolute values will be 1 if the weight vector is not zero, and zero
         otherwise.
     """
-    setattr(unit, 'l0_norm_factor', 1.)
+    setattr(unit, 'l1_norm_factor', 1.)
 
 
-def add_l0_norm_factor_mp(unit):
+def add_l1_norm_factor_mp(unit):
     """ Factors to normalize the L0 norm of weight vectors for each port.
 
         This requirement is used by the rga_synapse, and the implementation is
@@ -761,16 +761,16 @@ def add_l0_norm_factor_mp(unit):
         any multiport model where the sum of absolute values for the
         weights should be 1.
 
-        l0_norm_factor_mp is a list whose length is the number of ports.
+        l1_norm_factor_mp is a list whose length is the number of ports.
         By multiplying all the weights from incoming connections at port i
-        by l0_norm_fact0r_mp[i], the sum of their absolute values will be 1 if 
+        by l1_norm_fact0r_mp[i], the sum of their absolute values will be 1 if 
         the weight vector is not zero, and zero otherwise.
     """
     if not unit.multiport:
-        raise AssertionError('The l0_norm_factor_mp requirement is for multiport '+
+        raise AssertionError('The l1_norm_factor_mp requirement is for multiport '+
                              'units only.')
-    l0_norm_factor_mp = list(np.ones(unit.n_ports))
-    setattr(unit, 'l0_norm_factor_mp', l0_norm_factor_mp)
+    l1_norm_factor_mp = list(np.ones(unit.n_ports))
+    setattr(unit, 'l1_norm_factor_mp', l1_norm_factor_mp)
 
 
 def add_inp_deriv_mp(unit):
