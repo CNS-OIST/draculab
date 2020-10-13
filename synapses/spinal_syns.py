@@ -506,6 +506,8 @@ class node_pert(synapse):
                              syn_reqs.lpf_fast,
                              syn_reqs.lpf_mid, 
                              syn_reqs.inp_deriv_mp, 
+                             syn_reqs.del_inp_deriv_mp, # testing
+                             syn_reqs.del_avg_inp_deriv_mp, # testing
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.node_pert, ['Synapse from ' + 
@@ -526,26 +528,50 @@ class node_pert(synapse):
         if 'ge_port' in params: self.err_port = params['ge_port']
         else: self.ge_port = 2 
         
+    #def update(self, time):
+        #""" Update with the node perturbation-inspired learning rule.
+        #"""
+        #post = self.net.units[self.postID] 
+        #pre = self.net.units[self.preID]
+        #cip = (post.get_lpf_fast(self.delay_steps + self.po_de) -
+               #post.get_lpf_mid(self.delay_steps + self.po_de))
+        #ej = pre.act_buff[-1-self.cid]
+        #ej_avg = pre.get_lpf_slow(self.delay_steps)
+        #ep = post.inp_deriv_mp[self.ge_port][0] # assuming a single GE input
+        #
+        #norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
+                       #pre.out_norm_factor)
+        #self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
+#
+        ##self.w -= self.alpha * ep * cip * (ej - ej_avg)
+        ##self.w -= self.alpha * ep * cip * ej
+        ## clipping the maximum and minimum weight changes to avoid large jumps
+        ## when the target value changes
+        ##self.w -= self.alpha * max(min(ep * cip * ej, 0.08), -0.08)
+        #self.w -= self.alpha * max(min(ep * cip * (ej - ej_avg), 0.02), -0.02)
+
     def update(self, time):
-        """ Update with the node perturbation-inspired learning rule.
+        """ Experimental update
         """
         post = self.net.units[self.postID] 
         pre = self.net.units[self.preID]
-        cip = (post.get_lpf_fast(self.delay_steps + self.po_de) -
-               post.get_lpf_mid(self.delay_steps + self.po_de))
+        cip = post.get_lpf_fast(self.cid) - post.get_lpf_mid(self.cid)
         ej = pre.act_buff[-1-self.cid]
         ej_avg = pre.get_lpf_slow(self.delay_steps)
         ep = post.inp_deriv_mp[self.ge_port][0] # assuming a single GE input
+        cip_avg = post.del_avg_inp_deriv_mp[self.lat_port]
         
         norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
                        pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
 
         #self.w -= self.alpha * ep * cip * (ej - ej_avg)
-        self.w -= self.alpha * ep * cip * ej
-        #At 10.4: ej(10.2)=0.8, cip(10.3)>0,ep(10.4)>0, so Delta w < 0
-
-
+        self.w -= self.alpha * ep * (cip - cip_avg) * ej
+        # clipping the maximum and minimum weight changes to avoid large jumps
+        # when the target value changes
+        #self.w -= self.alpha * max(min(ep * cip * ej, 0.08), -0.08)
+        #self.w -= self.alpha * max(min(ep * cip * (ej - ej_avg), 0.02), -0.02)
+ 
 class rga_21(synapse):
     """ The RGA rule modulated with a second derivative for the errors.
     
