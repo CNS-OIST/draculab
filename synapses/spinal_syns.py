@@ -506,8 +506,13 @@ class node_pert(synapse):
                              syn_reqs.lpf_fast,
                              syn_reqs.lpf_mid, 
                              syn_reqs.inp_deriv_mp, 
+                             syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp, # testing
                              syn_reqs.del_avg_inp_deriv_mp, # testing
+                             #syn_reqs.del_inp_mp, # testing
+                             #syn_reqs.del_inp_avg_mp, # testing
+                             #syn_reqs.mp_inputs, # testing
+                             #syn_reqs.inp_avg_mp, #testing
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.node_pert, ['Synapse from ' + 
@@ -556,22 +561,31 @@ class node_pert(synapse):
         post = self.net.units[self.postID] 
         pre = self.net.units[self.preID]
         cip = post.get_lpf_fast(self.cid) - post.get_lpf_mid(self.cid)
+        #cip = post.get_lpf_fast(self.delay_steps) - \
+        #      post.get_lpf_mid(self.delay_steps)
         ej = pre.act_buff[-1-self.cid]
-        ej_avg = pre.get_lpf_slow(self.delay_steps)
         ep = post.inp_deriv_mp[self.ge_port][0] # assuming a single GE input
         cip_avg = post.del_avg_inp_deriv_mp[self.lat_port]
-        
+        #cip_avg = post.avg_inp_deriv_mp[self.lat_port]
+        ej_avg = 0.5 #pre.get_lpf_slow(self.delay_steps)
+        #ej_avg = post.del_inp_avg_mp[self.err_port]
+
         norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
                        pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
 
-        #self.w -= self.alpha * ep * cip * (ej - ej_avg)
-        self.w -= self.alpha * ep * (cip - cip_avg) * ej
+        #self.w -= self.alpha * ep * (cip - cip_avg) * (ej - ej_avg)
+        #self.w -= self.alpha * ep * (cip - cip_avg) * ej
+        #self.w -= self.alpha * ep * (cip - cip_avg) * (ej - ej_avg)
         # clipping the maximum and minimum weight changes to avoid large jumps
         # when the target value changes
         #self.w -= self.alpha * max(min(ep * cip * ej, 0.08), -0.08)
+        self.w -= self.alpha * max(min(ep * (cip-cip_avg) * 
+                                            (ej-ej_avg), 0.01), -0.01)
         #self.w -= self.alpha * max(min(ep * cip * (ej - ej_avg), 0.02), -0.02)
- 
+        #At t=3.2: ep < 0, (cip-cip_avg)<0, (ej-ej_avg)<0 
+        #          ep < 0, (cip-cip_avg)>0, (ej-ej_avg)>0
+
 class rga_21(synapse):
     """ The RGA rule modulated with a second derivative for the errors.
     
