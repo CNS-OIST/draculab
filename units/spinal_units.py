@@ -17,7 +17,7 @@ class rga_reqs():
         """ This constructor adds required syn_needs values. 
 
             The constructor receives the parameters dictionary of the unit's
-            creator, but only considers one entry: 
+            creator, but only considers these entries: 
             'inp_deriv_ports' : A list with the numbers of the ports where all
                                 inp_deriv_mp methods will calculate their 
                                 derivatives. Defaults to a list with all ports.
@@ -557,6 +557,7 @@ class am_oscillator(unit, rga_reqs):
         else:
             params['n_ports'] = 2
         unit.__init__(self, ID, params, network) # parent's constructor
+        rga_reqs.__init__(self, params)
         self.tau_u = params['tau_u']
         self.tau_c = params['tau_c']
         self.tau_s = params['tau_s']
@@ -709,6 +710,7 @@ class am_oscillator2D(unit, rga_reqs):
         else:
             params['n_ports'] = 2
         unit.__init__(self, ID, params, network) # parent's constructor
+        rga_reqs.__init__(self, params)
         self.tau_u = params['tau_u']
         self.tau_c = params['tau_c']
         self.omega = params['omega']
