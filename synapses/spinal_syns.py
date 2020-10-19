@@ -586,6 +586,77 @@ class node_pert(synapse):
         #At t=3.2: ep < 0, (cip-cip_avg)<0, (ej-ej_avg)<0 
         #          ep < 0, (cip-cip_avg)>0, (ej-ej_avg)>0
 
+
+class meca_hebb(synapse):
+    """ The m-dimensional error cancelling Hebbian synapse.
+        
+        This is a basic Hebbian rule modulated by the negative of the dot
+        product between the delayed input vector and its (non-delayed)
+        derivative.
+
+        Details are in the October 18th, 2020 log entry.
+
+        This implementation was planned for integrator-oscillator units (e.g.
+        am_oscillator, etc.) that have an error and a lateral port.
+
+        The weights are normalized using the out_norm_factor and l1_norm_factor
+        requirements.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+        Args:
+            params: same as the parent class, with two additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            OPTIONAL PARAMETERS
+            'err_port' : port for "error" inputs. Default is 0.
+            'lat_port' : port for "lateral" inputs. Default is 1.
+        """
+        synapse.__init__(self, params, network)
+        self.lrate = params['lrate']
+        self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
+        self.upd_requirements = set([syn_reqs.pre_lpf_fast,
+                             syn_reqs.pre_lpf_mid, 
+                             syn_reqs.del_inp_mp,
+                             syn_reqs.inp_deriv_mp, 
+                             syn_reqs.idel_ip_ip_mp,
+                             syn_reqs.l1_norm_factor_mp,
+                             syn_reqs.pre_out_norm_factor,
+                             syn_reqs.lpf_slow,
+                             syn_reqs.pre_lpf_slow])
+        assert self.type is synapse_types.meca_hebb, ['Synapse from ' + 
+                             str(self.preID) + ' to ' + str(self.postID) +
+                             ' instantiated with the wrong type']
+        if not hasattr(self.net.units[self.postID], 'custom_inp_del'):
+            raise AssertionError('A meca_hebb synapse has a postsynaptic unit ' +
+                                 'without the custom_inp_del attribute')
+        # inp_del is the delay in postsynaptic activity for the learning rule
+        self.inp_del = self.net.units[self.postID].custom_inp_del
+        if 'lat_port' in params: self.lat_port = params['lat_port']
+        else: self.lat_port = 1 
+        if 'err_port' in params: self.err_port = params['err_port']
+        else: self.err_port = 0 
+
+    def update(self, time):
+        """ Update the synapse with the meca Hebb rule.
+        """
+        post = self.net.units[self.postID] 
+        pre = self.net.units[self.preID]
+        ci = post.act_buff[-1]
+        ej = pre.act_buff[-1 - self.inp_del]
+        ci_avg = post.get_lpf_slow(0)
+        ej_avg = pre.get_lpf_slow(self.inp_del)
+        ip = post.idel_ip_ip_mp[self.err_port]
+        
+        norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
+                       pre.out_norm_factor)
+        self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
+        
+        #self.w -= self.alpha * ip  * (ci-0.5) * (ej-0.5)
+        #self.w -= self.alpha * ip  * ci * ej
+        self.w -= self.alpha * ip  * (ci - ci_avg) * (ej - ej_avg)
+
+
 class rga_21(synapse):
     """ The RGA rule modulated with a second derivative for the errors.
     

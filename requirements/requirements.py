@@ -1458,7 +1458,45 @@ def add_integ_decay_act(unit):
         raise NameError('The integ_decay_act requirement requires the ' +
                         'int_decay parameter')
     setattr(unit, 'integ_decay_act', 0.)
-    
+
+
+def add_idel_ip_ip_mp(unit):
+    """ Add inner product of delayed inputs and their derivatives by port.
+
+        Basically, it takes the (non-delayed) ihput derivatives from the
+        inp_deriv_mp requirement, and for each port included, it obtains the
+        inner product with the corresponding entries of del_inp_mp.
+
+        Because inp_deriv_mp specifies its ports with the 'del_inp_ports' list,
+        and inp_deriv_mp does it through the 'inp_deriv_ports' list, these two
+        must be equal if add_idel_ip_ip_mp is to work.
+
+        The implementation for idel_ip_ip_mp lives in the rga_reqs class.
+    """
+    if (not syn_reqs.inp_deriv_mp in unit.syn_needs or
+        not syn_reqs.del_inp_mp in unit.syn_needs):
+        raise AssertionError('The add_idel_ip_ip_mp requirement needs the ' + 
+                             'inp_deriv_mp and del_inp_mp requirements.')
+    """ This test fails when idel_ip_ip_mp is initialized in-between
+        del_inp_ports and inp_deriv_ports.
+    if hasattr(unit, 'del_inp_ports') or hasattr(unit, 'inp_deriv_ports'):
+        if not(hasattr(unit, 'del_inp_ports') and 
+               hasattr(unit, 'inp_deriv_ports')):
+            raise AssertionError('If one of del_inp_ports or inp_deriv_ports' +
+                                 ' is present, the other must be too.')
+        else:
+            if unit.del_inp_ports != unit.inp_deriv_ports:
+                raise AssertionError('The del_inp_ports and inp_deriv_ports ' +
+                      'lists must be equal to use idel_ip_ip_mp.')
+            else:
+                idel_ip_ip_mp = [0.1 for p in unit.del_inp_ports]
+    else:
+        idel_ip_ip_mp = [0.1] * unit.n_ports
+    """
+    idel_ip_ip_mp = [0.1] * unit.n_ports
+
+    setattr(unit, 'idel_ip_ip_mp', idel_ip_ip_mp)
+
 
 #-------------------------------------------------------------------------------------
 # Use of the following classes has been deprecated because they slow down execution

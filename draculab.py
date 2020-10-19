@@ -306,6 +306,7 @@ class synapse_types(Enum):
     noisy_gated_normal_rga_diff = 225 # noisy version of gated_normal_rga_diff
     noisy_gated_diff_inp_sel = 226 # a noisy gated_diff_inp_sel
     node_pert = 227 # inspired by node perturbation
+    meca_hebb= 228 # m-dimensional error cancelling Hebbian rule
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -448,7 +449,10 @@ class synapse_types(Enum):
             syn_class = noisy_gated_diff_inp_sel
         elif self == synapse_types.node_pert:
             from synapses.spinal_syns import node_pert 
-            syn_class =node_pert 
+            syn_class = node_pert 
+        elif self == synapse_types.meca_hebb:
+            from synapses.spinal_syns import meca_hebb 
+            syn_class = meca_hebb
         else:
             raise NotImplementedError('Attempting retrieve the class ' +
                                       'of an unknown synapse model')
@@ -609,6 +613,7 @@ class syn_reqs(Enum):
     sc_inp_sum_deriv_mp = 128 # like sc_inp_sum_diff_mp, but relies on inp_deriv_mp
     xtra_del_inp_deriv_mp = 129 # del_inp_deriv_mp with both custom and normal delay
     xtra_del_inp_deriv_mp_sc_sum = 130 # scaled sum of xtra_del_inp_deriv_mp at each port
+    idel_ip_ip_mp = 131 # inner product of the delayed inputs and the input derivatives
 
 
     def list_names():

@@ -29,7 +29,8 @@ class rga_reqs():
                                xtra_del_inp_deriv_mp_sc_sum will work.
                                Defaults to all ports.
         """
-        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum])
+        #self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum])
+
         # inp_deriv_ports works by indicating the add_ methods to restrict the
         # entries in pre_list_del_mp and pre_list_mp.
         if 'inp_deriv_ports' in params:
@@ -141,6 +142,10 @@ class rga_reqs():
                 zip(w_list, diff_list)]) for w_list, diff_list in 
                 zip(self.mp_weights, self.inp_deriv_mp)]
 
+    def upd_idel_ip_ip_mp(self, time):
+        """ Update the dot product of delayed and derived inputs per port."""
+        self.idel_ip_ip_mp = [sum([di*ip for di, ip in ll]) for ll in 
+                              zip(self.del_inp_mp, self.inp_deriv_mp)]
 
 class lpf_sc_inp_sum_mp_reqs():
     """ Class with the update functions for the X_lpf_sc_inp_sum_mp_reqs. """
@@ -1091,9 +1096,10 @@ class am_pulse(unit, rga_reqs):
         self.mudt_vec[0] = self.mudt
         self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
         self.needs_mp_inp_sum = True # dt_fun uses mp_inp_sum
-        # calculate derivatives for the all ports?
+        # calculate derivatives for all ports?
         # TODO: adjust to final form of rga rule
         params['inp_deriv_ports'] = [0, 1, 2] 
+        params['del_inp_ports'] = [0, 1, 2] 
         rga_reqs.__init__(self, params)
 
     def derivatives(self, y, t):
@@ -1244,6 +1250,7 @@ class rga_sig(sigmoidal, rga_reqs):
         self.integ_amp = params['integ_amp']
         rga_reqs.__init__(self, params) # add requirements and update functions 
         self.needs_mp_inp_sum = False # the sigmoidal uses self.inp_sum
+        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum_mp]) 
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. """
