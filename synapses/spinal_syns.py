@@ -648,22 +648,23 @@ class meca_hebb(synapse):
         pre = self.net.units[self.preID]
         ci = post.act_buff[-1]
         ej = pre.act_buff[-1 - self.inp_del]
-        #ci_avg = post.get_lpf_slow(0)
-        ci_avg = post.inp_avg_mp[self.lat_port]
-        #ej_avg = pre.get_lpf_slow(self.inp_del)
-        ej_avg = post.del_inp_avg_mp[self.err_port]
+        ci_avg = post.get_lpf_slow(0)
+        #ci_avg = post.inp_avg_mp[self.lat_port]
+        ej_avg = pre.get_lpf_slow(self.inp_del)
+        #ej_avg = post.del_inp_avg_mp[self.err_port]
         #ip = post.idel_ip_ip_mp[self.err_port]
         ip = post.dni_ip_ip_mp[self.err_port]
         
-        #norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
-        #               pre.out_norm_factor)
-        #self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
+        norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
+                       pre.out_norm_factor)
+        self.w += 0.05*self.alpha * (norm_fac - 1.)*self.w # multiplicative?
         
         #self.w -= self.alpha * ip  * (ci-0.5) * (ej-0.5)
         #self.w -= self.alpha * ip  * ci * ej
-        #self.w -= self.alpha * ip  * (ci - ci_avg) * (ej - ej_avg)
-        self.w -= self.alpha * (self.w *(1.-self.w) * 
-                                ip  * (ci - ci_avg) * (ej - ej_avg))
+        self.w -= self.alpha * max(min(ip  * (ci - ci_avg) * (ej - ej_avg),
+                                       0.005), -0.005)
+        #self.w -= self.alpha * (self.w *(1.-self.w) * 
+        #                        ip  * (ci - ci_avg) * (ej - ej_avg))
 
 
 class rga_21(synapse):
