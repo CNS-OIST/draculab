@@ -129,7 +129,7 @@ class rga_reqs():
     def upd_del_inp_mp(self, time):
         """ Update the arrays with delayed inputs for each port. """
         self.del_inp_mp = [[a[0](time-a[1]) for a in l] 
-                           for l in self.dim_act_del if len(l)>0]
+                           for l in self.dim_act_del] # if len(l)>0]
 
     def upd_del_inp_avg_mp(self, time):
         """ Update the average of delayed inputs for each port. """
@@ -144,8 +144,15 @@ class rga_reqs():
 
     def upd_idel_ip_ip_mp(self, time):
         """ Update the dot product of delayed and derived inputs per port."""
-        self.idel_ip_ip_mp = [sum([di*ip for di, ip in ll]) for ll in 
-                              zip(self.del_inp_mp, self.inp_deriv_mp)]
+        self.idel_ip_ip_mp = [sum([ldi[i]*lip[i] for i in range(len(ldi))])
+                   for ldi, lip in zip(self.del_inp_mp, self.inp_deriv_mp)]
+
+    def upd_dni_ip_ip_mp(self, time):
+        """ Update dot product of delayed-normalized and derived inputs per port."""
+        self.dni_ip_ip_mp = [
+            sum([(ldi[i]-iavg)*lip[i] for i in range(len(ldi))]) 
+            for ldi, lip, iavg in 
+                zip(self.del_inp_mp, self.inp_deriv_mp, self.del_inp_avg_mp)]
 
 class lpf_sc_inp_sum_mp_reqs():
     """ Class with the update functions for the X_lpf_sc_inp_sum_mp_reqs. """

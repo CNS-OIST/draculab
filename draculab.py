@@ -614,6 +614,7 @@ class syn_reqs(Enum):
     xtra_del_inp_deriv_mp = 129 # del_inp_deriv_mp with both custom and normal delay
     xtra_del_inp_deriv_mp_sc_sum = 130 # scaled sum of xtra_del_inp_deriv_mp at each port
     idel_ip_ip_mp = 131 # inner product of the delayed inputs and the input derivatives
+    dni_ip_ip_mp = 132 # inner product of delayed-normalized inputs and their derivs
 
 
     def list_names():

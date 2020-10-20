@@ -617,13 +617,17 @@ class meca_hebb(synapse):
         self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
         self.upd_requirements = set([syn_reqs.pre_lpf_fast,
                              syn_reqs.pre_lpf_mid, 
+                             syn_reqs.pre_lpf_slow,
+                             syn_reqs.lpf_slow,
                              syn_reqs.del_inp_mp,
                              syn_reqs.inp_deriv_mp, 
-                             syn_reqs.idel_ip_ip_mp,
+                             #syn_reqs.idel_ip_ip_mp,
+                             syn_reqs.dni_ip_ip_mp, # testing
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor,
-                             syn_reqs.lpf_slow,
-                             syn_reqs.pre_lpf_slow])
+                             syn_reqs.del_inp_avg_mp,
+                             syn_reqs.mp_inputs,  # testing
+                             syn_reqs.inp_avg_mp]) # testing
         assert self.type is synapse_types.meca_hebb, ['Synapse from ' + 
                              str(self.preID) + ' to ' + str(self.postID) +
                              ' instantiated with the wrong type']
@@ -644,17 +648,22 @@ class meca_hebb(synapse):
         pre = self.net.units[self.preID]
         ci = post.act_buff[-1]
         ej = pre.act_buff[-1 - self.inp_del]
-        ci_avg = post.get_lpf_slow(0)
-        ej_avg = pre.get_lpf_slow(self.inp_del)
-        ip = post.idel_ip_ip_mp[self.err_port]
+        #ci_avg = post.get_lpf_slow(0)
+        ci_avg = post.inp_avg_mp[self.lat_port]
+        #ej_avg = pre.get_lpf_slow(self.inp_del)
+        ej_avg = post.del_inp_avg_mp[self.err_port]
+        #ip = post.idel_ip_ip_mp[self.err_port]
+        ip = post.dni_ip_ip_mp[self.err_port]
         
-        norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
-                       pre.out_norm_factor)
-        self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
+        #norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
+        #               pre.out_norm_factor)
+        #self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
         
         #self.w -= self.alpha * ip  * (ci-0.5) * (ej-0.5)
         #self.w -= self.alpha * ip  * ci * ej
-        self.w -= self.alpha * ip  * (ci - ci_avg) * (ej - ej_avg)
+        #self.w -= self.alpha * ip  * (ci - ci_avg) * (ej - ej_avg)
+        self.w -= self.alpha * (self.w *(1.-self.w) * 
+                                ip  * (ci - ci_avg) * (ej - ej_avg))
 
 
 class rga_21(synapse):

@@ -1467,7 +1467,7 @@ def add_idel_ip_ip_mp(unit):
         inp_deriv_mp requirement, and for each port included, it obtains the
         inner product with the corresponding entries of del_inp_mp.
 
-        Because inp_deriv_mp specifies its ports with the 'del_inp_ports' list,
+        Because del_inp_mp specifies its ports with the 'del_inp_ports' list,
         and inp_deriv_mp does it through the 'inp_deriv_ports' list, these two
         must be equal if add_idel_ip_ip_mp is to work.
 
@@ -1494,8 +1494,28 @@ def add_idel_ip_ip_mp(unit):
         idel_ip_ip_mp = [0.1] * unit.n_ports
     """
     idel_ip_ip_mp = [0.1] * unit.n_ports
-
     setattr(unit, 'idel_ip_ip_mp', idel_ip_ip_mp)
+
+def add_dni_ip_ip_mp(unit):
+    """ Add dot product of delayed-normalized inputs and their derivs by port.
+
+        Basically, it takes the delayed inputs from del_inp_mp, substracts the
+        means from del_inp_avg_mp, and takes the dot product with the
+        (non-delayed) ihput derivatives from the inp_deriv_mp requirement for 
+        each port.
+
+        Because del_inp_mp specifies its ports with the 'del_inp_ports' list,
+        and inp_deriv_mp does it through the 'inp_deriv_ports' list, these two
+        must be equal if add_dni_ip_ip_mp is to work.
+
+        The implementation for dni_ip_ip_mp lives in the rga_reqs class.
+    """
+    if (not syn_reqs.inp_deriv_mp in unit.syn_needs or
+        not syn_reqs.del_inp_avg_mp in unit.syn_needs):
+        raise AssertionError('The add_dni_ip_ip_mp requirement needs the ' + 
+                             'inp_deriv_mp and del_inp_avg_mp requirements.')
+    dni_ip_ip_mp = [0.1] * unit.n_ports
+    setattr(unit, 'dni_ip_ip_mp', dni_ip_ip_mp)
 
 
 #-------------------------------------------------------------------------------------
