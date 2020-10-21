@@ -1108,8 +1108,12 @@ class unit():
     def upd_l1_norm_factor_mp(self, time):
         """ Update the factors to normalize the L0 norms for weight vectors. """
         self.l1_norm_factor_mp = [ 1. / (np.absolute(ws).sum() + 1e-32) 
-                                   for ws in self.get_mp_weights(time)]
+                                   for ws in self.mp_weights]
+                                   #for ws in self.get_mp_weights(time)]
 
+    def upd_w_sum_mp(self, time):
+        """ Update the signed sum of weights for each port. """
+        self.w_sum_mp = [ws.sum() for ws in self.mp_weights]
 
     def upd_sc_inp_sum_mp(self, time):
         """ Update the scaled input sum per port. """

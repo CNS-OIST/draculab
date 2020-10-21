@@ -389,6 +389,7 @@ class am_pm_oscillator(unit, rga_reqs):
         self.mudt_vec[0] = self.mudt
         self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
         self.needs_mp_inp_sum = True # dt_fun uses mp_inp_sum
+        rga_reqs.__init__(self, params)
 
     def derivatives(self, y, t):
         """ Implements the equations of the am_mp_oscillator.
@@ -1105,8 +1106,8 @@ class am_pulse(unit, rga_reqs):
         self.needs_mp_inp_sum = True # dt_fun uses mp_inp_sum
         # calculate derivatives for all ports?
         # TODO: adjust to final form of rga rule
-        params['inp_deriv_ports'] = [0, 1, 2] 
-        params['del_inp_ports'] = [0, 1, 2] 
+        #params['inp_deriv_ports'] = [0, 1, 2] 
+        #params['del_inp_ports'] = [0, 1, 2] 
         rga_reqs.__init__(self, params)
 
     def derivatives(self, y, t):

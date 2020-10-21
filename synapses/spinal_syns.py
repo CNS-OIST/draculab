@@ -144,6 +144,7 @@ class rga_synapse(synapse):
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
+                             syn_reqs.mp_weights,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.rga, ['Synapse from ' + str(self.preID) + 
@@ -251,6 +252,7 @@ class gated_rga_synapse(synapse):
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
+                             syn_reqs.mp_weights,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_rga, ['Synapse from ' + str(self.preID) + 
@@ -509,10 +511,11 @@ class node_pert(synapse):
                              syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp, # testing
                              syn_reqs.del_avg_inp_deriv_mp, # testing
-                             #syn_reqs.del_inp_mp, # testing
-                             #syn_reqs.del_inp_avg_mp, # testing
+                             syn_reqs.del_inp_mp, # testing
+                             syn_reqs.del_inp_avg_mp, # testing
                              #syn_reqs.mp_inputs, # testing
                              #syn_reqs.inp_avg_mp, #testing
+                             syn_reqs.mp_weights,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.node_pert, ['Synapse from ' + 
@@ -533,30 +536,8 @@ class node_pert(synapse):
         if 'ge_port' in params: self.err_port = params['ge_port']
         else: self.ge_port = 2 
         
-    #def update(self, time):
-        #""" Update with the node perturbation-inspired learning rule.
-        #"""
-        #post = self.net.units[self.postID] 
-        #pre = self.net.units[self.preID]
-        #cip = (post.get_lpf_fast(self.delay_steps + self.po_de) -
-               #post.get_lpf_mid(self.delay_steps + self.po_de))
-        #ej = pre.act_buff[-1-self.cid]
-        #ej_avg = pre.get_lpf_slow(self.delay_steps)
-        #ep = post.inp_deriv_mp[self.ge_port][0] # assuming a single GE input
-        #
-        #norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
-                       #pre.out_norm_factor)
-        #self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
-#
-        ##self.w -= self.alpha * ep * cip * (ej - ej_avg)
-        ##self.w -= self.alpha * ep * cip * ej
-        ## clipping the maximum and minimum weight changes to avoid large jumps
-        ## when the target value changes
-        ##self.w -= self.alpha * max(min(ep * cip * ej, 0.08), -0.08)
-        #self.w -= self.alpha * max(min(ep * cip * (ej - ej_avg), 0.02), -0.02)
-
     def update(self, time):
-        """ Experimental update
+        """ Update with the node perturbation-inspired learning rule.
         """
         post = self.net.units[self.postID] 
         pre = self.net.units[self.preID]
@@ -567,8 +548,8 @@ class node_pert(synapse):
         ep = post.inp_deriv_mp[self.ge_port][0] # assuming a single GE input
         cip_avg = post.del_avg_inp_deriv_mp[self.lat_port]
         #cip_avg = post.avg_inp_deriv_mp[self.lat_port]
-        ej_avg = 0.5 #pre.get_lpf_slow(self.delay_steps)
-        #ej_avg = post.del_inp_avg_mp[self.err_port]
+        #ej_avg = 0.5 #pre.get_lpf_slow(self.delay_steps)
+        ej_avg = post.del_inp_avg_mp[self.err_port]
 
         norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
                        pre.out_norm_factor)
@@ -608,6 +589,8 @@ class meca_hebb(synapse):
             params: same as the parent class, with two additions.
             REQUIRED PARAMETERS
             'lrate' : A scalar value that will multiply the derivative of the weight.
+            'latency' : latency of the postsynaptic unit in time steps. This is
+                        with respect to a dominant frequency.
             OPTIONAL PARAMETERS
             'err_port' : port for "error" inputs. Default is 0.
             'lat_port' : port for "lateral" inputs. Default is 1.
@@ -617,17 +600,19 @@ class meca_hebb(synapse):
         self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
         self.upd_requirements = set([syn_reqs.pre_lpf_fast,
                              syn_reqs.pre_lpf_mid, 
-                             syn_reqs.pre_lpf_slow,
-                             syn_reqs.lpf_slow,
+                             #syn_reqs.pre_lpf_slow,
+                             #syn_reqs.lpf_slow,
                              syn_reqs.del_inp_mp,
                              syn_reqs.inp_deriv_mp, 
                              #syn_reqs.idel_ip_ip_mp,
                              syn_reqs.dni_ip_ip_mp, # testing
+                             syn_reqs.mp_weights,
+                             syn_reqs.w_sum_mp,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor,
-                             syn_reqs.del_inp_avg_mp,
-                             syn_reqs.mp_inputs,  # testing
-                             syn_reqs.inp_avg_mp]) # testing
+                             syn_reqs.del_inp_avg_mp ])
+                             #syn_reqs.mp_inputs,  # testing
+                             #syn_reqs.inp_avg_mp]) # testing
         assert self.type is synapse_types.meca_hebb, ['Synapse from ' + 
                              str(self.preID) + ' to ' + str(self.postID) +
                              ' instantiated with the wrong type']
@@ -635,7 +620,9 @@ class meca_hebb(synapse):
             raise AssertionError('A meca_hebb synapse has a postsynaptic unit ' +
                                  'without the custom_inp_del attribute')
         # inp_del is the delay in postsynaptic activity for the learning rule
-        self.inp_del = self.net.units[self.postID].custom_inp_del
+        #self.inp_del = self.net.units[self.postID].custom_inp_del
+        self.delta2 = self.net.units[self.postID].custom_inp_del
+        self.delta1 = self.delta2 - params['latency']
         if 'lat_port' in params: self.lat_port = params['lat_port']
         else: self.lat_port = 1 
         if 'err_port' in params: self.err_port = params['err_port']
@@ -644,25 +631,31 @@ class meca_hebb(synapse):
     def update(self, time):
         """ Update the synapse with the meca Hebb rule.
         """
-        post = self.net.units[self.postID] 
+        post = self.net.units[self.postID]
         pre = self.net.units[self.preID]
-        ci = post.act_buff[-1]
-        ej = pre.act_buff[-1 - self.inp_del]
-        ci_avg = post.get_lpf_slow(0)
+        ci = post.act_buff[-1 - self.delta1]
+        ej = pre.act_buff[-1 - self.delta2]
+        #ci_avg = post.get_lpf_slow(0)
         #ci_avg = post.inp_avg_mp[self.lat_port]
-        ej_avg = pre.get_lpf_slow(self.inp_del)
-        #ej_avg = post.del_inp_avg_mp[self.err_port]
+        #ej_avg = pre.get_lpf_slow(self.delta2)
+        ej_avg = post.del_inp_avg_mp[self.err_port]
+        ci_avg = post.del_inp_avg_mp[self.lat_port]
         #ip = post.idel_ip_ip_mp[self.err_port]
         ip = post.dni_ip_ip_mp[self.err_port]
         
         norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
                        pre.out_norm_factor)
-        self.w += 0.05*self.alpha * (norm_fac - 1.)*self.w # multiplicative?
+        self.w += 0.05*self.alpha * (norm_fac - 1.)*self.w
         
         #self.w -= self.alpha * ip  * (ci-0.5) * (ej-0.5)
+        #self.w -= self.alpha * ip  * (ci-0.5) * (ej-ej_avg)
         #self.w -= self.alpha * ip  * ci * ej
-        self.w -= self.alpha * max(min(ip  * (ci - ci_avg) * (ej - ej_avg),
-                                       0.005), -0.005)
+        # balance by making all weights positive
+        #self.w -= self.alpha * max(min(ip  * (ci - ci_avg) * (ej - ej_avg),
+        #                               0.005), -0.005) * self.w
+        # balance by making negative and positive sums equal
+        self.w -= self.alpha * (max(min(ip  * (ci - ci_avg) * (ej - ej_avg),
+                                0.005), -0.005) + 0.001*post.w_sum_mp[self.err_port])
         #self.w -= self.alpha * (self.w *(1.-self.w) * 
         #                        ip  * (ci - ci_avg) * (ej - ej_avg))
 
@@ -721,7 +714,7 @@ class rga_21(synapse):
                              #syn_reqs.del_inp_avg_mp, # testing
                              #syn_reqs.lpf_slow, # testing
                              #syn_reqs.mp_inputs, # testing
-                             #syn_reqs.mp_weights, # testing
+                             syn_reqs.mp_weights, # testing
                              #syn_reqs.inp_avg_mp, # testing
                              syn_reqs.lpf_fast,
                              syn_reqs.lpf_mid, 
@@ -854,6 +847,7 @@ class gated_rga_21(synapse):
                              syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
+                             syn_reqs.mp_weights,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_rga_21, ['Synapse from ' + str(self.preID) + 
@@ -1096,6 +1090,7 @@ class gated_normal_rga_21(synapse):
                              syn_reqs.avg_slow_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
+                             syn_reqs.mp_weights,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_normal_rga_21, ['Synapse from ' + 
@@ -1244,6 +1239,7 @@ class normal_rga(synapse):
                              syn_reqs.del_avg_inp_deriv_mp,
                              syn_reqs.slow_inp_deriv_mp, 
                              syn_reqs.avg_slow_inp_deriv_mp,
+                             syn_reqs.mp_weights,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.normal_rga, ['Synapse from ' + 
@@ -1386,6 +1382,7 @@ class gated_normal_rga(synapse):
                              syn_reqs.del_avg_inp_deriv_mp,
                              syn_reqs.slow_inp_deriv_mp, 
                              syn_reqs.avg_slow_inp_deriv_mp,
+                             syn_reqs.mp_weights,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_normal_rga, ['Synapse from ' + 
@@ -1511,6 +1508,7 @@ class gated_bp_rga_synapse(synapse):
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
+                             syn_reqs.mp_weights,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_bp_rga, ['Synapse from ' + str(self.preID) + 
@@ -1648,6 +1646,7 @@ class gated_rga_diff_synapse(synapse):
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.double_del_inp_deriv_mp,
                              syn_reqs.double_del_avg_inp_deriv_mp,
+                             syn_reqs.mp_weights,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_rga_diff, ['Synapse from ' +
@@ -1789,6 +1788,7 @@ class gated_slide_rga_diff(synapse):
                              syn_reqs.inp_deriv_mp, syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.double_del_inp_deriv_mp,
                              syn_reqs.double_del_avg_inp_deriv_mp,
+                             syn_reqs.mp_weights,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_slide_rga_diff, ['Synapse from ' +
@@ -1959,6 +1959,7 @@ class gated_normal_rga_diff(synapse):
                              syn_reqs.double_del_avg_inp_deriv_mp,
                              syn_reqs.slow_inp_deriv_mp, 
                              syn_reqs.avg_slow_inp_deriv_mp,
+                             syn_reqs.mp_weights,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_normal_rga_diff or \
@@ -2165,6 +2166,7 @@ class gated_normal_slide_rga_diff(synapse):
                              syn_reqs.double_del_avg_inp_deriv_mp,
                              syn_reqs.slow_inp_deriv_mp, 
                              syn_reqs.avg_slow_inp_deriv_mp,
+                             syn_reqs.mp_weights,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.gated_normal_slide_rga_diff, ['Synapse from ' +
@@ -2344,6 +2346,7 @@ class input_selection_synapse(synapse):
         # for the derived class gated_diff_inp_sel
         self.upd_requirements = set([syn_reqs.lpf_fast_sc_inp_sum_mp,
                                      syn_reqs.lpf_mid_sc_inp_sum_mp,
+                                     syn_reqs.mp_weights,
                                      syn_reqs.l1_norm_factor_mp,
                                      syn_reqs.pre_lpf_fast])
 
@@ -2721,6 +2724,7 @@ class gated_diff_inp_corr(synapse):
         self.alpha2 = self.net.min_delay / self.tau_norml # scale normalization
         self.upd_requirements.update([syn_reqs.l1_norm_factor_mp,
                                       syn_reqs.mp_inputs,
+                                      syn_reqs.mp_weights,
                                       syn_reqs.inp_avg_mp])
 
 

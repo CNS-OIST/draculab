@@ -769,8 +769,32 @@ def add_l1_norm_factor_mp(unit):
     if not unit.multiport:
         raise AssertionError('The l1_norm_factor_mp requirement is for multiport '+
                              'units only.')
+    if not syn_reqs.mp_weights in unit.syn_needs:
+        raise AssertionError('The l1_norm_factor_mp requirement needs the ' +
+                             'mp_weights requirement.')
     l1_norm_factor_mp = list(np.ones(unit.n_ports))
     setattr(unit, 'l1_norm_factor_mp', l1_norm_factor_mp)
+
+
+def add_w_sum_mp(unit):
+    """ Sum of synaptic weights for each port.
+
+        The sum of signed weights can be used to created balanced excitation and
+        inhibition, if during updates a fraction of this sum is substracted from
+        all the weights. This must be done really slowly, or synapses will get
+        stuck in their initial positions.
+
+        Initially this was tested in the meca_hebb synapse, and the
+        implementation is in the unit class.
+    """
+    if not unit.multiport:
+        raise AssertionError('The w_sum_mp requirement is for multiport '+
+                             'units only.')
+    if not syn_reqs.mp_weights in unit.syn_needs:
+        raise AssertionError('The w_sum_mp requirement needs the ' +
+                             'mp_weights requirement.')
+    w_sum_mp = list(np.ones(unit.n_ports))
+    setattr(unit, 'w_sum_mp', w_sum_mp)
 
 
 def add_inp_deriv_mp(unit):
@@ -879,7 +903,6 @@ def add_del_inp_deriv_mp(unit):
     # initializing all derivatives with zeros
     del_inp_deriv_mp = [[0. for uid in prt_lst] for prt_lst in pre_list_mp]
     setattr(unit, 'del_inp_deriv_mp', del_inp_deriv_mp)
-    
 
 
 def add_del_avg_inp_deriv_mp(unit):
@@ -1126,7 +1149,7 @@ def add_xtra_del_inp_deriv_mp(unit):
     """ Adds input derivatives listed by port with normal plus extra delays.
 
         This is a version of inp_deriv_mp where the inputs have an extra delay
-        that gets added to the normal delay. The diference with del_inp_deriv_mp
+        that gets added to the normal delay. The difference with del_inp_deriv_mp
         is that, unlike this requirement, it doesn't add the normal delay.
 
         xtra_del_inp_deriv_mp[i,j] will contain the delayed derivative of the
