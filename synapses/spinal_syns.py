@@ -189,10 +189,11 @@ class rga_synapse(synapse):
         self.w += self.alpha * (norm_fac - 1.)*self.w
         # weight update
         #self.w += self.alpha * max(up - xp, 0.) * (sp - spj)
-        self.w += self.alpha * (up - xp) * (sp - spj)
-        #self.w += self.alpha * ((up - xp) * (sp - spj) * 
-        #          (self.max_w - self.w) * (self.w - self.min_w))
+        #self.w += self.alpha * (up - xp) * (sp - spj) # default
         #self.w += self.alpha * up * (sp - spj)
+        # soft weight bounding
+        self.w += self.alpha * (up - xp) * (sp - spj) * self.w
+        #          (self.max_w - self.w) * (self.w - self.min_w)) # alternatively
 
 
 class gated_rga_synapse(synapse):
@@ -557,12 +558,15 @@ class node_pert(synapse):
 
         #self.w -= self.alpha * ep * (cip - cip_avg) * (ej - ej_avg)
         #self.w -= self.alpha * ep * (cip - cip_avg) * ej
-        #self.w -= self.alpha * ep * (cip - cip_avg) * (ej - ej_avg)
+        # soft weight bounding
+        self.w -= self.alpha * ep * (cip - cip_avg) * (ej - ej_avg) * self.w
         # clipping the maximum and minimum weight changes to avoid large jumps
         # when the target value changes
         #self.w -= self.alpha * max(min(ep * cip * ej, 0.08), -0.08)
-        self.w -= self.alpha * max(min(ep * (cip-cip_avg) * 
-                                            (ej-ej_avg), 0.01), -0.01)
+
+        #self.w -= self.alpha * max(min(ep * (cip-cip_avg) * 
+        #                                    (ej-ej_avg), 0.01), -0.01)
+
         #self.w -= self.alpha * max(min(ep * cip * (ej - ej_avg), 0.02), -0.02)
         #At t=3.2: ep < 0, (cip-cip_avg)<0, (ej-ej_avg)<0 
         #          ep < 0, (cip-cip_avg)>0, (ej-ej_avg)>0
@@ -651,11 +655,11 @@ class meca_hebb(synapse):
         #self.w -= self.alpha * ip  * (ci-0.5) * (ej-ej_avg)
         #self.w -= self.alpha * ip  * ci * ej
         # balance by making all weights positive
-        #self.w -= self.alpha * max(min(ip  * (ci - ci_avg) * (ej - ej_avg),
-        #                               0.005), -0.005) * self.w
+        self.w -= self.alpha * max(min(ip  * (ci - ci_avg) * (ej - ej_avg),
+                                       0.005), -0.005) * self.w
         # balance by making negative and positive sums equal
-        self.w -= self.alpha * (max(min(ip  * (ci - ci_avg) * (ej - ej_avg),
-                                0.005), -0.005) + 0.001*post.w_sum_mp[self.err_port])
+        #self.w -= self.alpha * (max(min(ip  * (ci - ci_avg) * (ej - ej_avg),
+        #                        0.005), -0.005) + 0.0005*post.w_sum_mp[self.err_port])
         #self.w -= self.alpha * (self.w *(1.-self.w) * 
         #                        ip  * (ci - ci_avg) * (ej - ej_avg))
 
@@ -785,8 +789,10 @@ class rga_21(synapse):
         # normalization 
         norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w 
-        # plasticity equation
-        self.w -= self.alpha * (ejpp - epp) * (cip - cp)
+        # plasticity equation (so far the best)
+        #self.w -= self.alpha * (ejpp - epp) * (cip - cp)
+        # Using only positive weights (experimental)
+        self.w -= self.alpha * (ejpp - epp) * (cip - cp) * self.w
 
 
 class gated_rga_21(synapse):
