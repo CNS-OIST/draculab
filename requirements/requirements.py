@@ -1541,6 +1541,28 @@ def add_dni_ip_ip_mp(unit):
     setattr(unit, 'dni_ip_ip_mp', dni_ip_ip_mp)
 
 
+def add_i_ip_ip_mp(unit):
+    """ Add inner product of inputs and their derivs by port.
+
+        For each entry (a list) in  mp_inputs, i_ip_ip_mp will have the inner
+        product of that list with the corresponding list in inp_deriv_mp.
+
+        Since inp_deriv_mp uses the 'inp_deriv_ports' list, when this list is
+        present i_ip_ip_mp will only contain inner products for the listed
+        ports.
+
+        This requirement was implemented for the meca_hebb synapse. Its
+        implementation lives in the rga_reqs class.
+    """
+    if (not syn_reqs.inp_deriv_mp in unit.syn_needs or
+        not syn_reqs.mp_inputs in unit.syn_needs):
+        raise AssertionError('The add_i_ip_ip_mp requirement needs the ' + 
+                             'inp_deriv_mp and mp_inputs requirements.')
+    i_ip_ip_mp = [0.1] * unit.n_ports
+    setattr(unit, 'i_ip_ip_mp', i_ip_ip_mp)
+
+
+
 #-------------------------------------------------------------------------------------
 # Use of the following classes has been deprecated because they slow down execution
 #-------------------------------------------------------------------------------------

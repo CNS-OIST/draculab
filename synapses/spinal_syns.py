@@ -608,15 +608,17 @@ class meca_hebb(synapse):
                              #syn_reqs.lpf_slow,
                              syn_reqs.del_inp_mp,
                              syn_reqs.inp_deriv_mp, 
+                             syn_reqs.del_inp_deriv_mp, # testing
+                             syn_reqs.del_avg_inp_deriv_mp, # testing
                              #syn_reqs.idel_ip_ip_mp,
                              syn_reqs.dni_ip_ip_mp, # testing
                              syn_reqs.mp_weights,
                              syn_reqs.w_sum_mp,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor,
-                             syn_reqs.del_inp_avg_mp ])
-                             #syn_reqs.mp_inputs,  # testing
-                             #syn_reqs.inp_avg_mp]) # testing
+                             syn_reqs.del_inp_avg_mp,
+                             syn_reqs.mp_inputs,  # testing
+                             syn_reqs.inp_avg_mp]) # testing
         assert self.type is synapse_types.meca_hebb, ['Synapse from ' + 
                              str(self.preID) + ' to ' + str(self.postID) +
                              ' instantiated with the wrong type']
@@ -637,15 +639,19 @@ class meca_hebb(synapse):
         """
         post = self.net.units[self.postID]
         pre = self.net.units[self.preID]
-        ci = post.act_buff[-1 - self.delta1]
-        ej = pre.act_buff[-1 - self.delta2]
+        #ci = post.act_buff[-1 - self.delta1]
+        ej = pre.act_buff[-1 - self.delta1]
+        #cip = post.get_lpf_fast(self.delta2) - post.get_lpf_mid(self.delta2)
+        cip = post.get_lpf_fast(self.delta1) - post.get_lpf_mid(self.delta1)
         #ci_avg = post.get_lpf_slow(0)
         #ci_avg = post.inp_avg_mp[self.lat_port]
         #ej_avg = pre.get_lpf_slow(self.delta2)
         ej_avg = post.del_inp_avg_mp[self.err_port]
-        ci_avg = post.del_inp_avg_mp[self.lat_port]
+        #ci_avg = post.del_inp_avg_mp[self.lat_port]
+        cip_avg = post.del_avg_inp_deriv_mp[self.lat_port]
         #ip = post.idel_ip_ip_mp[self.err_port]
-        ip = post.dni_ip_ip_mp[self.err_port]
+        #ip = post.dni_ip_ip_mp[self.err_port]
+        ip = post.i_ip_ip_mp[self.err_port]
         
         norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
                        pre.out_norm_factor)
@@ -655,13 +661,15 @@ class meca_hebb(synapse):
         #self.w -= self.alpha * ip  * (ci-0.5) * (ej-ej_avg)
         #self.w -= self.alpha * ip  * ci * ej
         # balance by making all weights positive
-        self.w -= self.alpha * max(min(ip  * (ci - ci_avg) * (ej - ej_avg),
-                                       0.005), -0.005) * self.w
+        #self.w -= self.alpha * max(min(ip  * (ci - ci_avg) * (ej - ej_avg),
+        #                               0.005), -0.005) * self.w
         # balance by making negative and positive sums equal
         #self.w -= self.alpha * (max(min(ip  * (ci - ci_avg) * (ej - ej_avg),
         #                        0.005), -0.005) + 0.0005*post.w_sum_mp[self.err_port])
         #self.w -= self.alpha * (self.w *(1.-self.w) * 
         #                        ip  * (ci - ci_avg) * (ej - ej_avg))
+        # use cip rather than ci
+        self.w -= self.alpha * ip  * (cip - cip_avg) * (ej - ej_avg) * self.w
 
 
 class rga_21(synapse):

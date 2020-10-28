@@ -148,11 +148,16 @@ class rga_reqs():
                    for ldi, lip in zip(self.del_inp_mp, self.inp_deriv_mp)]
 
     def upd_dni_ip_ip_mp(self, time):
-        """ Update dot product of delayed-normalized and derived inputs per port."""
+        """ Update dot product of delayed-normalized and diff'd inputs per port."""
         self.dni_ip_ip_mp = [
             sum([(ldi[i]-iavg)*lip[i] for i in range(len(ldi))]) 
             for ldi, lip, iavg in 
                 zip(self.del_inp_mp, self.inp_deriv_mp, self.del_inp_avg_mp)]
+
+    def upd_i_ip_ip_mp(self, time):
+        """ Update the inner product of input with its derivative per port."""
+        self.i_ip_ip_mp = [ sum([inp[j]*dinp[j] for j in range(len(inp))]) if dinp
+                else 0. for inp, dinp in zip(self.mp_inputs, self.inp_deriv_mp) ]
 
 class lpf_sc_inp_sum_mp_reqs():
     """ Class with the update functions for the X_lpf_sc_inp_sum_mp_reqs. """
