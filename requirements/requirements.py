@@ -222,8 +222,9 @@ def add_del_inp_mp(unit):
 
         del_inp_mp is a list whose elements are lists of scalars.
         del_inp_mp[i] contains all inputs at port 'i', not multiplied by their 
-        synaptic weights, with a delay given by the 'custom_inp_del' attribute
-        of the unit plus the delay of the connection.
+        synaptic weights, with a delay given by either the 'custom_inp_del'  or
+        the 'inp_del_steps' attributes of the unit.
+        When both attributes are present, 'inp_del_steps' is used.
 
         The ports for which the inputs are obtained can be specified through
         the del_inp_ports attribute, which is added to the unit by passing it as
@@ -241,9 +242,10 @@ def add_del_inp_mp(unit):
         raise NameError( 'the del_inp_mp requirement is for multiport units ' +
                          'with a port_idx list' )
     # The delay is an attribute of the unit. Checking if it's there.
-    if not hasattr(unit, 'custom_inp_del'):
-        raise AssertionError('The del_inp_mp requirement needs units to have ' + 
-                              'the attribute custom_inp_del.')
+    if not (hasattr(unit, 'custom_inp_del') or
+            hasattr(unit, 'inp_del_steps')):
+        raise AssertionError('The del_inp_mp requirement needs units to have ' +
+                           'either custom_inp_del or inp_del_steps attributes.')
     # finding ports where the derivative will be calculated
     if not hasattr(unit, 'del_inp_ports'):
         setattr(unit, 'del_inp_ports', list(range(unit.n_ports)))
@@ -253,12 +255,16 @@ def add_del_inp_mp(unit):
     dim_act = []
     dim_del = []
     acts = unit.net.act[unit.ID]
-    delys = unit.net.delays[unit.ID]
-    cid = unit.custom_inp_del*unit.net.min_delay
+    #delys = unit.net.delays[unit.ID] # originally this delay was included
+    if hasattr(unit, 'inp_del_steps'):
+        cid = unit.inp_del_steps*unit.net.min_delay
+    else:
+        cid = unit.custom_inp_del*unit.net.min_delay
     for p, lst in enumerate(unit.port_idx):
         if p in unit.del_inp_ports:
             dim_act.append([acts[uid] for uid in lst])
-            dim_del.append([cid+delys[uid] for uid in lst])
+            dim_del.append([cid for uid in lst])
+            # dim_del.append([cid+delys[uid] for uid in lst]) # deprecated
         else:
             dim_act.append([])
             dim_del.append([])
@@ -271,8 +277,6 @@ def add_del_inp_mp(unit):
     # initializing inputs
     del_inp_mp = [[a(0.) for a in l] for l in dim_act if len(l)>0]
     setattr(unit, 'del_inp_mp', del_inp_mp)
-
-
 
 
 def add_del_inp_avg_mp(unit):
@@ -1560,6 +1564,30 @@ def add_i_ip_ip_mp(unit):
                              'inp_deriv_mp and mp_inputs requirements.')
     i_ip_ip_mp = [0.1] * unit.n_ports
     setattr(unit, 'i_ip_ip_mp', i_ip_ip_mp)
+
+
+def add_ni_ip_ip_mp(unit):
+    """ Add inner product of (inputs-mean_input) times inp. derivs by port.
+
+        For each entry in  mp_inputs (a list), ni_ip_ip_mp will have the inner
+        product vectors v1*v2 where:
+          v1 = each element in that list minus their mean.
+          v2 = the corresponding list in inp_deriv_mp.
+
+        Since inp_deriv_mp uses the 'inp_deriv_ports' list, when this list is
+        present ni_ip_ip_mp will only contain inner products for the listed
+        ports.
+
+        This requirement was implemented for the meca_hebb synapse. Its
+        implementation lives in the rga_reqs class.
+    """
+    if (not syn_reqs.inp_deriv_mp in unit.syn_needs or
+        not syn_reqs.mp_inputs in unit.syn_needs or
+        not syn_reqs.inp_avg_mp):
+        raise AssertionError('The add_ni_ip_ip_mp requirement needs the ' + 
+                             'inp_deriv_mp, mp_inputs, inp_avg_mp requirements.')
+    ni_ip_ip_mp = [0.1] * unit.n_ports
+    setattr(unit, 'ni_ip_ip_mp', ni_ip_ip_mp)
 
 
 

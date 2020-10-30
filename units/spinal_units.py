@@ -159,6 +159,12 @@ class rga_reqs():
         self.i_ip_ip_mp = [ sum([inp[j]*dinp[j] for j in range(len(inp))]) if dinp
                 else 0. for inp, dinp in zip(self.mp_inputs, self.inp_deriv_mp) ]
 
+    def upd_ni_ip_ip_mp(self, time):
+        """ Update dot product of normalized input with its derivative per port."""
+        self.ni_ip_ip_mp = [ sum([(inp[j]-avg)*dinp[j] for j in range(len(inp))])
+                if dinp else 0. for inp, dinp, avg in 
+                zip(self.mp_inputs, self.inp_deriv_mp, self.inp_avg_mp) ]
+
 class lpf_sc_inp_sum_mp_reqs():
     """ Class with the update functions for the X_lpf_sc_inp_sum_mp_reqs. """
     def __init__(self, params):
@@ -350,6 +356,9 @@ class am_pm_oscillator(unit, rga_reqs):
                 'n_ports' : number of input ports. Must equal 2. Defaults to 2.
                 'mu' : mean of white noise when using noisy integration
                 'sigma' : standard deviation of noise when using noisy integration
+                'inp_del_steps' : integer with the delay to be used by the
+                                del_inp_mp requirement, overriding
+                                custom_inp_del.
         Raises:
             ValueError
 
@@ -385,10 +394,15 @@ class am_pm_oscillator(unit, rga_reqs):
             raise ValueError('Wrong specification of the interaction function F')
         if 'custom_inp_del' in params:
             self.custom_inp_del = params['custom_inp_del']
+        if 'inp_del_steps' in params:
+            self.inp_del_steps = params['inp_del_steps']
         if 'mu' in params:
             self.mu = params['mu']
         if 'sigma' in params:
             self.sigma = params['sigma']
+        # latency is the time delay in the phase shift of a first-order LPF
+        # with a sinusoidal input of angular frequency omega
+        #self.latency = np.arctan(self.tau_c*self.omega)/self.omega
         self.mudt = self.mu * self.time_bit # used by flat updaters
         self.mudt_vec = np.zeros(self.dim)
         self.mudt_vec[0] = self.mudt
@@ -557,6 +571,9 @@ class am_oscillator(unit, rga_reqs):
                 OPTIONAL PARAMETERS
                 'mu' : mean of white noise when using noisy integration
                 'sigma' : standard deviation of noise when using noisy integration
+                'inp_del_steps' : integer with the delay to be used by the
+                                del_inp_mp requirement, overriding
+                                custom_inp_del.
         Raises:
             ValueError
 
@@ -584,10 +601,15 @@ class am_oscillator(unit, rga_reqs):
         #                       syn_reqs.lpf_slow_mp_inp_sum])
         if 'custom_inp_del' in params:
             self.custom_inp_del = params['custom_inp_del']
+        if 'inp_del_steps' in params:
+            self.inp_del_steps = params['inp_del_steps']
         if 'mu' in params:
             self.mu = params['mu']
         if 'sigma' in params:
             self.sigma = params['sigma']
+        # latency is the time delay in the phase shift of a first-order LPF
+        # with a sinusoidal input of angular frequency omega
+        #self.latency = np.arctan(self.tau_c*self.omega)/self.omega
         self.mudt = self.mu * self.time_bit # used by flat updaters
         self.mudt_vec = np.zeros(self.dim)
         self.mudt_vec[0] = self.mudt
@@ -714,6 +736,9 @@ class am_oscillator2D(unit, rga_reqs):
                 'n_ports' : number of input ports. Default is 2.
                 'mu' : mean of white noise when using noisy integration
                 'sigma' : standard deviation of noise when using noisy integration
+                'inp_del_steps' : integer with the delay to be used by the
+                                del_inp_mp requirement, overriding
+                                custom_inp_del.
         Raises:
             ValueError
 
@@ -734,12 +759,17 @@ class am_oscillator2D(unit, rga_reqs):
         self.omega = params['omega']
         if 'custom_inp_del' in params:
             self.custom_inp_del = params['custom_inp_del']
+        if 'inp_del_steps' in params:
+            self.inp_del_steps = params['inp_del_steps']
         if 'A' in params: self.A = params['A']
         else: self.A = 1.
         if 'mu' in params:
             self.mu = params['mu']
         if 'sigma' in params:
             self.sigma = params['sigma']
+        # latency is the time delay in the phase shift of a first-order LPF
+        # with a sinusoidal input of angular frequency omega
+        self.latency = np.arctan(self.tau_c*self.omega)/self.omega
         self.mudt = self.mu * self.time_bit # used by flat updaters
         self.mudt_vec = np.zeros(self.dim)
         self.mudt_vec[0] = self.mudt
@@ -1075,6 +1105,9 @@ class am_pulse(unit, rga_reqs):
                              initial value even if it is a list.
                 'b' : slope of the sigmoidal used for the pulse. Default is 10.
                 'thr' : threshold for the sigmoidal. Default is 0.6 .
+                'inp_del_steps' : integer with the delay to be used by the
+                                del_inp_mp requirement, overriding
+                                custom_inp_del.
         Raises:
             ValueError
 
@@ -1094,6 +1127,8 @@ class am_pulse(unit, rga_reqs):
         self.omega = params['omega']
         if 'custom_inp_del' in params:
             self.custom_inp_del = params['custom_inp_del']
+        if 'inp_del_steps' in params:
+            self.inp_del_steps = params['inp_del_steps']
         if 'A' in params: self.A = params['A']
         else: self.A = 1.
         if 'mu' in params:
@@ -1104,6 +1139,9 @@ class am_pulse(unit, rga_reqs):
         else: self.b = 10.
         if 'thr' in params: self.thr = params['thr']
         else: self.thr = .6
+        # latency is the time delay in the phase shift of a first-order LPF
+        # with a sinusoidal input of angular frequency omega
+        #self.latency = np.arctan(self.tau_c*self.omega)/self.omega
         self.mudt = self.mu * self.time_bit # used by flat updaters
         self.mudt_vec = np.zeros(self.dim)
         self.mudt_vec[0] = self.mudt

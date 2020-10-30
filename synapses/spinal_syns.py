@@ -79,7 +79,8 @@ class diff_hebb_subsnorm_synapse2(synapse):
 
             Notice the average of input derivatives can come form upd_pos_diff_avg, which 
             considers only the inputs whose synapses have positive values. To allow synapses
-            to potentially become negative, you need to change the synapse requirement in __init__
+            to potentially become negative, you need to change the synapse
+            requirement in __init__
             from pos_diff_avg to diff_avg, and the pos_diff_avg value used below to diff_avg.
             Also, remove the line "if self.w < 0: self.w = 0"
         """
@@ -579,10 +580,15 @@ class meca_hebb(synapse):
         product between the delayed input vector and its (non-delayed)
         derivative.
 
-        Details are in the October 18th, 2020 log entry.
+        Details are in the October 18th, 2020 log entry, finalized form is in
+        the paper.
 
         This implementation was planned for integrator-oscillator units (e.g.
         am_oscillator, etc.) that have an error and a lateral port.
+        Postsynaptic units also require custom_inp_del, inp_del_steps
+        attributes. inp_del_steps is the delay used in the error inputs, whereas
+        custom_inp_del is the delay used for the derivatives of the lateral
+        inputs.
 
         The weights are normalized using the out_norm_factor and l1_norm_factor
         requirements.
@@ -592,16 +598,14 @@ class meca_hebb(synapse):
         Args:
             params: same as the parent class, with two additions.
             REQUIRED PARAMETERS
-            'lrate' : A scalar value that will multiply the derivative of the weight.
-            'latency' : latency of the postsynaptic unit in time steps. This is
-                        with respect to a dominant frequency.
+            'lrate' : Scalar value that multiplies the derivative of the weight.
             OPTIONAL PARAMETERS
             'err_port' : port for "error" inputs. Default is 0.
             'lat_port' : port for "lateral" inputs. Default is 1.
         """
         synapse.__init__(self, params, network)
         self.lrate = params['lrate']
-        self.alpha = self.lrate * self.net.min_delay # factor to scales the update rule
+        self.alpha = self.lrate * self.net.min_delay
         self.upd_requirements = set([syn_reqs.pre_lpf_fast,
                              syn_reqs.pre_lpf_mid, 
                              #syn_reqs.pre_lpf_slow,
@@ -611,7 +615,9 @@ class meca_hebb(synapse):
                              syn_reqs.del_inp_deriv_mp, # testing
                              syn_reqs.del_avg_inp_deriv_mp, # testing
                              #syn_reqs.idel_ip_ip_mp,
-                             syn_reqs.dni_ip_ip_mp, # testing
+                             #syn_reqs.dni_ip_ip_mp, # testing
+                             syn_reqs.i_ip_ip_mp, # testing
+                             #syn_reqs.ni_ip_ip_mp, # testing
                              syn_reqs.mp_weights,
                              syn_reqs.w_sum_mp,
                              syn_reqs.l1_norm_factor_mp,
@@ -625,10 +631,20 @@ class meca_hebb(synapse):
         if not hasattr(self.net.units[self.postID], 'custom_inp_del'):
             raise AssertionError('A meca_hebb synapse has a postsynaptic unit ' +
                                  'without the custom_inp_del attribute')
-        # inp_del is the delay in postsynaptic activity for the learning rule
-        #self.inp_del = self.net.units[self.postID].custom_inp_del
+        if not hasattr(self.net.units[self.postID], 'inp_del_steps'):
+            raise AssertionError('A meca_hebb synapse has a postsynaptic unit ' +
+                                 'without the inp_del_steps attribute')
+        #if not hasattr(self.net.units[self.postID], 'latency'):
+        #    raise AssertionError('meca_hebb synapses requires postsynaptic ' +
+        #                         'units with a latency attribute') 
+        self.delta1 = self.net.units[self.postID].inp_del_steps
         self.delta2 = self.net.units[self.postID].custom_inp_del
-        self.delta1 = self.delta2 - params['latency']
+        if abs(self.net.units[self.postID].latency - 
+               (self.delta2-self.delta1)*network.min_delay) > 0.01:
+               print(self.delta1)
+               print(self.delta2)
+               print(self.net.units[self.postID].latency)
+               raise AssertionError('meca_hebb sanity check failed')
         if 'lat_port' in params: self.lat_port = params['lat_port']
         else: self.lat_port = 1 
         if 'err_port' in params: self.err_port = params['err_port']
@@ -640,7 +656,7 @@ class meca_hebb(synapse):
         post = self.net.units[self.postID]
         pre = self.net.units[self.preID]
         #ci = post.act_buff[-1 - self.delta1]
-        ej = pre.act_buff[-1 - self.delta1]
+        ej = pre.act_buff[-1 - self.delta2]
         #cip = post.get_lpf_fast(self.delta2) - post.get_lpf_mid(self.delta2)
         cip = post.get_lpf_fast(self.delta1) - post.get_lpf_mid(self.delta1)
         #ci_avg = post.get_lpf_slow(0)
@@ -652,6 +668,7 @@ class meca_hebb(synapse):
         #ip = post.idel_ip_ip_mp[self.err_port]
         #ip = post.dni_ip_ip_mp[self.err_port]
         ip = post.i_ip_ip_mp[self.err_port]
+        #ip = post.ni_ip_ip_mp[self.err_port]
         
         norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + 
                        pre.out_norm_factor)

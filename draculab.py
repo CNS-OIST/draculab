@@ -617,6 +617,7 @@ class syn_reqs(Enum):
     dni_ip_ip_mp = 132 # inner product of delayed-normalized inputs and their derivs
     w_sum_mp = 133 # sum of weights per port
     i_ip_ip_mp = 134 # inner product of inputs and their derivatives per port
+    ni_ip_ip_mp = 135 # dot product of normalized inputs times derivs per port
 
 
     def list_names():
