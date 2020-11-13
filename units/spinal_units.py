@@ -1909,8 +1909,47 @@ class inpsel_linear2(unit, acc_sda_reqs, rga_reqs):
         return (I - y) / self.tau #if y > 0 else 0.01
 
 
+class bell_shaped_1D(unit):
+    """ A unit that responds maximally to a given value of the input sum.
+    
+        The constructor is given a 'center' parameter. The output y of the unit
+        will evolve with dynamics:
+        
+        tau y' = exp(-b(I - center)^2) - y,
+        
+        where 'b' is a parameter for the sharpness of the tuning, and 'I' is the
+        scaled input sum.
+    """
+    def __init__(self, ID, params, network):
+        """ The class constructor.
 
+            Args:
+                ID, params, network: same as the unit class.
+                REQUIRED PARAMETERS
+                'tau' : time constant of the dynamics.
+                'center' : input value causing maximum activation.
+                'b' : sharpness parameter.
+        """
+        unit.__init__(self, ID, params, network)
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.rtau = 1./self.tau
+        self.center = params['center']
+        self.b = params['b']
 
+    def derivatives(self, y, t):
+        """ Derivative of y at time t for bell_shaped_1D.
+
+            Args:
+                y : a 1-element array or list with the current firing rate.
+                t: time when the derivative is evaluated.
+        """
+        diff = self.get_input_sum(t) - self.center
+        return self.rtau * (np.exp(-self.b*diff*diff) - y[0])
+            
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        diff = self.inp_sum[s] - self.center
+        return self.rtau * (np.exp(-self.b*diff*diff) - y)
 
 
 

@@ -703,7 +703,7 @@ class ei_network():
             num_str = ''
         # present input patterns
         for pres in [self.present + p for p in range(n_pres)]:
-            print('Starting presentation ' + str(pres) + num_str)
+            print('Starting presentation ' + str(pres) + num_str, end='\r')
             pres_start = time.time() # to keep track of how long the presentation lasts
             t = self.net.sim_time
             # Setting input patterns
@@ -735,7 +735,9 @@ class ei_network():
             #self.all_activs.append(activs)
             self.all_times = np.append(self.all_times, times)
             run_activs.append(activs)
-            print('Presentation %s took %s seconds ' % (pres, time.time() - pres_start) + num_str, end='\n')
+            #print('Presentation %s took %s seconds ' % (pres, time.time() - 
+                   #pres_start) + num_str, end='\r')
+                   #pres_start) + num_str, end='\x1b[1K\r')
 
         self.present += n_pres   # number of input presentations so far
         self.last_pat = inp_pat  # used to initialize inp_pat and prev_pat in the next run
@@ -824,17 +826,18 @@ class ei_network():
     def conn_anim(self, source, sink, interv=100, slider=False, weights=True):
         """ An animation to visualize the connectivity of populations. 
     
-            source and sink are lists with the IDs of the units whose connections we'll visualize. 
+            source and sink are lists with the IDs of the units whose connections
+            we'll visualize. 
             
             Each frame of the animation shows: for a particular unit in source,
-            all the neurons in sink that receive connections from it (left plot), and for 
-            a particular unit in sink, all the units in source that send it connections
-            (right plot).
+            all the neurons in sink that receive connections from it (left plot),
+            and for a particular unit in sink, all the units in source that send
+            it connections (right plot).
         
             interv is the refresh interval (in ms) used by FuncAnimation.
             
-            If weights=True, then the dots' size and color will reflect the absolute value
-            of the connection weight.
+            If weights=True, then the dots' size and color will reflect the
+            absolute value of the connection weight.
 
             Returns:
                 animation object from FuncAnimation if slider = False
@@ -1570,10 +1573,13 @@ class ei_layer():
             which_u = np.random.choice(self.e+self.i, n_u) # ID's of the units we'll track
             self.tracked = which_u # so basic_plot knows which units we tracked
             which_syns = [[] for i in range(n_u)]
-            for uid,u in enumerate(which_u[0:-1]):
+            #print("n_u=%d, n_syns=%d, which_u=%s"%(n_u, n_syns, str(which_u)))
+            #for uid,u in enumerate(which_u[0:-1]):
+            for uid,u in enumerate(which_u[0:]):
                 if len(self.net.syns[u]) == 0:
                     raise ValueError('Attempting to track weights of a unit with no connections.')
                 which_syns[uid] = np.random.choice(range(len(self.net.syns[u])), n_syns)
+            #print((range(len(self.net.syns[which_u[-1]])), n_syns+remainder))
             which_syns[n_u-1] = np.random.choice(range(len(self.net.syns[which_u[-1]])), n_syns+remainder)
             for uid,u in enumerate(which_u):
                 for sid,s in enumerate(which_syns[uid]):
