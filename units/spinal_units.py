@@ -1952,9 +1952,23 @@ class bell_shaped_1D(unit):
         return self.rtau * (np.exp(-self.b*diff*diff) - y)
 
 
+class td_unit(unit):
+    """ A unit used to implement a value function with the TD rule. 
+    
+        This unit is meant to receive a reward at port 1, and state inputs at
+        port 0. The state inputs should use the TD_synapse, and the reward a
+        static synapse. 
+    """
+    def __init__(self, ID, params, network):
+        """ The class constructor.
 
+            Args:
+                ID, params, network: same as the unit class.
+                REQUIRED PARAMETERS
+                'tau' : time constant of the dynamics.
+                'delta' : time delay for updates (in seconds)
 
-
+        """
 
 
 

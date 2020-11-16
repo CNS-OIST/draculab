@@ -2836,3 +2836,21 @@ class comp_pot(synapse):
         u = self.net.units[self.postID]
         self.w += (self.alpha1 * (u.act_buff[0] - u.inp_avg_mp[0]) +
                    self.alpha2 * self.w * (u.l1_norm_factor*self.w_sum - 1.))
+
+
+class td_synapse(synapse):
+    """ A synapse with the temporal differences learning rule.
+
+        To be used with the td_unit unit class.
+    """
+    def __init__(self, params, network):
+        """ Constructor of the comp_pot synapse.
+            Args:
+                params: same as the synapse class with these additions.
+            REQUIRED PARAMETERS
+            'lrate' : learning rate for the rule
+            'gamma' : discount factor for the update rule
+        """
+
+
+

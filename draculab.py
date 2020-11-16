@@ -82,6 +82,7 @@ class unit_types(Enum):
     inpsel_linear2 = 117
     gated_out_norm_sig = 118
     bell_shaped_1D = 119
+    td_unit = 120
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -252,6 +253,9 @@ class unit_types(Enum):
         elif self == unit_types.bell_shaped_1D:
             from units.spinal_units import bell_shaped_1D
             unit_class = bell_shaped_1D
+        elif self == unit_types.td_unit:
+            from units.spinal_units import td_unit
+            unit_class = td_unit
         else:
             raise NotImplementedError('Attempting to retrieve the class of an ' + 
                                       'unknown unit model')
@@ -310,7 +314,8 @@ class synapse_types(Enum):
     noisy_gated_normal_rga_diff = 225 # noisy version of gated_normal_rga_diff
     noisy_gated_diff_inp_sel = 226 # a noisy gated_diff_inp_sel
     node_pert = 227 # inspired by node perturbation
-    meca_hebb= 228 # m-dimensional error cancelling Hebbian rule
+    meca_hebb = 228 # m-dimensional error cancelling Hebbian rule
+    td_synapse = 229 # a synapse for temporal differences learning
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -457,6 +462,9 @@ class synapse_types(Enum):
         elif self == synapse_types.meca_hebb:
             from synapses.spinal_syns import meca_hebb 
             syn_class = meca_hebb
+        elif self == synapse_types.td_synapse:
+            from synapses.spinal_syns import td_synapse
+            syn_class = td_synapse
         else:
             raise NotImplementedError('Attempting retrieve the class ' +
                                       'of an unknown synapse model')
