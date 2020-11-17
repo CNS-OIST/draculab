@@ -2841,7 +2841,7 @@ class comp_pot(synapse):
 class td_synapse(synapse):
     """ A synapse with the temporal differences learning rule.
 
-        To be used with the td_unit unit class.
+        To be used with the td_* unit classes.
     """
     def __init__(self, params, network):
         """ Constructor of the comp_pot synapse.
@@ -2849,8 +2849,45 @@ class td_synapse(synapse):
                 params: same as the synapse class with these additions.
             REQUIRED PARAMETERS
             'lrate' : learning rate for the rule
-            'gamma' : discount factor for the update rule
+            'gamma' : discount factor for the update rule for the 'delta'
+                      time delay of the postsynaptic unit.
+            OPTIONAL PARAMETER
+            'w_sum' : All port 0 weights will sum to w_sum. Default is 1.
         """
+        self.lrate = params['lrate']
+        self.gamma = params['gamma']
+        self.alpha = self.lrate * network.min_delay
+        synapse.__init__(self, params, network)
+        #self.upd_requirements.update([syn_reqs.l1_norm_factor_mp,
+        #                              syn_reqs.sc_inp_sum_mp])
+        self.upd_requirements.update([syn_reqs.sc_inp_sum_mp])
+        post = network.units[self.postID]
+        self.del_steps = post.del_steps
+        # the synapse update usually does not have the same time step
+        # of the td rule, so gamma needs to be adjusted.
+        self.eff_gamma = self.gamma**(network.min_delay / post.delta)
+        if 'w_sum' in params:
+            self.w_sum = params['w_sum']
+        else:
+            self.w_sum = 1.
+        self.pre_act = self.net.units[self.preID].act_buff
+        self.post_act = self.net.units[self.postID].act_buff
+        self.post = post
+
+    def update(self, time):
+        """ Update weigths using the temporal differences rule."""
+        #pre = self.net.units[self.preID]
+        #post = self.net.units[self.postID]
+        R = self.post.sc_inp_sum_mp[1]
+        #del_pre = pre.act_buff[-1-self.del_steps]
+        # weight normalization
+        #norm_fac = self.w_sum * post.l1_norm_factor_mp[0]
+        #self.w += self.alpha * (norm_fac - 1.) * self.w
+        
+        #self.w += self.alpha * (R + self.eff_gamma*post.act_buff[-1] -
+        #                        post.act_buff[-1-self.del_steps]) * del_pre
+        self.w += self.alpha * (R + self.eff_gamma*self.post_act[-1] -
+                        self.post_act[-1-self.del_steps])*self.pre_act[-1]
 
 
 

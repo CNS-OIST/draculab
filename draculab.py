@@ -82,7 +82,7 @@ class unit_types(Enum):
     inpsel_linear2 = 117
     gated_out_norm_sig = 118
     bell_shaped_1D = 119
-    td_unit = 120
+    td_sigmo = 120
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -253,11 +253,11 @@ class unit_types(Enum):
         elif self == unit_types.bell_shaped_1D:
             from units.spinal_units import bell_shaped_1D
             unit_class = bell_shaped_1D
-        elif self == unit_types.td_unit:
-            from units.spinal_units import td_unit
-            unit_class = td_unit
+        elif self == unit_types.td_sigmo:
+            from units.spinal_units import td_sigmo
+            unit_class = td_sigmo
         else:
-            raise NotImplementedError('Attempting to retrieve the class of an ' + 
+            raise NotImplementedError('Attempting to retrieve the class of an '+ 
                                       'unknown unit model')
             # NameError instead?
         return unit_class

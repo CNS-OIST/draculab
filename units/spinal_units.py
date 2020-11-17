@@ -1708,7 +1708,8 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
                 raise ValueError('del_mod_max cannot be smaller than del_mod_min')
             self.del_mod_max = params['del_mod_max']
             self.del_mod_min = params['del_mod_min']
-            if self.delay < (self.custom_inp_del2 + self.del_mod_max)*self.min_delay:
+            if self.delay < (self.custom_inp_del2 + 
+                             self.del_mod_max)*self.min_delay:
                 raise ValueError('The delay in a gated_slide_rga_diff unit is ' +
                                  'smaller than custom_inp_del2 + del_mod_max')
             if 1 > (self.custom_inp_del + self.del_mod_min):
@@ -1785,7 +1786,8 @@ class inpsel_linear(linear):
         """ Update a list with medium LPF'd scaled sums of inputs at each port. """
         # untouched copy from gated_out_norm_am_sig
         sums = [(w*i).sum() for i,w in zip(self.mp_inputs, self.mp_weights)]
-        # same update rule from other upd_lpf_X methods, put in a list comprehension
+        # same update rule from other upd_lpf_X methods, 
+        # put in a list comprehension
         self.lpf_mid_sc_inp_sum_mp = [sums[i] + (self.lpf_mid_sc_inp_sum_mp[i] - sums[i])
                                        * self.mid_prop for i in range(self.n_ports)]
 
@@ -1952,8 +1954,8 @@ class bell_shaped_1D(unit):
         return self.rtau * (np.exp(-self.b*diff*diff) - y)
 
 
-class td_unit(unit):
-    """ A unit used to implement a value function with the TD rule. 
+class td_sigmo(sigmoidal):
+    """ A sigmoidal unit used to implement a value function with the TD rule.
     
         This unit is meant to receive a reward at port 1, and state inputs at
         port 0. The state inputs should use the TD_synapse, and the reward a
@@ -1969,7 +1971,15 @@ class td_unit(unit):
                 'delta' : time delay for updates (in seconds)
 
         """
-
+        self.delta = params['delta']
+        self.del_steps = int(np.round(self.delta / network.min_delay))
+        if 'n_ports' in params and params['n_ports'] != 2:
+            raise AssertionError('td_unit uses n_ports=2')
+        else:
+            params['n_ports'] = 2
+        sigmoidal.__init__(self, ID, params, network)
+        self.syn_needs.update([syn_reqs.mp_inputs,
+                               syn_reqs.mp_weights])
 
 
 
