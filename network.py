@@ -9,7 +9,26 @@ from cython_utils import * # interpolation and integration methods including cyt
 #from requirements import *  # not sure this is necessary
 from array import array # optionally used for the unit's buffer
 #from numba import jit
+import dill
+#from pathos.multiprocessing import ProcessingPool
 
+def upd_unit(u, t):
+    """ Runs a unit's update function.
+    
+        Auxiliary to flat_update in order to parallelize updates. 
+    
+        Args:
+            u : a unit object
+            t : a time
+        Returns
+            u : the same unit
+    """
+    if hasattr(u, 'buffer'):
+        if u.multiport and u.needs_mp_inp_sum:
+            u.upd_flat_mp_inp_sum(time)
+        else:
+            u.upd_flat_inp_sum(time)
+    return u        
 
 class network():
     """ 
@@ -971,6 +990,17 @@ class network():
                     if hasattr(syn, 'plant_out'): # synapse comes from a plant
                         self.act[idx_l][idx_s] = \
                             self.plants[syn.plant_id].get_state_var_fun(syn.plant_out)
+        # experimental bit to try parallelizing
+        #self.u_upd_funcs = []
+        #for uid, u in enumerate(self.units):
+        #    if self.has_buffer[uid]:
+        #        if u.multiport and u.needs_mp_inp_sum:
+        #            self.u_upd_funcs.append(u.upd_flat_mp_inp_sum)
+        #        else:
+        #            self.u_upd_funcs.append(u.upd_flat_inp_sum)
+        #    else:
+        #        self.u_upd_funcs.append(lambda t: None)
+        #self.pool = ProcessingPool(nodes=10)
 
 
     def link_unit_buffers(self):
@@ -1058,7 +1088,7 @@ class network():
             This method is to be used with the second type of flat networks.
         """
         return self.acts[self.first_idx[uid]][-1 - s]
-    
+
 
     def flat_update(self, time):
         """ Updates all state variables by advancing them one min_delay time step. """
@@ -1066,6 +1096,7 @@ class network():
         self.ts += self.min_delay 
         #self.ts = np.roll(self.ts, -self.min_buff_size)
         #self.ts[self.ts_buff_size-self.min_buff_size:] = self.ts_grid[1:]+time
+        #----------------------------------------------------------------------
         # update input sums
         for uid, u in enumerate(self.units):
             if self.has_buffer[uid]:
@@ -1073,6 +1104,16 @@ class network():
                     u.upd_flat_mp_inp_sum(time)
                 else:
                     u.upd_flat_inp_sum(time)
+        """
+        # parallel update of input sums
+        self.units = self.pool.map(lambda u: upd_unit(u, time), self.units)
+        self.pool.close()
+        self.pool.join()
+        #with Pool(10) as p:
+        #    list(p.map(lambda f: f(time), self.u_upd_funcs))
+        #    p.close()
+        """
+        #----------------------------------------------------------------------
         # roll the full acts array
         base = self.ts.size - self.min_buff_size
         self.acts[:,:base] = self.acts[:,self.min_buff_size:]

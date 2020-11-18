@@ -2390,6 +2390,8 @@ class input_selection_synapse(synapse):
             
         self.w *= self.w_sum * u.l1_norm_factor_mp[self.aff_port]
         self.w = self.w + self.alpha * pre * err_diff
+        # version with non-negative weights
+        #self.w = self.w * (1. + self.alpha * pre * err_diff)
 
 
 class gated_input_selection_synapse(input_selection_synapse):
@@ -2870,24 +2872,24 @@ class td_synapse(synapse):
             self.w_sum = params['w_sum']
         else:
             self.w_sum = 1.
-        self.pre_act = self.net.units[self.preID].act_buff
-        self.post_act = self.net.units[self.postID].act_buff
-        self.post = post
+        #self.pre_act = self.net.units[self.preID].act_buff
+        #self.post_act = self.net.units[self.postID].act_buff
+        #self.post = post
 
     def update(self, time):
         """ Update weigths using the temporal differences rule."""
-        #pre = self.net.units[self.preID]
-        #post = self.net.units[self.postID]
-        R = self.post.sc_inp_sum_mp[1]
-        #del_pre = pre.act_buff[-1-self.del_steps]
+        pre = self.net.units[self.preID]
+        post = self.net.units[self.postID]
+        R = post.sc_inp_sum_mp[1]
+        del_pre = pre.act_buff[-1-self.del_steps]
         # weight normalization
         #norm_fac = self.w_sum * post.l1_norm_factor_mp[0]
         #self.w += self.alpha * (norm_fac - 1.) * self.w
         
-        #self.w += self.alpha * (R + self.eff_gamma*post.act_buff[-1] -
-        #                        post.act_buff[-1-self.del_steps]) * del_pre
-        self.w += self.alpha * (R + self.eff_gamma*self.post_act[-1] -
-                        self.post_act[-1-self.del_steps])*self.pre_act[-1]
+        self.w += self.alpha * (R + self.eff_gamma*post.act_buff[-1] -
+                                post.act_buff[-1-self.del_steps]) * del_pre
+        #self.w += self.alpha * (R + self.eff_gamma*self.post_act[-1] -
+        #                self.post_act[-1-self.del_steps])*self.pre_act[-1]
 
 
 

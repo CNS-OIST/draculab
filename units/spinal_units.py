@@ -437,8 +437,8 @@ class am_pm_oscillator(unit, rga_reqs):
         #Dc = ( I[0]*(1. - y[1]) - slow_I0*y[1] ) / self.tau_c
         Dth = (self.omega + self.f(I)) / self.tau_t
         #DI0 = np.tanh(I[0] - y[3]) / self.tau_s # default implementation
-        #DI0 = np.tanh(I[0]+I[1] - y[3]) / self.tau_s # Add both inputs
-        DI = (np.tanh(I[0]+I[1]) - y[3]) / self.tau_s
+        DI0 = np.tanh(I[0]+I[1] - y[3]) / self.tau_s # Add both inputs
+        #DI = (np.tanh(I[0]+I[1]) - y[3]) / self.tau_s
         #DI0 = (sum(self.get_mp_inputs(t)[0]) - y[3]) / self.tau_s
         #DIs = self.D_factor * (I[0] - y[3])
         #Du = (Dc + I[0]*Dth*np.cos(y[2]) + DI0*np.sin(y[2])) / self.tau_u
@@ -791,11 +791,12 @@ class am_oscillator2D(unit, rga_reqs):
         I = [ np.dot(i, w) for i, w in 
               zip(self.get_mp_inputs(t), self.get_mp_weights(t)) ]
         # Obtain the derivatives
-        Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        #Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         th = self.omega*t
         #Du = (y[1] - y[0] + 
         #      self.A * np.tanh(I[0]+I[1]) * np.sin(th)) / self.tau_u
-        Du = (y[1] - y[0] + 
+        Du = (1. - y[0]) * (y[1] - y[0] + Dc +
               self.A * np.tanh(I[0]) * np.sin(th)) / self.tau_u
         return np.array([Du, Dc])
 
@@ -814,11 +815,12 @@ class am_oscillator2D(unit, rga_reqs):
         #I = sum(self.mp_inp_sum[:,s])
         I = [ port_sum[s] for port_sum in self.mp_inp_sum ]
         # Obtain the derivatives
-        Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        #Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         th = self.omega*t
         #Du = (y[1] - y[0] + 
         #      self.A * np.tanh(I[0]+I[1])*np.sin(th)) / self.tau_u
-        Du = (y[1] - y[0] + 
+        Du = (1. - y[0]) * (y[1] - y[0] + Dc +
               self.A * np.tanh(I[0])*np.sin(th)) / self.tau_u
         return np.array([Du, Dc])
 
@@ -1980,6 +1982,22 @@ class td_sigmo(sigmoidal):
         sigmoidal.__init__(self, ID, params, network)
         self.syn_needs.update([syn_reqs.mp_inputs,
                                syn_reqs.mp_weights])
+        self.needs_mp_inp_sum = True
+
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity at time t. """
+        # there is only one state variable (the activity)
+        p0_inps = np.array([self.net.act[self.ID][idx](t - 
+                  self.net.delays[self.ID][idx]) for idx in self.port_idx[0]])
+        p0_ws = np.array([self.net.syns[self.ID][idx].w for idx in
+        self.port_idx[0]])
+        return ( self.f((p0_inps*p0_ws).sum()) - y[0] )  * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        return ( self.f(self.mp_inp_sum[0][s]) - y ) * self.rtau
+
+
 
 
 

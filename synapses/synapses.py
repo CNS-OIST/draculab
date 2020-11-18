@@ -505,7 +505,9 @@ class input_correlation_synapse(synapse):
         if self.input_type == 'pred':
             pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
             err_diff = self.net.units[self.postID].err_diff
-            self.w = self.w + self.alpha * pre * err_diff
+            #self.w = self.w + self.alpha * pre * err_diff
+            # clipping
+            self.w = min(2., max(-2., self.w + self.alpha * pre * err_diff))
         # In this version of the rule, the error signals don't alter their weights,
         # and we don't test for weights becoming negative
 
