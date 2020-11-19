@@ -9,7 +9,7 @@ from cython_utils import * # interpolation and integration methods including cyt
 #from requirements import *  # not sure this is necessary
 from array import array # optionally used for the unit's buffer
 #from numba import jit
-import dill
+#import dill
 #from pathos.multiprocessing import ProcessingPool
 
 def upd_unit(u, t):

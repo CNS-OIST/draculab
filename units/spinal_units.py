@@ -791,13 +791,13 @@ class am_oscillator2D(unit, rga_reqs):
         I = [ np.dot(i, w) for i, w in 
               zip(self.get_mp_inputs(t), self.get_mp_weights(t)) ]
         # Obtain the derivatives
-        #Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
-        Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        #Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         th = self.omega*t
-        #Du = (y[1] - y[0] + 
-        #      self.A * np.tanh(I[0]+I[1]) * np.sin(th)) / self.tau_u
-        Du = (1. - y[0]) * (y[1] - y[0] + Dc +
-              self.A * np.tanh(I[0]) * np.sin(th)) / self.tau_u
+        Du = (y[1] - y[0] + Dc +
+              self.A * np.tanh(I[0]+I[1]) * np.sin(th)) / self.tau_u
+        #Du = (1. - y[0]) * (y[1] - y[0] + Dc +
+        #      self.A * np.tanh(I[0]) * np.sin(th)) / self.tau_u
         return np.array([Du, Dc])
 
     def dt_fun(self, y, s):
@@ -815,13 +815,13 @@ class am_oscillator2D(unit, rga_reqs):
         #I = sum(self.mp_inp_sum[:,s])
         I = [ port_sum[s] for port_sum in self.mp_inp_sum ]
         # Obtain the derivatives
-        #Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
-        Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        #Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         th = self.omega*t
-        #Du = (y[1] - y[0] + 
-        #      self.A * np.tanh(I[0]+I[1])*np.sin(th)) / self.tau_u
-        Du = (1. - y[0]) * (y[1] - y[0] + Dc +
-              self.A * np.tanh(I[0])*np.sin(th)) / self.tau_u
+        Du = (y[1] - y[0] + Dc +
+              self.A * np.tanh(I[0]+I[1])*np.sin(th)) / self.tau_u
+        #Du = (1. - y[0]) * (y[1] - y[0] + Dc +
+        #      self.A * np.tanh(I[0])*np.sin(th)) / self.tau_u
         return np.array([Du, Dc])
 
 
