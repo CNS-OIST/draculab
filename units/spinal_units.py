@@ -1970,6 +1970,8 @@ class td_sigmo(sigmoidal):
                 ID, params, network: same as the unit class.
                 REQUIRED PARAMETERS
                 'tau' : time constant of the dynamics.
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function.
                 'delta' : time delay for updates (in seconds)
 
         """
@@ -1998,6 +2000,51 @@ class td_sigmo(sigmoidal):
         return ( self.f(self.mp_inp_sum[0][s]) - y ) * self.rtau
 
 
+class layer_dist(sigmoidal):
+    """ A unit to obtain a distance in the activities of two layers.
+
+        The need for this unit is explained deep in the November 20, 2020 
+        notes.
+
+        If you have layers A and B with the same structure (e.g. for each unit
+        in A there is a corresponding unit in B), the output of this unit
+        reflects how similar their activities are. To this end the units in A
+        connect to port 0, and the units in B to port 1 in the same order. The
+        layer_dist unit updates using:
+
+        \tau y' = f(\sum_i |A_i - B_i|) - y
+        where f is the sigmoidal function.
+
+        Input weights are ignored for efficiency.
+    """
+    def __init__(self, ID, params, network):
+        """ The class constructor.
+
+            Args:
+                ID, params, network: same as the unit class.
+                REQUIRED PARAMETERS
+                'tau' : time constant of the dynamics.
+                'slope' : Slope of the sigmoidal function.
+                'thresh' : Threshold of the sigmoidal function.
+        """
+        if 'n_ports' in params and params['n_ports'] != 2:
+            raise AssertionError('layer_dist uses n_ports=2')
+        else:
+            params['n_ports'] = 2
+        sigmoidal.__init__(self, ID, params, network)
+        #self.syn_needs.update([syn_reqs.mp_inputs])
+        self.needs_mp_inp_sum = True
+
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity at time t. """
+        mp_i = self.get_mp_inputs(t)
+        return (self.f(np.abs(mp_i[0] - mp_i[1]).sum()) - y[0]) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        msi0 = self.mp_step_inps[0][:,s]
+        msi1 = self.mp_step_inps[1][:,s]
+        return (self.f(np.abs(msi0 - msi1).sum()) - y) * self.rtau
 
 
 
