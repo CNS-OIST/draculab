@@ -2846,7 +2846,7 @@ class td_synapse(synapse):
         To be used with the td_* unit classes.
     """
     def __init__(self, params, network):
-        """ Constructor of the comp_pot synapse.
+        """ Constructor of the td_synapse.
             Args:
                 params: same as the synapse class with these additions.
             REQUIRED PARAMETERS
@@ -2890,6 +2890,73 @@ class td_synapse(synapse):
                                 post.act_buff[-1-self.del_steps]) * del_pre
         #self.w += self.alpha * (R + self.eff_gamma*self.post_act[-1] -
         #                self.post_act[-1-self.del_steps])*self.pre_act[-1]
+
+
+
+class diff_rm_hebbian(synapse):
+    """ Differential reward-modulated Hebbian synapse.
+
+        Units with this synapse have at least two types of inputs. In one port
+        there are regular inputs, connected with this type of synapses.
+        In a different port there is a value input 'v'.  This rule updates the
+        weight through this equation:
+
+        w' = alpha * ( v' * (pre-<pre>) * (post-<post>) - w ),
+        where the angle brackets denote the average across inputs.
+
+        This class also normalizees the sum of weights so it adds to a 'w_sum'
+        value. The postsynaptic unit should inherit the rga_reqs class, as well
+        as having a 'custom_inp_del' attribute.
+    """
+    def __init__(self, params, network):
+        """ Constructor of the diff_rm_hebbian synapse.
+            Args:
+                params: same as the synapse class with these additions.
+            REQUIRED PARAMETERS
+            'lrate' : learning rate for the rule
+            OPTIONAL PARAMETER
+            'w_sum' : All port 0 weights will sum to w_sum. Default is 1.
+            's_port' : port for the 'state', or 'regular' inputs. Default=0.
+            'v_port' : port for the 'value', or 'reward' inputs. Default=1.
+            'l_port' : port for 'lateral' inputs. Default=3 (as in m_sig).
+        """
+        self.lrate = params['lrate']
+        self.alpha = self.lrate * network.min_delay
+        synapse.__init__(self, params, network)
+        self.upd_requirements.update([syn_reqs.l1_norm_factor_mp,
+                                      syn_reqs.lpf_fast_sc_inp_sum_mp,
+                                      syn_reqs.lpf_mid_sc_inp_sum_mp,
+                                      syn_reqs.sc_inp_sum_diff_mp,
+                                      syn_reqs.del_inp_mp,
+                                      syn_reqs.del_inp_avg_mp ])
+        self.po_de = self.net.units[self.postID].custom_inp_del
+        if 'w_sum' in params: self.w_sum = params['w_sum']
+        else: self.w_sum = 1.
+        if 's_port' in params: self.s_port = params['s_port']
+        else: self.s_port = 0
+        if 'v_port' in params: self.v_port = params['v_port']
+        else: self.v_port = 1
+        if 'l_port' in params: self.l_port = params['l_port']
+        else: self.l_port = 1
+        
+    def update(self, time):
+        """ Update weigths using a reward-modulated Hebbian rule."""
+        # y is the postsynaptic unit, x the presynaptic one
+        x = self.net.units[self.preID]
+        y = self.net.units[self.postID]
+        vp = y.sc_inp_sum_diff_mp[self.v_port]
+        pre = x.act_buff[-1-self.po_de]
+        post = y.act_buff[-1-self.po_de]
+        avg_pre = y.del_inp_avg_mp[self.s_port]
+        avg_post = y.del_inp_avg_mp[self.l_port]
+        # weight normalization for state inputs
+        #norm_fac = self.w_sum * post.l1_norm_factor_mp[self.s_port]
+        #self.w += self.alpha * (norm_fac - 1.) * self.w
+        
+        self.w += self.alpha * vp * (pre-avg_pre) * (post-avg_post)
+
+
+
 
 
 

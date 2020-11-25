@@ -165,6 +165,7 @@ class rga_reqs():
                 if dinp else 0. for inp, dinp, avg in 
                 zip(self.mp_inputs, self.inp_deriv_mp, self.inp_avg_mp) ]
 
+
 class lpf_sc_inp_sum_mp_reqs():
     """ Class with the update functions for the X_lpf_sc_inp_sum_mp_reqs. """
     def __init__(self, params):
@@ -825,6 +826,9 @@ class am_oscillator2D(unit, rga_reqs):
         return np.array([Du, Dc])
 
 
+
+# CURRENTLY DECIDING WHETHER TO FINISH WRITING THIS CLASS...
+#==============================================================================
 class am_osc2D_adapt(unit, rga_reqs, acc_sda_reqs):
     """
     Two-dimensional amplitude-modulated oscillator with adaptation.
@@ -970,6 +974,7 @@ class am_osc2D_adapt(unit, rga_reqs, acc_sda_reqs):
         #      self.A * np.tanh(I[0])*np.sin(th)) / self.tau_u
         return np.array([Du, Dc])
 
+#==============================================================================
 
 
 class out_norm_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs):
@@ -1451,6 +1456,97 @@ class rga_sig(sigmoidal, rga_reqs):
         rga_reqs.__init__(self, params) # add requirements and update functions 
         self.needs_mp_inp_sum = False # the sigmoidal uses self.inp_sum
         self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum_mp]) 
+
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity at time t. """
+        inp = self.get_input_sum(t) + self.integ_amp * self.lpf_slow_sc_inp_sum
+        return ( self.f(inp) - y[0] ) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        inp = self.inp_sum[s] + self.integ_amp * self.lpf_slow_sc_inp_sum
+        return ( self.f(inp) - y ) * self.rtau
+
+
+class m_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
+    """ A unit meant to be in the motor error layer.
+
+        This means that the unit must be able to handle diff_rm_hebbian, as well
+        as input_selection synapses. This turns out to be an extension of the
+        rga_syn class.
+
+        The M units will receive 4 types of inputs. The first type (port 0 by
+        default) consists of the state inputs, connected with reward-modulated
+        Hebbian synapses. The next input type (port 1 by default) are the
+        "reward" inputs, which are used by the diff_rm_hebbian and inp_sel
+        synapses to adapt. The next input type are the "afferent" inputs, by
+        default in port 2. These are expected to use the input_selection
+        (inp_sel) synapses. The last type of input (port 3) is lateral
+        inhibition, usually with static synapses.
+
+        The input_selection class needs an "error" input, whereas the
+        diff_rm_hebbian synapse expects a "value" measure. One of the learning
+        rates must therefore be negative, since these are opposites.
+
+        This has the extra custom_inp_del attribute, as well as
+        implementations of all required requirement update functions.
+        Moreover, it is a multiport unit.
+
+        Another addition is that this unit has an integral component. This means
+        that the input is integrated (actually, low-pass filtered with the
+        tau_slow time constant), and the output comes from the sigmoidal 
+        function applied to the scaled input sum plus the integral component.
+
+        The current version includes the reward inputs in the input sum, because
+        it is simpler, and computes faster.
+
+        The des_out_w_abs_sum parameter is included in case the
+        pre_out_norm_factor requirement is used.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'slope' : Slope of the sigmoidal function.
+                    'thresh' : Threshold of the sigmoidal function.
+                    'tau' : Time constant of the update dynamics.
+                    'tau_slow' : Slow LPF time constant.
+                    'integ_amp' : amplitude multiplier of the integral
+                                    component.
+                    Using rga synapses brings an extra required parameter:
+                    'custom_inp_del' : an integer indicating the delay that the rga
+                                  learning rule uses for the lateral port inputs. 
+                                  The delay is in units of min_delay steps. 
+
+                OPTIONAL PARAMETERS
+                    'des_out_w_abs_sum' : desired sum of absolute weight values
+                                          for the outgoing connections.
+                                          Default is 1.
+            Raises:
+                AssertionError.
+        """
+        if 'n_ports' in params and params['n_ports'] != 4:
+            raise AssertionError('m_sig units must have n_ports=4')
+        else:
+            params['n_ports'] = 4
+        if 'custom_inp_del' in params:
+            self.custom_inp_del = params['custom_inp_del']
+        else:
+            raise AssertionError('m_sig units need a custom_inp_del parameter')
+        sigmoidal.__init__(self, ID, params, network)
+        if 'des_out_w_abs_sum' in params:
+            self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        else:
+            self.des_out_w_abs_sum = 1.
+        sigmoidal.__init__(self, ID, params, network)
+        self.integ_amp = params['integ_amp']
+        rga_reqs.__init__(self, params) # add requirements and update functions 
+        lpf_sc_inp_sum_mp_reqs.__init__(self, params)
+        self.needs_mp_inp_sum = False # the sigmoidal uses self.inp_sum
+        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum]) 
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. """

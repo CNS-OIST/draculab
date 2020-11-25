@@ -290,7 +290,7 @@ def add_del_inp_avg_mp(unit):
         This requirement depends on the del_inp_mp requirement, from where it
         obtains the inputs.
         The ports for which the average is calculated can be specified through
-        the del_inp_ports attricute, which is added to the unit by passing it as
+        the del_inp_ports attribute, which is added to the unit by passing it as
         a parameter to the rga_reqs constructor. inp_avg_ports is a list of
         integers corresponding to the ports where the averages will be
         calculated. Its default value is: list(range(unit.n_ports)).
