@@ -2199,12 +2199,16 @@ class bell_shaped_1D(unit):
         return self.rtau * (np.exp(-self.b*diff*diff) - y)
 
 
-class td_sigmo(sigmoidal):
+class td_sigmo(sigmoidal, lpf_sc_inp_sum_mp_reqs):
     """ A sigmoidal unit used to implement a value function with the TD rule.
     
         This unit is meant to receive a reward at port 1, and state inputs at
         port 0. The state inputs should use the TD_synapse, and the reward a
         static synapse. 
+
+        To maintain the dynamic range of the unit, the inputs are substracted
+        their slow low-pass filtered version. It is recommended to give a large
+        'tau_slow' value for this purpose.
     """
     def __init__(self, ID, params, network):
         """ The class constructor.
@@ -2216,17 +2220,21 @@ class td_sigmo(sigmoidal):
                 'slope' : Slope of the sigmoidal function.
                 'thresh' : Threshold of the sigmoidal function.
                 'delta' : time delay for updates (in seconds)
+                'tau_slow' : time constant for slow low-pass filter.
 
         """
         self.delta = params['delta']
         self.del_steps = int(np.round(self.delta / network.min_delay))
         if 'n_ports' in params and params['n_ports'] != 2:
-            raise AssertionError('td_unit uses n_ports=2')
+            raise AssertionError('td_sigmo uses n_ports=2')
         else:
             params['n_ports'] = 2
+        if not 'tau_slow' in params:
+            raise AssertionError('params for td_sigmo should include tau_slow')
         sigmoidal.__init__(self, ID, params, network)
         self.syn_needs.update([syn_reqs.mp_inputs,
-                               syn_reqs.mp_weights])
+                               syn_reqs.mp_weights,
+                               syn_reqs.lpf_slow_sc_inp_sum_mp])
         self.needs_mp_inp_sum = True
 
     def derivatives(self, y, t):
@@ -2235,12 +2243,14 @@ class td_sigmo(sigmoidal):
         p0_inps = np.array([self.net.act[self.ID][idx](t - 
                   self.net.delays[self.ID][idx]) for idx in self.port_idx[0]])
         p0_ws = np.array([self.net.syns[self.ID][idx].w for idx in
-        self.port_idx[0]])
-        return ( self.f((p0_inps*p0_ws).sum()) - y[0] )  * self.rtau
+                self.port_idx[0]])
+        return ( self.f((p0_inps*p0_ws).sum() - self.lpf_slow_sc_inp_sum_mp[0])
+                 - y[0] )  * self.rtau
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
-        return ( self.f(self.mp_inp_sum[0][s]) - y ) * self.rtau
+        return ( self.f(self.mp_inp_sum[0][s] - self.lpf_slow_sc_inp_sum_mp[0])
+                 - y ) * self.rtau
 
 
 class layer_dist(sigmoidal):

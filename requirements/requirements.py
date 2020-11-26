@@ -1345,8 +1345,9 @@ def add_lpf_mid_sc_inp_sum_mp(unit):
 def add_lpf_slow_sc_inp_sum_mp(unit):
     """ Add the slow LPF'd scaled sum of inputs for each port separately. 
 
-        This requirement was initially used with the act unit, where its
-        update implementation currently resides.
+        This requirement was initially used with the act unit. Its
+        update implementation currently resides in the lpf_sc_inp_sum_mp_reqs
+        class of spinal_units.py.
     """
     if not unit.multiport:
         raise AssertionError('The lpf_slow_sc_inp_sum_mp requirement is for ' +
