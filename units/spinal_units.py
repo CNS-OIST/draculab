@@ -1455,7 +1455,7 @@ class rga_sig(sigmoidal, rga_reqs):
         self.integ_amp = params['integ_amp']
         rga_reqs.__init__(self, params) # add requirements and update functions 
         self.needs_mp_inp_sum = False # the sigmoidal uses self.inp_sum
-        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum_mp]) 
+        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum]) 
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. """

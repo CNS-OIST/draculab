@@ -2950,8 +2950,8 @@ class diff_rm_hebbian(synapse):
         avg_pre = y.del_inp_avg_mp[self.s_port]
         avg_post = y.del_inp_avg_mp[self.l_port]
         # weight normalization for state inputs
-        #norm_fac = self.w_sum * post.l1_norm_factor_mp[self.s_port]
-        #self.w += self.alpha * (norm_fac - 1.) * self.w
+        norm_fac = self.w_sum * y.l1_norm_factor_mp[self.s_port]
+        self.w += self.alpha * (norm_fac - 1.) * self.w
         
         self.w += self.alpha * vp * (pre-avg_pre) * (post-avg_post)
 
