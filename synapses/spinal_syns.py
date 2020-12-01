@@ -2860,9 +2860,9 @@ class td_synapse(synapse):
         self.gamma = params['gamma']
         self.alpha = self.lrate * network.min_delay
         synapse.__init__(self, params, network)
-        #self.upd_requirements.update([syn_reqs.l1_norm_factor_mp,
-        #                              syn_reqs.sc_inp_sum_mp])
-        self.upd_requirements.update([syn_reqs.sc_inp_sum_mp])
+        self.upd_requirements.update([syn_reqs.l1_norm_factor_mp,
+                                      syn_reqs.sc_inp_sum_mp])
+        #self.upd_requirements.update([syn_reqs.sc_inp_sum_mp])
         post = network.units[self.postID]
         self.del_steps = post.del_steps
         # the synapse update usually does not have the same time step

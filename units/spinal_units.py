@@ -2300,7 +2300,7 @@ class layer_dist(sigmoidal):
         return (self.f(np.abs(msi0 - msi1).sum()) - y) * self.rtau
 
 
-class linear_mplex(unit)
+class linear_mplex(unit):
     """ Linear unit that multiplexes inputs at port 0 and 1.
 
         This means that when inputs at port 2 are larger than 0.5 the output
