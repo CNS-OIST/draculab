@@ -2300,4 +2300,56 @@ class layer_dist(sigmoidal):
         return (self.f(np.abs(msi0 - msi1).sum()) - y) * self.rtau
 
 
+class linear_mplex(unit)
+    """ Linear unit that multiplexes inputs at port 0 and 1.
+
+        This means that when inputs at port 2 are larger than 0.5 the output
+        will be the scaled input sum at port 1, and when inputs at port 2 are
+        smaller than 0.5 the output is the scaled input sum at port 0.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+        Args:
+            ID, params, network: same as in the 'unit' parent class.
+            In addition, params should have the following entries.
+                REQUIRED PARAMETERS
+                'tau' : Time constant of the update dynamics.
+
+        Raises:
+            AssertionError.
+
+        """
+        if 'n_ports' in params and params['n_ports'] != 3:
+            raise AssertionError('linear_mplex units use n_ports=3')
+        else:
+            params['n_ports'] = 3
+        unit.__init__(self, ID, params, network)
+        self.tau = params['tau']  # the time constant of the dynamics
+        self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
+        self.needs_mp_inp_sum = True
+        
+    def derivatives(self, y, t):
+        """ Derivatives of the state variables at time t. 
+        
+            Args: 
+                y : a 1-element array or list with the current firing rate.
+                t: time when the derivative is evaluated.
+        """
+        mp_i = self.get_mp_inputs(t)
+        mp_w = self.get_mp_weights(t)
+        if (mp_i[2]*mp_w[2]).sum() < 0.5:
+            sel_port = 0
+        else:
+            sel_port = 1
+        return ( (mp_i[sel_port]*mp_w[sel_port]).sum() - y[0] ) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        if self.mp_step_inps[2][:,s] < 0.5:
+            sel_port = 0
+        else:
+            sel_port = 1
+        return ( self.mp_inp_sum[sel_port][s] - y ) * self.rtau
+
 
