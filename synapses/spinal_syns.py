@@ -2860,9 +2860,9 @@ class td_synapse(synapse):
         self.gamma = params['gamma']
         self.alpha = self.lrate * network.min_delay
         synapse.__init__(self, params, network)
-        self.upd_requirements.update([syn_reqs.l1_norm_factor_mp,
-                                      syn_reqs.sc_inp_sum_mp])
-        #self.upd_requirements.update([syn_reqs.sc_inp_sum_mp])
+        #self.upd_requirements.update([syn_reqs.l1_norm_factor_mp,
+        #                              syn_reqs.sc_inp_sum_mp])
+        self.upd_requirements.update([syn_reqs.sc_inp_sum_mp])
         post = network.units[self.postID]
         self.del_steps = post.del_steps
         # the synapse update usually does not have the same time step
@@ -2883,8 +2883,8 @@ class td_synapse(synapse):
         R = post.sc_inp_sum_mp[1]
         del_pre = pre.act_buff[-1-self.del_steps]
         # weight normalization
-        norm_fac = self.w_sum * post.l1_norm_factor_mp[0]
-        self.w += self.alpha * (norm_fac - 1.) * self.w
+        #norm_fac = self.w_sum * post.l1_norm_factor_mp[0]
+        #self.w += self.alpha * (norm_fac - 1.) * self.w
         
         self.w += self.alpha * (R + self.eff_gamma*post.act_buff[-1] -
                                 post.act_buff[-1-self.del_steps]) * del_pre
@@ -2918,7 +2918,8 @@ class diff_rm_hebbian(synapse):
             'w_sum' : All port 0 weights will sum to w_sum. Default is 1.
             's_port' : port for the 'state', or 'regular' inputs. Default=0.
             'v_port' : port for the 'value', or 'reward' inputs. Default=1.
-            'l_port' : port for 'lateral' inputs. Default=3 (as in m_sig).
+            'l_port' : port for 'lateral' inputs. Default=2 (as in x_sig).
+                       If the target is an m_sig unit, set this to 3.
         """
         self.lrate = params['lrate']
         self.alpha = self.lrate * network.min_delay
@@ -2937,7 +2938,7 @@ class diff_rm_hebbian(synapse):
         if 'v_port' in params: self.v_port = params['v_port']
         else: self.v_port = 1
         if 'l_port' in params: self.l_port = params['l_port']
-        else: self.l_port = 3
+        else: self.l_port = 2
         
     def update(self, time):
         """ Update weigths using a reward-modulated Hebbian rule."""
