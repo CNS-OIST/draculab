@@ -85,6 +85,8 @@ class unit_types(Enum):
     td_sigmo = 120
     layer_dist = 121
     m_sig = 122
+    linear_mplex = 123
+    x_sig = 124
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -264,6 +266,12 @@ class unit_types(Enum):
         elif self == unit_types.m_sig:
             from units.spinal_units import m_sig 
             unit_class = m_sig
+        elif self == unit_types.linear_mplex:
+            from units.spinal_units import linear_mplex
+            unit_class = linear_mplex 
+        elif self == unit_types.x_sig:
+            from units.spinal_units import x_sig 
+            unit_class = x_sig
         else:
             raise NotImplementedError('Attempting to retrieve the class of an '+ 
                                       'unknown unit model')

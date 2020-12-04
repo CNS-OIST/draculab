@@ -132,7 +132,8 @@ class rga_synapse(synapse):
             OPTIONAL PARAMETERS
             'err_port' : port for "error" inputs. Default is 0.
             'lat_port' : port for "lateral" inputs. Default is 1.
-
+            'w_sum' : multiplies the sum of weight values at the error
+                      port. Default is 1.
         Raises:
             AssertionError.
         """
@@ -160,6 +161,8 @@ class rga_synapse(synapse):
         else: self.lat_port = 1 
         if 'err_port' in params: self.err_port = params['err_port']
         else: self.err_port = 0 
+        if 'w_sum' in params: self.w_sum = params['w_sum']
+        else: self.w_sum = 1.
         
     def update(self, time):
         """ Update the weight using the RGA-inspired learning rule.
@@ -186,7 +189,8 @@ class rga_synapse(synapse):
         spj = (pre.get_lpf_fast(self.delay_steps) -
                pre.get_lpf_mid(self.delay_steps) )
         # weight normalization
-        norm_fac = .5*(u.l1_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        norm_fac = .5 * self.w_sum * (u.l1_norm_factor_mp[self.err_port] + 
+                                      pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w
         # weight update
         #self.w += self.alpha * max(up - xp, 0.) * (sp - spj)
@@ -2949,12 +2953,13 @@ class diff_rm_hebbian(synapse):
         pre = x.act_buff[-1-self.po_de]
         post = y.act_buff[-1-self.po_de]
         avg_pre = y.del_inp_avg_mp[self.s_port]
-        avg_post = y.del_inp_avg_mp[self.l_port]
+        #avg_post = y.del_inp_avg_mp[self.l_port]
         # weight normalization for state inputs
         norm_fac = self.w_sum * y.l1_norm_factor_mp[self.s_port]
         self.w += self.alpha * (norm_fac - 1.) * self.w
         
-        self.w += self.alpha * vp * (pre-avg_pre) * (post-avg_post)
+        #self.w += self.alpha * vp * (pre-avg_pre) * (post-avg_post)
+        self.w += self.alpha * vp * (pre-avg_pre) * post
 
 
 

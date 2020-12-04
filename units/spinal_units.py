@@ -1479,8 +1479,12 @@ class m_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         as input_selection synapses. This turns out to be an extension of the
         rga_syn class.
 
-        The M units will receive 4 types of inputs. The first type (port 0 by
-        default) consists of the state inputs, connected with reward-modulated
+        There are 2 main uses of this unit, one in the `rl5B` programs, and
+        another in the `rl5E`.
+
+        In the case of the rl5B and similar programs, the M units may receive
+        4 types of inputs. The first type (port 0 by default)
+        consists of the state inputs, connected with reward-modulated
         Hebbian synapses. The next input type (port 1 by default) are the
         "reward" inputs, which are used by the diff_rm_hebbian and inp_sel
         synapses to adapt. The next input type are the "afferent" inputs, by
@@ -1492,17 +1496,26 @@ class m_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         diff_rm_hebbian synapse expects a "value" measure. One of the learning
         rates must therefore be negative, since these are opposites.
 
-        This has the extra custom_inp_del attribute, as well as
-        implementations of all required requirement update functions.
-        Moreover, it is a multiport unit.
+        In the case of rl5E programs, the unit receives 3 types of input.
+        There is an "error" input at port 1, "afferent" inputs at port 2, and
+        "lateral" inputs at port 3; this is the same as before, except for the
+        "state" inputs, which are no longer present. To keep a homogeneous
+        implementation, the number of input ports is still 4, although only 3
+        ports are used. 
+        
+        When calculating the derivatives, the current version sums the inputs
+        from all ports to get the scaled input sum. Notice this will also
+        include the "value" inputs in the rl5B scenario, but hopefully the
+        effect of this is not important.
+
+        This unit has the extra custom_inp_del attribute, and inherits all the
+        update functions necessary for rga, inp_sel, and diff_rm_hebbian
+        synapses.
 
         Another addition is that this unit has an integral component. This means
         that the input is integrated (actually, low-pass filtered with the
         tau_slow time constant), and the output comes from the sigmoidal 
         function applied to the scaled input sum plus the integral component.
-
-        The current version includes the reward inputs in the input sum, because
-        it is simpler, and computes faster.
 
         The des_out_w_abs_sum parameter is included in case the
         pre_out_norm_factor requirement is used.
