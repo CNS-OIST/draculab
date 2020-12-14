@@ -40,7 +40,7 @@ class unit():
                 'tau_fast' : time constant for the fast low-pass filter.
                 'tau_mid' : time constant for the medium-speed low-pass filter.
                 'tau_slow' : time constant for the slow low-pass filter.
-                'n_ports' : number of inputs ports. Defaults to 1.
+                'n_ports' : number of input ports. Defaults to 1.
                 'integ_meth' : a string specifying an integration method for the unit.
                 'multidim' : a Boolean value indicating whether the unit is modeled by an
                              ODE with more than one equation. Defaults to False, and is set
