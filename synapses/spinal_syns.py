@@ -2859,6 +2859,7 @@ class td_synapse(synapse):
                       time delay of the postsynaptic unit.
             OPTIONAL PARAMETER
             'w_sum' : All port 0 weights will sum to w_sum. Default is 1.
+            'max_w' : Maximum absolute value of the weight. Default is 10.
         """
         self.lrate = params['lrate']
         self.gamma = params['gamma']
@@ -2872,10 +2873,10 @@ class td_synapse(synapse):
         # the synapse update usually does not have the same time step
         # of the td rule, so gamma needs to be adjusted.
         self.eff_gamma = self.gamma**(network.min_delay / post.delta)
-        if 'w_sum' in params:
-            self.w_sum = params['w_sum']
-        else:
-            self.w_sum = 1.
+        if 'w_sum' in params: self.w_sum = params['w_sum']
+        else: self.w_sum = 1.
+        if 'max_w' in params: self.max_w = params['max_w']
+        else: self.max_w = 10.
         #self.pre_act = self.net.units[self.preID].act_buff
         #self.post_act = self.net.units[self.postID].act_buff
         #self.post = post
@@ -2894,7 +2895,8 @@ class td_synapse(synapse):
                                 post.act_buff[-1-self.del_steps]) * del_pre
         #self.w += self.alpha * (R + self.eff_gamma*self.post_act[-1] -
         #                self.post_act[-1-self.del_steps])*self.pre_act[-1]
-
+        # weight clipping
+        self.w = min(self.max_w, max(-self.max_w, self.w))
 
 
 class diff_rm_hebbian(synapse):
@@ -2960,6 +2962,8 @@ class diff_rm_hebbian(synapse):
         
         #self.w += self.alpha * vp * (pre-avg_pre) * (post-avg_post)
         self.w += self.alpha * vp * (pre-avg_pre) * post
+        # normalized Oja
+        #self.w += self.alpha * (vp * (pre-avg_pre) - post*self.w) * post 
 
 
 
