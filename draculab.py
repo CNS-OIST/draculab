@@ -333,6 +333,7 @@ class synapse_types(Enum):
     meca_hebb = 228 # m-dimensional error cancelling Hebbian rule
     td_synapse = 229 # a synapse for temporal differences learning
     diff_rm_hebbian = 230 # differential reward-modulated Hebbian synapse
+    diff_inp_sel = 231 # differential version of the inp_sel synapse
 
     def get_class(self):
         """ Return the class object corresponding to a given synapse type enum. 
@@ -485,6 +486,9 @@ class synapse_types(Enum):
         elif self == synapse_types.diff_rm_hebbian:
             from synapses.spinal_syns import diff_rm_hebbian 
             syn_class = diff_rm_hebbian 
+        elif self == synapse_types.diff_inp_sel:
+            from synapses.spinal_syns import diff_input_selection_synapse
+            syn_class = diff_input_selection_synapse
         else:
             raise NotImplementedError('Attempting retrieve the class ' +
                                       'of an unknown synapse model')

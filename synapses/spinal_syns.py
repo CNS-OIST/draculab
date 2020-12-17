@@ -2551,6 +2551,61 @@ class chg_synapse(synapse):
         self.w += self.alpha * (abs(pre_fast - pre_mid) - self.w)
 
 
+class diff_input_selection_synapse(input_selection_synapse):
+    """ Differential version of the input_selection synapse.
+
+        The presynaptic activity is replaced by its approximate derivative.
+        
+        There is an extra delay for the presynaptic input, in order to
+        synchronize the error and the afferent signal. This delay is given as
+        the number of 'min_delay' steps, in the 'extra_steps' parameter of the
+        constructor. The 'delay' parameter of the presynaptic units must be
+        large enough to accomodate this extra delay. This means:
+        delay > min_delay * (delay_steps + extra_steps).
+
+        The name of this synapse type is 'diff_inp_sel'.
+    """
+    def __init__(self, params, network):
+        """ The class constructor.
+
+        Args:
+            params: same as the synapse class, with some additions.
+            REQUIRED PARAMETERS
+            'lrate' : A scalar value that will multiply the derivative of the weight.
+            'extra_steps' : extra delay steps for presynaptic input.
+            OPTIONAL PARAMETERS
+            'error_port' : port where the 'error' signals are received in the
+                           postsynaptic unit. Default 1.
+            'aff_port' : port where the 'afferent' signals are received in the
+                         postsynaptic unit. Default is the port of the synapse
+                         (e.g. self.port).
+            'w_sum' : value of the sum of synaptic weights at the 'aff' synapse.
+                      Default is 1.
+            'normalize' : Binary value indicating whether the sum of synaptic
+                          weights at the 'aff' synapse should be 'w_sum'.
+                          Default is True.
+        Raises:
+            ValueError, AssertionError.
+        """
+        input_selection_synapse.__init__(self, params, network)
+        self.extra_steps = params['extra_steps']
+        if 'normalize' in params: self.normalize = params['normalize']
+        else: self.normalize = True
+        self.upd_requirements.update([syn_reqs.pre_lpf_mid])
+
+    def update(self, time):
+        """ Update the weight using the input selection rule. """
+        u = self.net.units[self.postID]
+        err_diff = (u.lpf_fast_sc_inp_sum_mp[self.error_port] -
+                    u.lpf_mid_sc_inp_sum_mp[self.error_port]) 
+        preU = self.net.units[self.preID]
+        Dpre = (preU.get_lpf_fast(self.delay_steps + self.extra_steps) -
+                preU.get_lpf_mid(self.delay_steps + self.extra_steps))
+        if self.normalize:
+            self.w *= self.w_sum * u.l1_norm_factor_mp[self.aff_port]
+        self.w = self.w + self.alpha * Dpre * err_diff
+
+
 class gated_diff_input_selection_synapse(gated_input_selection_synapse):
     """ Differential version of the gated_input_selection synapse.
 
