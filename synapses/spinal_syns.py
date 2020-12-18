@@ -732,6 +732,7 @@ class rga_21(synapse):
             OPTIONAL PARAMETERS
             'err_port' : port for "error" inputs. Default is 0.
             'lat_port' : port for "lateral" inputs. Default is 1.
+            'w_sum' : desire value for the sum of synaptic weights. Default 1.
 
         Raises:
             AssertionError.
@@ -769,6 +770,8 @@ class rga_21(synapse):
         else: self.lat_port = 1 
         if 'err_port' in params: self.err_port = params['err_port']
         else: self.err_port = 0 
+        if 'w_sum' in params: self.w_sum = params['w_sum']
+        else: self.w_sum = 1.
         self.ejp_slow = 0. # used to obtain the error's second derivative
         self.ep_slow = 0. # used to obtain the error's second derivative
         #  We need an index to
@@ -816,7 +819,8 @@ class rga_21(synapse):
         epp = ep - self.ep_slow
         ejpp = ejp - self.ejp_slow
         # normalization 
-        norm_fac = .5*(post.l1_norm_factor_mp[self.err_port] + pre.out_norm_factor)
+        norm_fac = .5 * self.w_sum * (post.l1_norm_factor_mp[self.err_port] +
+                                      pre.out_norm_factor)
         self.w += self.alpha * (norm_fac - 1.)*self.w 
         # plasticity equation (so far the best)
         #self.w -= self.alpha * (ejpp - epp) * (cip - cp)
@@ -2393,9 +2397,9 @@ class input_selection_synapse(synapse):
         pre = self.net.units[self.preID].get_lpf_fast(self.delay_steps)
             
         self.w *= self.w_sum * u.l1_norm_factor_mp[self.aff_port]
-        self.w = self.w + self.alpha * pre * err_diff
+        #self.w = self.w + self.alpha * pre * err_diff
         # version with non-negative weights
-        #self.w = self.w * (1. + self.alpha * pre * err_diff)
+        self.w = self.w * (1. + self.alpha * pre * err_diff)
 
 
 class gated_input_selection_synapse(input_selection_synapse):
