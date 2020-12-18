@@ -2356,6 +2356,7 @@ class input_selection_synapse(synapse):
                          will be considered to be the synapse's port.
             'w_sum' : value of the sum of synaptic weights at the 'aff' synapse.
                       Default is 1.
+            'w_max' : maximum value of the synaptic weight. Default = 10.
 
         Raises:
             ValueError, AssertionError.
@@ -2376,10 +2377,10 @@ class input_selection_synapse(synapse):
             from warnings import warn
             warn("aff_port and port don't coincide in input selection synapse",
                  UserWarning)
-        if 'w_sum' in params:
-            self.w_sum = params['w_sum']
-        else:
-            self.w_sum = 1.
+        if 'w_sum' in params: self.w_sum = params['w_sum']
+        else: self.w_sum = 1.
+        if 'w_max' in params: self.w_max = params['w_max']
+        else: self.w_max = 10.
         # this may be inefficient because the lpf_mid_sc_inp_sum is being
         # calculated also for the afferent inputs. It is, however, convenient
         # for the derived class gated_diff_inp_sel
@@ -2400,6 +2401,8 @@ class input_selection_synapse(synapse):
         #self.w = self.w + self.alpha * pre * err_diff
         # version with non-negative weights
         self.w = self.w * (1. + self.alpha * pre * err_diff)
+        # weight clipping
+        self.w = min(self.w_max, self.w)
 
 
 class gated_input_selection_synapse(input_selection_synapse):
