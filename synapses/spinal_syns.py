@@ -3023,7 +3023,7 @@ class diff_rm_hebbian(synapse):
         self.w += self.alpha * (norm_fac - 1.) * self.w
         
         #self.w += self.alpha * vp * (pre-avg_pre) * (post-avg_post)
-        self.w += self.alpha * vp * (pre-avg_pre) * post
+        self.w += self.alpha * vp * (pre-avg_pre) * (post - 0.5)
         # normalized Oja
         #self.w += self.alpha * (vp * (pre-avg_pre) - post*self.w) * post 
 

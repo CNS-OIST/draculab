@@ -1657,6 +1657,97 @@ class x_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         return ( self.f(inp) - y ) * self.rtau
 
 
+class x_switch_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
+    """ A configurator (x) unit that switches its output on command.
+
+        This is the brainchild of simulations on Dec. 21st 2020, where it was
+        decided that the X unit could have a port that switched its output. This
+        means that when the input at port 3 is larger than 0.5:
+            * If output was larger than 0.5, it becomes smaller than 0.5
+            * If output was smaller than 0.5, it becomes larger than 0.5
+
+        This unit is a variation of x_sig. For the rl5D and rl5E architectures
+        of December 1/2, 2020, x_sig are units that use reward-modulated Hebbian
+        learning to configure the afferent input.
+
+        These units must be able to handle diff_rm_hebbian synapses, so they are
+        a restricted version of the m_sig class, and an extension of the rga_sig
+        class.
+
+        The X units receive at least 3 input types. The first type (port 0 by
+        default) consists of the state inputs, connected with reward-modulated
+        Hebbian synapses. The next input type (port 1 by default) are the
+        "reward" inputs, which are used by the diff_rm_hebbian synapses. 
+        The final input type, by default in port 2. 
+        Other ports are currently not included in the
+        derivatives/dt_fun methods.
+
+        This unit type has the extra custom_inp_del attribute.
+
+        Another addition is that this unit has an integral component. This means
+        that the input is integrated (actually, low-pass filtered with the
+        tau_slow time constant), and the output comes from the sigmoidal 
+        function applied to the scaled input sum plus the integral component.
+
+        The des_out_w_abs_sum parameter is included in case the
+        pre_out_norm_factor requirement is used.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'slope' : Slope of the sigmoidal function.
+                    'thresh' : Threshold of the sigmoidal function.
+                    'tau' : Time constant of the update dynamics.
+                    'tau_slow' : Slow LPF time constant.
+                    'integ_amp' : amplitude multiplier of the integral
+                                    component.
+                    'custom_inp_del' : an integer indicating the delay that the
+                                  learning rule uses for the lateral port inputs. 
+                                  The delay is in units of min_delay steps. 
+                    OPTIONAL PARAMETERS
+                    'des_out_w_abs_sum' : desired sum of absolute weight values
+                                          for the outgoing connections.
+                                          Default is 1.
+            Raises:
+                AssertionError.
+        """
+        if 'n_ports' in params and params['n_ports'] != 2:
+            raise AssertionError('x_sig units must have n_ports=2')
+        else:
+            params['n_ports'] = 2
+        if 'custom_inp_del' in params:
+            self.custom_inp_del = params['custom_inp_del']
+        else:
+            raise AssertionError('x_sig units need a custom_inp_del parameter')
+        if 'des_out_w_abs_sum' in params:
+            self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        else:
+            self.des_out_w_abs_sum = 1.
+        sigmoidal.__init__(self, ID, params, network)
+        self.integ_amp = params['integ_amp']
+        rga_reqs.__init__(self, params) # add requirements and update functions 
+        lpf_sc_inp_sum_mp_reqs.__init__(self, params)
+        self.needs_mp_inp_sum = True
+        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum]) 
+
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity at time t. """
+        mp_i = self.get_mp_inputs(t)
+        mp_w = self.get_mp_weights(t)
+        inp = (mp_i[0]*mp_w[0]).sum() + self.integ_amp * self.lpf_slow_sc_inp_sum
+        return ( self.f(inp) - y[0] ) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        inp = self.mp_inp_sum[0][s] + self.integ_amp * self.lpf_slow_sc_inp_sum
+        return ( self.f(inp) - y ) * self.rtau
+
+
+
 class act(unit, lpf_sc_inp_sum_mp_reqs):
     """ Action clock unit from the cortex wiki.
 
