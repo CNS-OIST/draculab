@@ -310,6 +310,9 @@ class pendulum(plant):
                 'mu' : A viscous friction coefficient. (Default: 0)
                 'bound_angle' : If True, the angle communicated through the output
                                 ports is in the interval [-pi, pi). False by default.
+                                Notice that if the angle is the output to unit,
+                                when the network is flat the angle won't be
+                                bound.
             network: the network where the plant instance lives.
 
         Raises:

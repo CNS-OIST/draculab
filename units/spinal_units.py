@@ -1458,8 +1458,12 @@ class rga_sig(sigmoidal, rga_reqs):
         rga_reqs.__init__(self, params) # add requirements and update functions 
         self.needs_mp_inp_sum = False # the sigmoidal uses self.inp_sum
         self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum]) 
-        if 'mu' in params: self.mu = params['mu']
-        if 'sigma' in params: self.sigma = params['sigma']
+        if 'mu' in params: 
+            self.mu = params['mu']
+            self.mudt = self.mu * self.time_bit # used by flat updater
+            self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
+        if 'sigma' in params: 
+            self.sigma = params['sigma']
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. """
@@ -1589,8 +1593,8 @@ class x_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         default) consists of the state inputs, connected with reward-modulated
         Hebbian synapses. The next input type (port 1 by default) are the
         "reward" inputs, which are used by the diff_rm_hebbian synapses. 
-        default in port 2. Other ports are currently not included in the
-        derivatives/dt_fun methods.
+        Other ports are currently not included in the derivatives/dt_fun
+        methods.
 
         This unit type has the extra custom_inp_del attribute.
 
@@ -1662,9 +1666,17 @@ class x_switch_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
 
         This is the brainchild of simulations on Dec. 21st 2020, where it was
         decided that the X unit could have a port that switched its output. This
-        means that when the input at port 3 is larger than 0.5:
+        means that when port 2 input derivative is larger than a threshold:
             * If output was larger than 0.5, it becomes smaller than 0.5
             * If output was smaller than 0.5, it becomes larger than 0.5
+
+        The derivative of the port 2 inputs is obtained with the
+        lpf_(fast/mid)_sc_inp_sum_mp requirements, since this is also required
+        by the diff_rm_hebbian synapses commonly used with this unit.
+
+        The switch in output is achieved by moving the threshold of the unit,
+        making it equal to the current port 0 input sum, plus or minus a
+        'sw_len' value.
 
         This unit is a variation of x_sig. For the rl5D and rl5E architectures
         of December 1/2, 2020, x_sig are units that use reward-modulated Hebbian
@@ -1678,8 +1690,8 @@ class x_switch_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         default) consists of the state inputs, connected with reward-modulated
         Hebbian synapses. The next input type (port 1 by default) are the
         "reward" inputs, which are used by the diff_rm_hebbian synapses. 
-        The final input type, by default in port 2. 
-        Other ports are currently not included in the
+        The final input type, by default in port 2, is the signal that switches
+        the output. Other ports are currently not included in the
         derivatives/dt_fun methods.
 
         This unit type has the extra custom_inp_del attribute.
@@ -1712,40 +1724,64 @@ class x_switch_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
                     'des_out_w_abs_sum' : desired sum of absolute weight values
                                           for the outgoing connections.
                                           Default is 1.
+                    'refr_per' : minimum time between switches. Defaul=1 sec.
+                    'sw_thresh' : If port 2 derivative larger than this, switch.
+                                  Default is 0.5 .
+                    'sw_len' : Distance from port 0 input sum after switch.
+                               Default is 0.2 .
             Raises:
                 AssertionError.
         """
-        if 'n_ports' in params and params['n_ports'] != 2:
-            raise AssertionError('x_sig units must have n_ports=2')
+        if 'n_ports' in params and params['n_ports'] != 3:
+            raise AssertionError('x_switch_sig units must have n_ports=3')
         else:
-            params['n_ports'] = 2
+            params['n_ports'] = 3
         if 'custom_inp_del' in params:
             self.custom_inp_del = params['custom_inp_del']
         else:
-            raise AssertionError('x_sig units need a custom_inp_del parameter')
+            raise AssertionError('x_switch_sig units need a custom_inp_del parameter')
         if 'des_out_w_abs_sum' in params:
             self.des_out_w_abs_sum = params['des_out_w_abs_sum']
         else:
             self.des_out_w_abs_sum = 1.
+        if 'refr_per' in params: self.refr_per = params['refr_per']
+        else: self.refr_per = 1.
+        if 'sw_thresh' in params: self.sw_thresh = params['sw_thresh']
+        else: self.sw_thresh = .5
+        if 'sw_len' in params: self.sw_len = params['sw_len']
+        else: self.sw_len = .2
+        self.lst = -1. # last switch time
         sigmoidal.__init__(self, ID, params, network)
         self.integ_amp = params['integ_amp']
         rga_reqs.__init__(self, params) # add requirements and update functions 
         lpf_sc_inp_sum_mp_reqs.__init__(self, params)
         self.needs_mp_inp_sum = True
-        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum]) 
+        self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum,
+                               syn_reqs.lpf_fast_sc_inp_sum_mp,
+                               syn_reqs.lpf_mid_sc_inp_sum_mp]) 
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. """
         mp_i = self.get_mp_inputs(t)
         mp_w = self.get_mp_weights(t)
-        inp = (mp_i[0]*mp_w[0]).sum() + self.integ_amp * self.lpf_slow_sc_inp_sum
+        is0 = (mp_i[0]*mp_w[0]).sum()
+        is2p = self.lpf_fast_sc_inp_sum_mp[2] - self.lpf_mid_sc_inp_sum_mp[2]
+        if  abs(is2p) > self.sw_thresh and t - self.lst > self.refr_per:
+            self.lst = t
+            self.thresh = is0 + self.sw_len * np.sign(is0 - self.thresh)
+        inp = is0 + self.integ_amp * self.lpf_slow_sc_inp_sum
         return ( self.f(inp) - y[0] ) * self.rtau
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
+        is2p = self.lpf_fast_sc_inp_sum_mp[2] - self.lpf_mid_sc_inp_sum_mp[2]
+        if (abs(is2p) > self.sw_thresh and 
+            self.net.sim_time - self.lst > self.refr_per):
+            self.lst = self.net.sim_time
+            self.thresh = (self.mp_inp_sum[0][s] + self.sw_len * 
+                            np.sign(self.mp_inp_sum[0][s] - self.thresh) )
         inp = self.mp_inp_sum[0][s] + self.integ_amp * self.lpf_slow_sc_inp_sum
         return ( self.f(inp) - y ) * self.rtau
-
 
 
 class act(unit, lpf_sc_inp_sum_mp_reqs):

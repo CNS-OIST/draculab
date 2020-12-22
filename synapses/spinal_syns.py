@@ -3030,5 +3030,3 @@ class diff_rm_hebbian(synapse):
 
 
 
-
-

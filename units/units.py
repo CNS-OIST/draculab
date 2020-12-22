@@ -482,7 +482,7 @@ class unit():
             The Euler-Maruyama implementation is basically the same as forward Euler.
             The atol and rtol values are meaningless in this case.
 
-            This solver does the buuffer's "rolling" by itself.
+            This solver does the buffer's "rolling" by itself.
             The unit needs to have 'mu' and 'sigma' attributes.
             self.mu = mean of the white noise
             self.sigma = standard deviation of Wiener process.
@@ -501,7 +501,7 @@ class unit():
             This is a version of euler_maru_update for multidimensional units.
             The atol and rtol values are meaningless in this case.
 
-            This solver does the buuffer's "rolling" by itself.
+            This solver does the buffer's "rolling" by itself.
             The unit needs to have 'mu' and 'sigma' attributes.
             self.mu = mean of the white noise
             self.sigma = standard deviation of Wiener process.
