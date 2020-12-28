@@ -2969,7 +2969,7 @@ class diff_rm_hebbian(synapse):
         In a different port there is a value input 'v'.  This rule updates the
         weight through this equation:
 
-        w' = alpha * ( v' * (pre-<pre>) * (post-<post>) - w ),
+        w' = alpha * ( v' * (pre-<pre>) * (post-0.5) - w ),
         where the angle brackets denote the average across inputs.
 
         This class also normalizees the sum of weights so it adds to a 'w_sum'
