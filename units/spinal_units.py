@@ -2464,7 +2464,6 @@ class td_sigmo(sigmoidal, lpf_sc_inp_sum_mp_reqs):
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. """
-        # there is only one state variable (the activity)
         p0_inps = np.array([self.net.act[self.ID][idx](t - 
                   self.net.delays[self.ID][idx]) for idx in self.port_idx[0]])
         p0_ws = np.array([self.net.syns[self.ID][idx].w for idx in
