@@ -77,17 +77,18 @@ def rl5E_net(cfg,
                 'omega' : 2.*np.pi,
                 'F' : 'zero', #'input_sum',
                 'A' : 0.5,
-                'slope' : 2., # for rga_sig
-                'thresh' : 0.2, # for rga_sig
-                'integ_amp' : 0., # for rga_sig
+                'slope' : cfg['C_slope'],
+                'thresh' : cfg['C_thresh'],
+                'integ_amp' : cfg['C_integ_amp'],
                 'tau' : 0.02, # for rga_sig
                 'tau_fast': 0.01, #0.02,
                 'tau_mid' : 0.05, #0.1,
                 'tau_slow' : 3.,
-                'custom_inp_del' : 150,
-                'delay' : 0.31,
+                'custom_inp_del' : int(cfg['C_custom_inp_del']),
+                'delay' : max(0.31, (2 + int(cfg['C_custom_inp_del'])) * 
+                            net_params['min_delay'] ),
                 'mu' : 0.,
-                'sigma' : 0.4 }
+                'sigma' : cfg['C_sigma'] }
     # L is the "RBF" layer to represent S_P, S_F
     L_params = {'type' : unit_types.sigmoidal,
                 'delay' : 102,
@@ -106,7 +107,8 @@ def rl5E_net(cfg,
                 'thresh' : 0.5 * randz2(),
                 'slope' : 2.5 * randz2(),
                 'init_val' : 0.2 * randz2(),
-                'delay' : 0.35,
+                'delay' : max(0.31, (2 + int(cfg['C_custom_inp_del'])) * 
+                            net_params['min_delay'] ),
                 'n_ports' : 4,
                 'tau_fast': 0.01, #0.2, #0.01,
                 'tau_mid': 0.05, #1., #0.05,
@@ -115,7 +117,7 @@ def rl5E_net(cfg,
                 'coordinates' : [np.array([0.1, 0.8]), np.array([0.4, 0.8])],
                 'integ_amp' : 0.,
                 'custom_inp_del' : int(np.round(0.3/net_params['min_delay'])) ,
-                'des_out_w_abs_sum' : 1.6 }
+                'des_out_w_abs_sum' : cfg['M_des_out_w_abs_sum'] }
     MPLEX_params = {'type' : unit_types.linear_mplex,
                     'init_val' : 0.,
                     'tau' : 0.01 }
@@ -126,16 +128,16 @@ def rl5E_net(cfg,
                 'init_angle' : 0.,
                 'init_ang_vel' : 0.,
                 'g' : 0.,
-                'inp_gain' : 2.,
-                'mu' : 1.5,
+                'inp_gain' : cfg['P_inp_gain'],
+                'mu' : cfg['P_mu'],
                 'bound_angle' : True,
                 'pi_visco' : 0.05,
                 'tau' : 0.05 } # a made-up time constant for the plant 
                             # see create_freqs_steps below
     # Reward unit parameters
     R_params = {'type' : unit_types.layer_dist,
-                'thresh' : 4., # for large args you want -slope(arg - thresh) to get large
-                'slope' : -1.,
+                'thresh' : cfg['R_thresh'], 
+                'slope' : cfg['R_slope'],
                 'tau' : 0.01,
                 'coordinates' : np.array([.3, .8]),
                 'init_val' : 0.3 }
@@ -180,17 +182,17 @@ def rl5E_net(cfg,
     V_params = {'type' : unit_types.td_sigmo,
                 'delay' : 162,
                 'init_val' : 0.1,
-                'thresh' : 0.3,
-                'slope' : 1.,
+                'thresh' : cfg['V_thresh'],
+                'slope' : cfg['V_slope'],
                 'tau' : 0.02,
                 'tau_slow' : 300,
-                'delta' : 1.,
+                'delta' : cfg['V_delta'],
                 'coordinates' : np.array([.8, .8])}
     # The configurator unit
     X_params = {'type' : unit_types.x_switch_sig, #x_sig,
                 'init_val' : 0.1,
-                'slope' : 6.,
-                'thresh' : .5,
+                'slope' : cfg['X_slope'],
+                'thresh' : cfg['X_thresh'],
                 'tau' : 0.02,
                 'delay' : 0.35,
                 'tau_fast' : 0.01,
@@ -218,9 +220,9 @@ def rl5E_net(cfg,
                 'inp_ports' : 2, # the deault for m_sig targets
                 'error_port' : 1, # the default for m_sig targets
                 'aff_port' : 2,
-                'lrate' : 5., # negative rate for m_sig targets with value inputs
-                'w_sum' : .9,
-                'w_max' : 0.5,
+                'lrate' : cfg['A__M_lrate'],
+                'w_sum' : cfg['A__M_w_sum'],
+                'w_max' : cfg['A__M_w_max'],
                 'init_w' : .1 }
     # lateral connections in C
     C__C_conn = {'rule': 'one_to_one',
@@ -229,7 +231,7 @@ def rl5E_net(cfg,
     C__C_syn = {'type' : synapse_types.static,
                 'lrate' : 0.1,
                 'inp_ports': 1,
-                'init_w' : -1.5 }  # Changed from usual -1
+                'init_w' : cfg['C__C_init_w'] }
     # spinal units to plant
     C0__P_conn = {'inp_ports' : 0,
                 'delays': 0.01 }
@@ -242,28 +244,28 @@ def rl5E_net(cfg,
     L__V_conn = {'rule': 'all_to_all',
                 'delay': 0.02 }
     L__V_syn = {'type' : synapse_types.td_synapse,
-                'lrate': .05,
-                'gamma' : 0.6,
+                'lrate': cfg['L__V_lrate'],
+                'gamma' : cfg['L__V_gamma'],
                 'inp_ports': 0,
                 'init_w' : 0.2 * np.random.random(No2*No2), # 0.05
-                'max_w' : 1.,
-                'w_sum' : 10. }
+                'max_w' : cfg['L__V_max_w'],
+                'w_sum' : cfg['L__V_w_sum'] }
     # state to configurator
     L__X_conn = {'rule': 'all_to_all',
                 'delay': 0.02 }
     L__X_syn = {'type' : synapse_types.diff_rm_hebbian,
-                'lrate': .2,
+                'lrate': cfg['L__X_lrate'],
                 'inp_ports': 0, # default for x_sig, m_sig targets
                 #'l_port' : 3,
                 #'s_port' : 0,
                 #'v_port' : 1,
                 'init_w' : 0.2 * np.random.random(No2*No2),
-                'w_sum' : 10. }
+                'w_sum' : cfg['L__X_w_sum'] }
     # motor error to spinal
     M__C_conn = {'rule': 'all_to_all',
                 'delay': 0.02 }
     M__C_syn = {'type' : synapse_types.rga_21,
-                'lrate': 400., #50
+                'lrate': cfg['M__C_lrate'],
                 'inp_ports': 0,
                 'w_sum' : 2.,
                 'init_w' : {'distribution':'uniform', 'low':0.05, 'high':.1}}
