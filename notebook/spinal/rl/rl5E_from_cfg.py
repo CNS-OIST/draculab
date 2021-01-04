@@ -91,7 +91,7 @@ def rl5E_net(cfg,
                 'sigma' : cfg['C_sigma'] }
     # L is the "RBF" layer to represent S_P, S_F
     L_params = {'type' : unit_types.sigmoidal,
-                'delay' : 102,
+                'delay' : .5,
                 'thresh' : 2.,
                 'slope' : 5.,
                 'tau' : 0.02,
@@ -180,7 +180,7 @@ def rl5E_net(cfg,
                 'function' : lambda t: None } # to be set after unit creation
     # value unit
     V_params = {'type' : unit_types.td_sigmo,
-                'delay' : 162,
+                'delay' : .5,
                 'init_val' : 0.1,
                 'thresh' : cfg['V_thresh'],
                 'slope' : cfg['V_slope'],
