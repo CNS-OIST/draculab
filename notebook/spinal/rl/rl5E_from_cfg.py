@@ -197,10 +197,11 @@ def rl5E_net(cfg,
                 'delay' : 0.35,
                 'tau_fast' : 0.01,
                 'tau_mid' : 0.1,
-                'tau_slow' : 10.,
+                'tau_slow' : 50.,
                 'integ_amp' : 0.,
                 'sw_thresh' : 0.1,
                 'sw_len' : 0.2,
+                'switch' : True, # start with exploration
                 'coordinates' : np.array([0.7, 0.3]),
                 'custom_inp_del' :  int(np.round(0.3/net_params['min_delay'])),
                 'des_out_w_abs_sum' : 1.} # usually not used

@@ -1670,13 +1670,21 @@ class x_switch_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
             * If output was larger than 0.5, it becomes smaller than 0.5
             * If output was smaller than 0.5, it becomes larger than 0.5
 
+        An overhaul was decided on Jan 5, 2021. When the "switch" binary
+        variable is True, then behavior is as above. When "switch" is False,
+        then there is no switch. Instead, the output of the unit is held static,
+        and is only updated when the port 2 input derivative is larger than a
+        threshold.
+
         The derivative of the port 2 inputs is obtained with the
         lpf_(fast/mid)_sc_inp_sum_mp requirements, since this is also required
         by the diff_rm_hebbian synapses commonly used with this unit.
 
-        The switch in output is achieved by moving the threshold of the unit,
-        making it equal to the current port 0 input sum, plus or minus a
-        'sw_len' value.
+        The switch in output is achieved by moving the threshold of the unit
+        through the addition of an additional "extra threshold", so it becomes
+        equal to the current port 0 input sum, plus or minus a 'sw_len' value.
+        When switch=False, the extra threshold is the slow LPF'd scaled input
+        sum for port 0.
 
         This unit is a variation of x_sig. For the rl5D and rl5E architectures
         of December 1/2, 2020, x_sig are units that use reward-modulated Hebbian
@@ -1712,11 +1720,9 @@ class x_switch_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
                 In addition, params should have the following entries.
                     REQUIRED PARAMETERS
                     'slope' : Slope of the sigmoidal function.
-                    'thresh' : Threshold of the sigmoidal function.
+                    'thresh' : Static threshold of the sigmoidal function.
                     'tau' : Time constant of the update dynamics.
                     'tau_slow' : Slow LPF time constant.
-                    'integ_amp' : amplitude multiplier of the integral
-                                    component.
                     'custom_inp_del' : an integer indicating the delay that the
                                   learning rule uses for the lateral port inputs. 
                                   The delay is in units of min_delay steps. 
@@ -1725,10 +1731,11 @@ class x_switch_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
                                           for the outgoing connections.
                                           Default is 1.
                     'refr_per' : minimum time between switches. Defaul=1 sec.
-                    'sw_thresh' : If port 2 derivative larger than this, switch.
-                                  Default is 0.5 .
+                    'sw_thresh' : If port 2 derivative larger than this, switch,
+                                  or update (if "switch" is False). Default=0.5.
                     'sw_len' : Distance from port 0 input sum after switch.
                                Default is 0.2 .
+                    'switch' : Whether port 2 causes a switch. Default is True.
             Raises:
                 AssertionError.
         """
@@ -1750,9 +1757,12 @@ class x_switch_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         else: self.sw_thresh = .5
         if 'sw_len' in params: self.sw_len = params['sw_len']
         else: self.sw_len = .2
-        self.lst = -1. # last switch time
+        if 'switch' in params: self.switch = params['switch']
+        else: self.switch = True
+        self.inp = 0.
+        self.xtra_thr = 0. # extra threshold 
+        self.lst = -1. # last switch/update time
         sigmoidal.__init__(self, ID, params, network)
-        self.integ_amp = params['integ_amp']
         rga_reqs.__init__(self, params) # add requirements and update functions 
         lpf_sc_inp_sum_mp_reqs.__init__(self, params)
         self.needs_mp_inp_sum = True
@@ -1761,16 +1771,23 @@ class x_switch_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
                                syn_reqs.lpf_mid_sc_inp_sum_mp]) 
 
     def derivatives(self, y, t):
-        """ Return the derivative of the activity at time t. """
+        """ Return the derivative of the activity at time t. 
+            The input (self.inp) is only updated when the switch conditions are
+            True.
+        """
         mp_i = self.get_mp_inputs(t)
         mp_w = self.get_mp_weights(t)
         is0 = (mp_i[0]*mp_w[0]).sum()
         is2p = self.lpf_fast_sc_inp_sum_mp[2] - self.lpf_mid_sc_inp_sum_mp[2]
         if  abs(is2p) > self.sw_thresh and t - self.lst > self.refr_per:
             self.lst = t
-            self.thresh = is0 + self.sw_len * np.sign(is0 - self.thresh)
-        inp = is0 + self.integ_amp * self.lpf_slow_sc_inp_sum
-        return ( self.f(inp) - y[0] ) * self.rtau
+            if self.switch:
+                self.xtra_thr = (is0 + self.sw_len * np.sign(is0 - self.thresh)
+                                 - self.thresh)
+            else:
+                self.xtra_thr = self.lpf_slow_sc_inp_sum_mp[0]
+            self.inp = is0  - self.xtra_thr
+        return ( self.f(self.inp) - y[0] ) * self.rtau
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
@@ -1778,10 +1795,13 @@ class x_switch_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         if (abs(is2p) > self.sw_thresh and 
             self.net.sim_time - self.lst > self.refr_per):
             self.lst = self.net.sim_time
-            self.thresh = (self.mp_inp_sum[0][s] + self.sw_len * 
-                            np.sign(self.mp_inp_sum[0][s] - self.thresh) )
-        inp = self.mp_inp_sum[0][s] + self.integ_amp * self.lpf_slow_sc_inp_sum
-        return ( self.f(inp) - y ) * self.rtau
+            if self.switch:
+                self.xtra_thr = (self.mp_inp_sum[0][s] + self.sw_len * 
+                                 np.sign(self.mp_inp_sum[0][s] - self.thresh) )
+            else:
+                self.xtra_thr = self.lpf_slow_sc_inp_sum_mp[0]
+            self.inp = self.mp_inp_sum[0][s] - self.xtra_thr
+        return ( self.f(self.inp) - y ) * self.rtau
 
 
 class act(unit, lpf_sc_inp_sum_mp_reqs):
