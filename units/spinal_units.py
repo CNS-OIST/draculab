@@ -2671,7 +2671,7 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs):
                                syn_reqs.lpf_slow_sc_inp_sum_mp])
         self.sf_unit = network.units[self.port_idx[0][0]] # assuming single unit
         self.sp_unit = network.units[self.port_idx[1][0]] # assuming single unit
-        self.z = np.array([params['init_vals']) # next state values
+        self.z = np.array(params['init_vals']) # next state values
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. 
@@ -2683,7 +2683,7 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs):
         """
         if t - self.last_time >= self.min_delay:
             del_state = np.array([self.sp_unit.act_buff[-1-self.del_steps],
-                                  self.sf_unit.act_buff[-1-self.del_steps])
+                                  self.sf_unit.act_buff[-1-self.del_steps]])
             state = np.array([self.mp_inputs[1], self.mp_inputs[0]])
 
             del_L_inps = np.linalg.norm(self.centers - del_state, axis=1)

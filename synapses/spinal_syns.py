@@ -2927,9 +2927,9 @@ class td_synapse(synapse):
         self.gamma = params['gamma']
         self.alpha = self.lrate * network.min_delay
         synapse.__init__(self, params, network)
-        #self.upd_requirements.update([syn_reqs.l1_norm_factor_mp,
-        #                              syn_reqs.sc_inp_sum_mp])
-        self.upd_requirements.update([syn_reqs.sc_inp_sum_mp])
+        self.upd_requirements.update([syn_reqs.l1_norm_factor_mp,
+                                      syn_reqs.sc_inp_sum_mp])
+        #self.upd_requirements.update([syn_reqs.sc_inp_sum_mp])
         post = network.units[self.postID]
         self.del_steps = post.del_steps
         # the synapse update usually does not have the same time step
@@ -2950,8 +2950,8 @@ class td_synapse(synapse):
         R = post.sc_inp_sum_mp[1]
         del_pre = pre.act_buff[-1-self.del_steps]
         # weight normalization
-        #norm_fac = self.w_sum * post.l1_norm_factor_mp[0]
-        #self.w += self.alpha * (norm_fac - 1.) * self.w
+        norm_fac = self.w_sum * post.l1_norm_factor_mp[0]
+        self.w += self.alpha * (norm_fac - 1.) * self.w
         
         self.w += self.alpha * (R + self.eff_gamma*post.act_buff[-1] -
                                 post.act_buff[-1-self.del_steps]) * del_pre
