@@ -1132,7 +1132,8 @@ def add_lpf_fast_sc_inp_sum_mp(unit):
     """ Add the fast LPF'd scaled sum of inputs for each port separately. 
 
         This requirement was initially used with the input_selection synapse,
-        and its update implementation is currently in the out_norm_am_sig unit.
+        and its update implementation is currently in the 
+        lpf_sc_inp_sum_mp_reqs class.
     """
     if not unit.multiport:
         raise AssertionError('The lpf_fast_sc_inp_sum_mp requirement is for ' +
@@ -1146,6 +1147,9 @@ def add_lpf_fast_sc_inp_sum_mp(unit):
         not syn_reqs.mp_inputs in unit.syn_needs):
         raise AssertionError('Requirement lpf_fast_sc_inp_sum_mp depends on ' +
                              'the mp_weights and mp_inputs requirements.')
+    if not syn_reqs.sc_inp_sum_mp in unit.syn_needs:
+        raise AssertionError('Requirement lpf_fast_sc_inp_sum_mp depends on ' +
+                             'the sc_inp_sum_mp requirement.')
     setattr(unit, 'lpf_fast_sc_inp_sum_mp', [0.2]*unit.n_ports)
 
 
@@ -1304,7 +1308,8 @@ def add_lpf_fast_sc_inp_sum_mp(unit):
     """ Add the fast LPF'd scaled sum of inputs for each port separately. 
 
         This requirement was initially used with the input_selection synapse,
-        and its update implementation is currently in the out_norm_am_sig unit.
+        and its update implementation is currently in the lpf_sc_inp_sum_mp_reqs
+        class of spinal_units.py.
     """
     if not unit.multiport:
         raise AssertionError('The lpf_fast_sc_inp_sum_mp requirement is for ' +
@@ -1339,6 +1344,9 @@ def add_lpf_mid_sc_inp_sum_mp(unit):
         not syn_reqs.mp_inputs in unit.syn_needs):
         raise AssertionError('Requirement lpf_mid_sc_inp_sum_mp depends on ' +
                              'the mp_weights and mp_inputs requirements.')
+    if not syn_reqs.sc_inp_sum_mp in unit.syn_needs:
+        raise AssertionError('Requirement lpf_mid_sc_inp_sum_mp depends on ' +
+                             'the sc_inp_sum_mp requirement.')
     setattr(unit, 'lpf_mid_sc_inp_sum_mp', [0.2]*unit.n_ports)
 
 
@@ -1361,6 +1369,9 @@ def add_lpf_slow_sc_inp_sum_mp(unit):
         not syn_reqs.mp_inputs in unit.syn_needs):
         raise AssertionError('Requirement lpf_slow_sc_inp_sum_mp depends on ' +
                              'the mp_weights and mp_inputs requirements.')
+    if not syn_reqs.sc_inp_sum_mp in unit.syn_needs:
+        raise AssertionError('Requirement lpf_slow_sc_inp_sum_mp depends on ' +
+                             'the sc_inp_sum_mp requirement.')
     setattr(unit, 'lpf_slow_sc_inp_sum_mp', [0.2]*unit.n_ports)
 
 

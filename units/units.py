@@ -733,7 +733,7 @@ class unit():
         # If we require support for multiple input ports, create the port_idx list.
         # port_idx is a list whose elements are lists of integers.
         # port_idx[i] contains the indexes in net.syns[self.ID] 
-        # (or net.delays[self.ID], or net.act[self.ID])
+        # (or net.delays[self.ID])
         # of the synapses whose input port is 'i'.
         if self.multiport is True:
             self.port_idx = [ [] for _ in range(self.n_ports) ]
