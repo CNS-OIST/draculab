@@ -2601,8 +2601,8 @@ class linear_mplex(unit):
 class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs):
     """ A unit to replace the L,V units, and L__V synapses in rl5E_lite.ipynb
     
-        This unit is meant to receive a SF input at port 0, a SP input at port
-        1, and a reward at port 2. The output is what would be expected from the
+        This unit is meant to receive a SF input at port 0, and SP input at port
+        1. The output is what would be expected from the
         V unit (of the td_sigmo class) in rl5E. Weights from SP and SF are
         ignored.
 
@@ -2629,6 +2629,7 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs):
                 'w_sum' : sum of synaptic weights. Default=10
                 'normalize' : if True, weights add to w_sum. Default=False
                 'L_wid' : controls the width of tuning in the L units. Default=N
+                'R_wid' : how rapidly reward decays with error. Default=2
 
         """
         if 'N' in params: self.N = params['N']
@@ -2638,10 +2639,10 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs):
             raise ValueError("Initial values for the v_net must " +
                              "consist of a (N*N + 1)-element array.")
         if 'n_ports' in params:
-            if params['n_ports'] != 3:
-                raise ValueError("v_net units require 3 input ports.")
+            if params['n_ports'] != 2:
+                raise ValueError("v_net units require 2 input ports.")
         else:
-            params['n_ports'] = 3
+            params['n_ports'] = 2
 
         self.delta = params['delta']
         self.del_steps = int(np.round(self.delta / network.min_delay))
@@ -2658,6 +2659,8 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs):
         else: self.normalize = False
         if 'L_wid' in params: self.L_wid = params['L_wid']
         else: self.L_wid = self.N
+        if 'R_wid' in params: self.R_wid = params['R_wid']
+        else: self.R_wid = 2.
         # initializing the "centers" array
         bit = 1./self.N
         self.centers = []
@@ -2669,6 +2672,7 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs):
                                #syn_reqs.mp_weights,
                                #syn_reqs.lpf_slow_sc_inp_sum_mp])
         self.z = np.array(params['init_val']) # next state values
+        self.R = 0.1 # reward value
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. 
@@ -2697,9 +2701,11 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs):
             del_V_out = self.act_buff[-1-self.del_steps]
             V_out = self.f((L_out * y[1:]).sum())
             #print(L_out.sum())
+            r = np.exp(-self.R_wid * abs(state[1] - state[0]))
+            self.R += 0.1*(r - self.R) # so reward is not instantaneous
             self.z[0] = V_out
-            self.z[1:] = self.alpha * (self.mp_inputs[2][0] + self.eff_gamma*y[0] -
-                                       del_V_out) * del_L_out
+            self.z[1:] += self.td_lrate * (self.R + self.eff_gamma*y[0] -
+                                           del_V_out) * del_L_out
             if self.normalize:
                 self.z[1:] = self.w_sum * self.z[1:] / self.z[1:].sum()
         return (self.z - y) * self.rtau
@@ -2796,6 +2802,9 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs):
                                syn_reqs.lpf_mid_sc_inp_sum_mp,
                                syn_reqs.lpf_slow_sc_inp_sum_mp])
         self.z = np.array(params['init_val']) # next state values
+        if self.normalize:
+            self.z[1:] = (self.w_sum * self.z[1:] / 
+                          max(np.abs(self.z[1:]).sum(), 1e-12))
         self.xtra_thr = 0. # extra threshold
         self.lst = -1. # last switch/update time
         self.inp = 0. # L input minus extra threshold
@@ -2847,9 +2856,11 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs):
             if self.normalize:
                 self.z[1:] = (self.w_sum * self.z[1:] / 
                               max(np.abs(self.z[1:]).sum(), 1e-12))
-            self.z[1:] = self.alpha * (vp * (del_L_out - np.mean(del_L_out)) *
+                #print("Normalized!")
+                #print("sum = "+str(self.z[1:].sum()))
+            self.z[1:] += self.lrate * (vp * (del_L_out - np.mean(del_L_out)) *
                                        (y[0] - 0.5))
-        return (self.z - y) * self.rtau
+        return (self.z - y) #* self.rtau
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
