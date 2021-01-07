@@ -223,15 +223,18 @@ class unit():
         min_buff = self.min_buff_size
         self.offset = (self.steps-1)*min_buff # an index used in the update 
                                               # function of derived classes
-        self.buff_size = int(round(self.steps*min_buff)) # number of activation values to store
-        # The 'buffer' contains previous activation values for all state variables.
-        # By transposing, for multidim units each row is a different state vector.
-        # If network is flattened, each column will be a state vector.
+        self.buff_size = int(round(self.steps*min_buff)) # number of activation
+                                                         # values to store
+        # The 'buffer' contains previous activation values for all state
+        # variables. By transposing, for multidim units each column is a
+        # different state vector.If the network is flattened, each row will be
+        # a state vector.
         self.buffer = np.ascontiguousarray( [self.init_val]*self.buff_size, 
                                             dtype=self.bf_type).transpose()
-        # 'act_buff' is a view of the row corresponsing to the activity variable in the
-        # buffer. For single dimensional units it is the same as the buffer.
-        # By convention, the first row of the buffer contains the activities.
+        # 'act_buff' is a view of the row corresponsing to the activity
+        # variable in thebuffer. For single dimensional units it is the same
+        # as the buffer.By convention, the first row of the buffer contains
+        # the activities.
         if self.multidim:
             self.act_buff = self.buffer[0,:] # this should create a view
         else:

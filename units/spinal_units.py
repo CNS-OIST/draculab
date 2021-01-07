@@ -2844,10 +2844,11 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs):
                 self.inp = is0  - self.xtra_thr
                 self.z[0] = self.f(self.inp)
             # update weights
+            if self.normalize:
+                self.z[1:] = (self.w_sum * self.z[1:] / 
+                              max(np.abs(self.z[1:]).sum(), 1e-12))
             self.z[1:] = self.alpha * (vp * (del_L_out - np.mean(del_L_out)) *
                                        (y[0] - 0.5))
-            if self.normalize:
-                self.z[1:] = self.w_sum * self.z[1:] / self.z[1:].sum()
         return (self.z - y) * self.rtau
 
     def dt_fun(self, y, s):
