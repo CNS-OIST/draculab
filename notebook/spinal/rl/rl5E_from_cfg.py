@@ -145,6 +145,7 @@ def rl5E_net(cfg,
     S_params = {'type' : unit_types.bell_shaped_1D,
                 'init_val' : 0.1,
                 'tau' : 0.01,
+                'wrap' : True,
                 'center' : list(np.linspace(0., 1., SN)),
                 'b' : 50. }
     S1_params = S_params.copy() # the input column on the left
