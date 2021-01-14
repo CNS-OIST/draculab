@@ -2624,8 +2624,8 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         This unit is meant to receive an angle input at port 0, a desired angle
         input at port 1, and a reward at port 2. The output is what would be
         expected from the V unit (of the td_sigmo class) in rl5E. Weights from
-        all ports are ignored. The port 0 input and port 1 inputs are expected
-        to be in the (0,2*pi) range.
+        all ports are ignored. The port 0 input is expected in the (-pi,pi)
+        range, and port 1 inputs are expected to be in the (0,2*pi) range.
 
         The dynamics are 101-dimensional. The last 100 state variables
         correspond to the L__V synaptic weights. The first variable is for the
@@ -2691,12 +2691,13 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
                 self.centers.append(np.array([bit*(row+0.5), bit*(col+0.5)]))
         self.centers = 2. * np.pi * np.array(self.centers)
         self.syn_needs.update([syn_reqs.mp_inputs,
+                               syn_reqs.lpf_slow,
                                syn_reqs.del_inp_mp])
                                #syn_reqs.mp_weights,
                                #syn_reqs.lpf_slow_sc_inp_sum_mp])
         self.z = np.zeros_like(params['init_val']) # to store derivatives
-        if self.normalize:
-            self.z[1:] = 2.* self.td_lrate * (self.w_sum - self.z[1:].sum())
+        #if self.normalize:
+        #    self.z[1:] = 2.* self.td_lrate * (self.w_sum - self.z[1:].sum())
         #self.R = 0.1 # reward value
 
     def derivatives(self, y, t):
@@ -2708,10 +2709,12 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
                     y[1:] : L__V weights
         """
         #if t - self.last_time >= self.min_delay:
-        del_qc = self.del_inp_mp[0][0] # delayed current angle in (0,2*pi)
+        del_qc = self.del_inp_mp[0][0] # delayed current angle in (-pi,pi)
         del_qd = self.del_inp_mp[1][0] # delayed desired angle in (0,2*pi)
+        del_qc = del_qc if del_qc > 0. else 2.*np.pi + del_qc # now in (0,2*pi)
         del_state = np.array([del_qd, del_qc])
-        del_L_inps = np.linalg.norm(self.centers - del_state, axis=1)
+        #del_L_inps = np.linalg.norm(self.centers - del_state, axis=1)
+        del_L_inps = self.dists(del_state)
         del_L_out = np.exp(-self.L_wid*(del_L_inps*del_L_inps))
         #sf_id = self.net.syns[self.ID][self.port_idx[0][0]].preID
         #sp_id = self.net.syns[self.ID][self.port_idx[1][0]].preID
@@ -2719,17 +2722,24 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         #sp_unit = self.net.units[sp_id] # assuming single unit
         #del_state = np.array([sp_unit.act_buff[-1-self.del_steps],
                               #sf_unit.act_buff[-1-self.del_steps]])
-        #qd = qd if qd > 0. else 2.*np.pi + qd  # from (-pi,pi) to (0,2*pi)
-        #state = np.array([qd, qc])
-        state = np.array([self.mp_inputs[1][0], self.mp_inputs[0][0]])
-        L_inps = np.linalg.norm(self.centers - state, axis=1)
+        qc = self.mp_inputs[0][0] # current angle in (-pi, pi)
+        qc = qc if qc > 0. else 2.*np.pi + qc  # from (-pi,pi) to (0,2*pi)
+        state = np.array([self.mp_inputs[1][0], qc])
+
+        #state = np.array([self.mp_inputs[1][0], self.mp_inputs[0][0]])
+        #L_inps = np.linalg.norm(self.centers - state, axis=1)
+        L_inps = self.dists(state) # periodic boundaries
         L_out = np.exp(-self.L_wid*(L_inps*L_inps))
 
-        self.L_out_copy = L_out
+        self.L_out_copy = L_out # for debugging purposes
+        # using a variable threshold
+        lpfs = self.get_lpf_slow(0)
+        slow_inp = self.thresh + (np.log(lpfs) - np.log(1.-lpfs))/self.slope
 
         #del_V_out = self.f((del_L_out * y[1:]).sum()) # sanity check
         del_V_out = self.act_buff[-1-self.del_steps]
-        V_out = self.f((L_out * y[1:]).sum())
+        V_out = self.f(((L_out-slow_inp) * y[1:]).sum())
+        #V_out = self.f((L_out * y[1:]).sum()) - lpfs
         #print(L_out.sum())
         #r = np.exp(-self.R_wid * abs(state[1] - state[0]))
         #self.R += 0.1*(r - self.R) # so reward is not instantaneous
@@ -2738,7 +2748,11 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         self.z[1:] = self.alpha * (R + self.eff_gamma*y[0] -
                                    del_V_out) * del_L_out
         if self.normalize:
-            self.z[1:] += 2.*self.td_lrate*(self.w_sum - y[1:].sum())
+            # additive
+            #self.z[1:] += 0.05*np.sign(self.w_sum - np.abs(y[1:]).sum())
+            # multiplicative
+            self.z[1:] += (y[1:] * (self.w_sum / max(1e-10, 
+                           np.abs(y[1:]).sum())) - y[1:])
         return self.z
 
     def dt_fun(self, y, s):
@@ -2746,6 +2760,21 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         raise NotImplementedError("v_net not available for flat networks.")
         #return ( self.f(self.mp_inp_sum[0][s] - self.lpf_slow_sc_inp_sum_mp[0])
         #         - y ) * self.rtau
+
+    def dists(self, state):
+        """ Given a state, provide periodic distances to centers.
+
+            Args:
+                state: 2-element numpy array
+            Returns:
+                100-element numpy array with distances from state to each one of
+                the elements in 'centers', using periodic boundaries.
+        """
+        mins = np.minimum(self.centers, state)
+        maxs = np.maximum(self.centers, state)
+        diff = self.centers - state
+        return np.linalg.norm(np.minimum(2.*np.pi-maxs + mins, 
+                                         maxs - mins), axis=1)
 
 
 class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
@@ -2830,13 +2859,14 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         self.syn_needs.update([syn_reqs.mp_inputs,
                                syn_reqs.mp_weights,
                                syn_reqs.del_inp_mp,
+                               syn_reqs.lpf_slow,
                                syn_reqs.sc_inp_sum_mp,
                                syn_reqs.lpf_fast_sc_inp_sum_mp,
-                               syn_reqs.lpf_mid_sc_inp_sum_mp,
-                               syn_reqs.lpf_slow_sc_inp_sum_mp])
+                               syn_reqs.lpf_mid_sc_inp_sum_mp ])
+                               #syn_reqs.lpf_slow_sc_inp_sum_mp])
         self.z = np.zeros_like(params['init_val']) # to store derivatives
-        if self.normalize:
-            self.z[1:] = 2.* self.lrate * (self.w_sum - self.z[1:].sum())
+        #if self.normalize:
+        #    self.z[1:] = self.lrate * (self.w_sum - np.abs(self.z[1:]).sum())
         self.xtra_thr = 0. # extra threshold
         self.lst = -1. # last switch/update time
         self.inp = 0. # L input minus extra threshold
@@ -2853,8 +2883,10 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         # obtain L inputs
         del_qc = self.del_inp_mp[0][0] # delayed current angle in (0,2*pi)
         del_qd = self.del_inp_mp[1][0] # delayed desired angle in (0,2*pi)
+        del_qc = del_qc if del_qc > 0. else 2.*np.pi + del_qc # now in (0,2*pi)
         del_state = np.array([del_qd, del_qc])
-        del_L_inps = np.linalg.norm(self.centers - del_state, axis=1)
+        #del_L_inps = np.linalg.norm(self.centers - del_state, axis=1)
+        del_L_inps = self.dists(del_state) # periodic boundaries
         del_L_out = np.exp(-self.L_wid*(del_L_inps*del_L_inps))
         #sf_id = self.net.syns[self.ID][self.port_idx[0][0]].preID
         #sp_id = self.net.syns[self.ID][self.port_idx[1][0]].preID
@@ -2867,8 +2899,12 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         #qd = self.del_inp_mp[1][0] # desired angle in (0, 2*pi)
         #state = np.array([qd, qc])
             # delayed and current L outputs
-        state = np.array([self.mp_inputs[1][0], self.mp_inputs[0][0]])
-        L_inps = np.linalg.norm(self.centers - state, axis=1)
+        qc = self.mp_inputs[0][0]
+        qc = qc if qc > 0. else 2.*np.pi + qc  # from (-pi,pi) to (0,2*pi)
+        state = np.array([self.mp_inputs[1][0], qc])
+        #state = np.array([self.mp_inputs[1][0], self.mp_inputs[0][0]])
+        #L_inps = np.linalg.norm(self.centers - state, axis=1)
+        L_inps = self.dists(state) # periodic boundaries
         L_out = np.exp(-self.L_wid*(L_inps*L_inps)) # output from L
         self.L_out_copy = L_out
         # input sums and input derivatives
@@ -2883,19 +2919,26 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
                                  self.thresh - self.xtra_thr) - self.thresh)
             else:
                 # technically incorrect, but probably good enough:
-                slow_state = np.array([self.lpf_slow_sc_inp_sum_mp[1],
-                                       self.lpf_slow_sc_inp_sum_mp[0]])
-                slow_L_inps = np.linalg.norm(self.centers - slow_state, 
-                                             axis=1)
-                slow_L_out = np.exp(-self.L_wid*(slow_L_inps*slow_L_inps))
-                self.xtra_thr = (slow_L_out * y[1:]).sum() 
+                #slow_state = np.array([self.lpf_slow_sc_inp_sum_mp[1],
+                #                       self.lpf_slow_sc_inp_sum_mp[0]])
+                #slow_L_inps = np.linalg.norm(self.centers - slow_state, 
+                #                             axis=1)
+                #slow_L_out = np.exp(-self.L_wid*(slow_L_inps*slow_L_inps))
+                #self.xtra_thr = (slow_L_out * y[1:]).sum() 
+                lpfs = self.get_lpf_slow(0)
+                self.xtra_thr = self.thresh + (np.log(lpfs) - 
+                                np.log(1.-lpfs))/self.slope
             self.inp = is0  - self.xtra_thr
+        #self.z[0] = (self.f(self.inp)-self.get_lpf_slow(0)+0.5-y[0]) * self.rtau
         self.z[0] = (self.f(self.inp) - y[0]) * self.rtau
         # update weights
         self.z[1:] = self.alpha * (vp * (del_L_out - np.mean(del_L_out)) *
                                    (y[0] - 0.5))
         if self.normalize:
-            self.z[1:] += 2.* self.alpha * (self.w_sum - y[1:].sum())
+            #self.z[1:] *= 1. + (0.1 * self.alpha * np.sign(self.w_sum - 
+            #              np.abs(y[1:]).sum()) * self.z[1:] * y[1:])
+            self.z[1:] += (y[1:] * (self.w_sum / max(1e-10, 
+                           np.abs(y[1:]).sum())) - y[1:])
         return self.z 
 
     def dt_fun(self, y, s):
@@ -2903,5 +2946,20 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         raise NotImplementedError("x_net not available for flat networks.")
         #return ( self.f(self.mp_inp_sum[0][s] - self.lpf_slow_sc_inp_sum_mp[0])
         #         - y ) * self.rtau
+
+    def dists(self, state):
+        """ Given a state, provide periodic distances to centers.
+
+            Args:
+                state: 2-element numpy array
+            Returns:
+                100-element numpy array with distances from state to each one of
+                the elements in 'centers', using periodic boundaries.
+        """
+        mins = np.minimum(self.centers, state)
+        maxs = np.maximum(self.centers, state)
+        diff = self.centers - state
+        return np.linalg.norm(np.minimum(2.*np.pi-maxs + mins, 
+                                         maxs - mins), axis=1)
 
 
