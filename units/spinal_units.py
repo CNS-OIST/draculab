@@ -2666,6 +2666,7 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
             params['n_ports'] = 3
 
         self.delta = params['delta']
+        self.dl_st = int(self.delta / network.min_delay)
         self.del_steps = int(np.round(self.delta / network.min_delay))
         self.custom_inp_del = self.del_steps
         #if not 'tau_slow' in params:
@@ -2743,7 +2744,12 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         #print(L_out.sum())
         #r = np.exp(-self.R_wid * abs(state[1] - state[0]))
         #self.R += 0.1*(r - self.R) # so reward is not instantaneous
-        R = self.mp_inputs[2]
+        #R = self.mp_inputs[2] # not entirely correct
+        # closer to the integral of R (a single trapezoid)
+        r_id = self.net.syns[self.ID][self.port_idx[2][0]].preID
+        R = self.delta*(self.net.units[r_id].get_act(t) +
+             self.net.units[r_id].get_act(t-self.delta)) / 2. 
+
         self.z[0] = (V_out - y[0]) * self.rtau
         self.z[1:] = self.alpha * (R + self.eff_gamma*y[0] -
                                    del_V_out) * del_L_out
@@ -2789,6 +2795,9 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         activity of X.The next 100 state variables correspond to the L__X
         synaptic weights.  The number 100 corresponds to the square of the N
         parameter given to the constructor (Default=10), which may be changed.
+
+        The plasticity rule is modulated so changes are reduced when the value
+        of SP has recently changed.
     """
     def __init__(self, ID, params, network):
         """ The class constructor.
@@ -2813,6 +2822,7 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
                               or update (if "switch" is False). Default=0.5.
                 'sw_len' : Distance from L input sum after switch. Default=0.2 .
                 'switch' : Whether port 1 causes a switch. Default is True.
+                'beta' : changes how fast plasticity recovers after SP changes
 
 
         """
@@ -2849,6 +2859,8 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         else: self.sw_len = .2
         if 'switch' in params: self.switch = params['switch']
         else: self.switch = True
+        if 'beta' in params: self.beta = params['beta']
+        else: self.beta = 1.
         # initializing the "centers" array
         bit = 1./self.N
         self.centers = []
@@ -2870,6 +2882,7 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         self.xtra_thr = 0. # extra threshold
         self.lst = -1. # last switch/update time
         self.inp = 0. # L input minus extra threshold
+        self.wlmod = 1. # modulates the learning rule after desired angle changes
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. 
@@ -2912,7 +2925,11 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         is1p = self.lpf_fast_sc_inp_sum_mp[1] - self.lpf_mid_sc_inp_sum_mp[1]
         vp = self.lpf_fast_sc_inp_sum_mp[2] - self.lpf_mid_sc_inp_sum_mp[2]
         # update activity
-        if  abs(is1p) > self.sw_thresh and t - self.lst > self.refr_per:
+        if  (abs(is1p) > self.sw_thresh and t - self.lst > self.refr_per and
+                abs(t-self.net.sim_time) <= self.net.min_delay + 1e-16):
+            print('t=%.2f' % (t), end=', ')
+            #print('lst=' + str(self.lst))
+            #print('is1p=' + str(is1p))
             self.lst = t
             if self.switch:
                 self.xtra_thr = (is0 + self.sw_len * np.sign(is0 -
@@ -2932,8 +2949,15 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         #self.z[0] = (self.f(self.inp)-self.get_lpf_slow(0)+0.5-y[0]) * self.rtau
         self.z[0] = (self.f(self.inp) - y[0]) * self.rtau
         # update weights
-        self.z[1:] = self.alpha * (vp * (del_L_out - np.mean(del_L_out)) *
-                                   (y[0] - 0.5))
+        #self.wlmod = 1. - np.exp(-self.beta * max(t - self.lst, 0.))
+        #if t < self.lst:
+        #    print('t :' + str(t))
+        #    print('lst :' + str(self.lst))
+        #    print('is1p :' + str(is1p))
+            
+        self.wlmod = 1. - np.exp(-self.beta * (t - self.lst))
+        self.z[1:] = self.alpha * self.wlmod * (vp * (del_L_out - 
+                                  np.mean(del_L_out)) * (y[0] - 0.5))
         if self.normalize:
             #self.z[1:] *= 1. + (0.1 * self.alpha * np.sign(self.w_sum - 
             #              np.abs(y[1:]).sum()) * self.z[1:] * y[1:])
