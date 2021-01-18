@@ -2927,7 +2927,7 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         # update activity
         if  (abs(is1p) > self.sw_thresh and t - self.lst > self.refr_per and
                 abs(t-self.net.sim_time) <= self.net.min_delay + 1e-16):
-            print('t=%.2f' % (t), end=', ')
+            #print('t=%.2f' % (t), end=', ')
             #print('lst=' + str(self.lst))
             #print('is1p=' + str(is1p))
             self.lst = t

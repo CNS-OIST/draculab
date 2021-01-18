@@ -1,7 +1,7 @@
 # coding: utf-8
 
 # rl5E_from_cfg.py
-# A function to be used with the v3afxB_test notebooks
+# A function to be used with the rl5E_hyper.ipynb
 
 from draculab import *
 
@@ -563,7 +563,7 @@ def rl5E_net(cfg,
     M__C_mat = np.array([[0.,  2.15],
                         [2.15, 0.]])
     
-    if rand_w:
+    if not rand_w:
         for m_idx, m_id in enumerate(M):
             for c_idx, c_id in enumerate(C):
                 syn_list = net.syns[c_id]
