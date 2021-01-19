@@ -2927,7 +2927,7 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         # update activity
         if  (abs(is1p) > self.sw_thresh and t - self.lst > self.refr_per and
                 abs(t-self.net.sim_time) <= self.net.min_delay + 1e-16):
-            #print('t=%.2f' % (t), end=', ')
+            print('t=%.2f' % (t), end=', ')
             #print('lst=' + str(self.lst))
             #print('is1p=' + str(is1p))
             self.lst = t
@@ -2963,6 +2963,7 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
             #              np.abs(y[1:]).sum()) * self.z[1:] * y[1:])
             self.z[1:] += (y[1:] * (self.w_sum / max(1e-10, 
                            np.abs(y[1:]).sum())) - y[1:])
+            self.z[1:] += np.mean(y[1:]) - y[1:]  # moving to zero mean
         return self.z 
 
     def dt_fun(self, y, s):
