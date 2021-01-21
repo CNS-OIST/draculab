@@ -147,7 +147,7 @@ def rl5E_net(cfg,
    # SF, SP
     SF_params = {'type' : unit_types.sigmoidal,
                  'thresh' : 0.,
-                 'slope' : 1.,
+                 'slope' : cfg['SF_slope'],
                  'init_val' : 0.2,
                  'tau' : 0.02 }  # 0.05
     ## The desired values for SF
@@ -190,6 +190,7 @@ def rl5E_net(cfg,
                 'coordinates' : np.array([.8, .8])}
     P_params['delay'] = V_params['delta'] + net_params['min_delay']
     # The configurator unit
+    X_del = cfg['X_del'] - cfg['X_del']%net_params['min_delay']
     X_params = {'type' : unit_types.x_net,
                 'multidim' : True,
                 'init_val' : np.concatenate((np.array([0.5]), 0.1*np.ones(100))),
@@ -197,9 +198,9 @@ def rl5E_net(cfg,
                 'slope' : cfg['X_slope'],
                 'thresh' : cfg['X_thresh'],
                 'del_steps' : int(np.round(cfg['X_del']/net_params['min_delay'])),
-                'lrate' : 200.,
+                'lrate' : cfg['X_lrate'],
                 'L_wid' : .5 * No2 / np.pi,
-                'delay' : cfg['X_del'] + 2.*net_params['min_delay'],
+                'delay' : X_del + 2.*net_params['min_delay'],
                 'tau_fast' : 0.02,
                 'tau_mid' : 0.2,
                 'tau_slow' : 50.,
