@@ -40,6 +40,8 @@ def rl5E_net(cfg,
     cfg['X_switch'] = x_switch
     cfg['V_normalize'] = V_normalize
     cfg['X_normalize'] = X_normalize
+    if not 'X_type' in cfg: cfg['X_type'] = unit_types.x_net
+    if not 'r_thr' in cfg: cfg['r_thr'] = np.pi/6.
 
     # some parameters 
     C_type = "rga_sig" # unit type for the C population
@@ -182,7 +184,7 @@ def rl5E_net(cfg,
                 #'R_wid' : 2.,
                 'tau' : 0.02,
                 'tau_slow': 50.,
-                'delta' : cfg['V_delta'],
+                'delta' : cfg['V_delta']-cfg['V_delta']%net_params['min_delay'],
                 'td_lrate' : cfg['V_td_lrate'],
                 'td_gamma' : cfg['V_td_gamma'],
                 'normalize' : cfg['V_normalize'],
@@ -191,7 +193,7 @@ def rl5E_net(cfg,
     P_params['delay'] = V_params['delta'] + net_params['min_delay']
     # The configurator unit
     X_del = cfg['X_del'] - cfg['X_del']%net_params['min_delay']
-    X_params = {'type' : unit_types.x_net,
+    X_params = {'type' : cfg['X_type'],
                 'multidim' : True,
                 'init_val' : np.concatenate((np.array([0.5]), 0.1*np.ones(100))),
                 'tau' : 0.02,
@@ -211,6 +213,7 @@ def rl5E_net(cfg,
                 'w_sum' : cfg['X_w_sum'],
                 'refr_per' : 2.,
                 'beta' : 2.,
+                'r_thr' : cfg['r_thr'], 
                 'coordinates' : np.array([0.7, 0.3]) }
 
     # units to track synaptic weights or other values

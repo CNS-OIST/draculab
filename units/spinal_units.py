@@ -701,7 +701,7 @@ class am_oscillator2D(unit, rga_reqs):
     synapses.
     
     The equations of the model currently look like this:
-    u'   = (c - u + A*tanh(I)*sin(th) / tau_u
+    u'   = (c - u + A*tanh(I)*sin(th)) / tau_u
     c'   = c * (I0 + I1*c)*(1-c) / tau_c
 
     where: 
@@ -2757,8 +2757,9 @@ class v_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
             # additive
             #self.z[1:] += 0.05*np.sign(self.w_sum - np.abs(y[1:]).sum())
             # multiplicative
-            self.z[1:] += (y[1:] * (self.w_sum / max(1e-10, 
-                           np.abs(y[1:]).sum())) - y[1:])
+            self.z[1:] += 0.1 * (y[1:] * (self.w_sum / max(1e-10, 
+                                 np.abs(y[1:]).sum())) - y[1:])
+            self.z[1:] -= 0.005 * np.mean(y[1:]) # moving to zero mean
         return self.z
 
     def dt_fun(self, y, s):
@@ -2961,9 +2962,9 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         if self.normalize:
             #self.z[1:] *= 1. + (0.1 * self.alpha * np.sign(self.w_sum - 
             #              np.abs(y[1:]).sum()) * self.z[1:] * y[1:])
-            self.z[1:] += (y[1:] * (self.w_sum / max(1e-10, 
-                           np.abs(y[1:]).sum())) - y[1:])
-            self.z[1:] -= np.mean(y[1:]) # moving to zero mean
+            self.z[1:] += 0.1 * (y[1:] * (self.w_sum / max(1e-10, 
+                                 np.abs(y[1:]).sum())) - y[1:])
+            self.z[1:] -= 0.005 * np.mean(y[1:]) # moving to zero mean
         return self.z 
 
     def dt_fun(self, y, s):
@@ -3100,6 +3101,7 @@ class x_netB(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         self.l_init = np.zeros(self.dim-1) # L-layer activity starting the reach
         self.lst_r = 0. # time of last reward
         self.Dw = 0.
+        self.is1p_copy = 0. # for debugging
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. 
@@ -3141,6 +3143,7 @@ class x_netB(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         #self.L_out_copy = L_out
         # input sums and input derivatives
         is1p = self.lpf_fast_sc_inp_sum_mp[1] - self.lpf_mid_sc_inp_sum_mp[1]
+        self.is1p_copy = is1p
         #vp = self.lpf_fast_sc_inp_sum_mp[2] - self.lpf_mid_sc_inp_sum_mp[2]
         # update activity
         if  abs(is1p) > self.sw_thresh and net_t - self.lst > self.refr_per:
@@ -3185,7 +3188,7 @@ class x_netB(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
             #              np.abs(y[1:]).sum()) * self.z[1:] * y[1:])
             self.z[1:] += 0.1 * (y[1:] * (self.w_sum / max(1e-10, 
                                  np.abs(y[1:]).sum())) - y[1:])
-            self.z[1:] -= 0.1 * np.mean(y[1:]) # moving to zero mean
+            self.z[1:] -= 0.005 * np.mean(y[1:]) # moving to zero mean
         return self.z 
 
     def dt_fun(self, y, s):
