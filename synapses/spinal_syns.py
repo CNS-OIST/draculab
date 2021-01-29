@@ -191,7 +191,7 @@ class rga_synapse(synapse):
         # weight normalization
         norm_fac = .5 * self.w_sum * (u.l1_norm_factor_mp[self.err_port] + 
                                       pre.out_norm_factor)
-        self.w += self.alpha * (norm_fac - 1.)*self.w
+        self.w += 0.05 * self.alpha * (norm_fac - 1.)*self.w
         # weight update
         #self.w += self.alpha * max(up - xp, 0.) * (sp - spj)
         #self.w += self.alpha * (up - xp) * (sp - spj) # default
@@ -412,7 +412,7 @@ class rga_ge(synapse):
         #       pre.get_lpf_mid(self.delay_steps) )
 
         norm_fac = .5*(u.l1_norm_factor_mp[self.err_port] + pre.out_norm_factor)
-        self.w += self.alpha * (norm_fac - 1.)*self.w # multiplicative?
+        self.w += 0.05 * self.alpha * (norm_fac - 1.)*self.w # multiplicative?
 
         gep = u.inp_deriv_mp[self.ge_port][0] # only one GE input
         self.gep_slow += 10.*self.net.min_delay*(gep - self.gep_slow)
@@ -821,7 +821,7 @@ class rga_21(synapse):
         # normalization 
         norm_fac = .5 * self.w_sum * (post.l1_norm_factor_mp[self.err_port] +
                                       pre.out_norm_factor)
-        self.w += self.alpha * (norm_fac - 1.)*self.w 
+        self.w += 0.03 * self.alpha * (norm_fac - 1.)*self.w 
         # plasticity equation (so far the best)
         #self.w -= self.alpha * (ejpp - epp) * (cip - cp)
         # Using only positive weights (experimental)
