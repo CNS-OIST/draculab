@@ -213,7 +213,7 @@ def rl5E_net(cfg,
                 'w_sum' : cfg['X_w_sum'],
                 'refr_per' : 2.,
                 'beta' : 2.,
-                'r_thr' : cfg['r_thr'], 
+                'r_thr' : cfg['r_trh'],
                 'coordinates' : np.array([0.7, 0.3]) }
 
     # units to track synaptic weights or other values
