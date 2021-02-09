@@ -383,6 +383,24 @@ def add_diff_avg(unit):
     setattr(unit, 'dsnorm_list_dels', dsnorm_list_dels)
 
 
+def add_lpf_fast_inp_sum(unit):
+    """ Adds the low-pass filtered sum of inputs with fast time constant.
+
+        Currently the input sum does not consider input weights for consistency
+        with lpf_mid_inp_sum. Using the scaled input sum requires a one-line
+        change in the upd_lpf_fast_inp_sum method.
+
+        This requirement was first used by the x_netC model, but the
+        implementation is in the unit class, as this is useful to obtain the
+        derivatives of inputs arising directly from plants.
+    """
+    if not hasattr(unit,'tau_fast'): 
+        raise NameError( 'lpf_fast_inp_sum requires unit parameter tau_mid, not yet set' )
+    if not hasattr(unit, 'fast_prop'):
+        add_propagator(unit, 'fast')
+    setattr(unit, 'lpf_fast_inp_sum', unit.init_act) # arbitrary initialization
+
+
 def add_lpf_mid_inp_sum(unit):
     """ Adds the low-pass filtered sum of inputs.
 
@@ -405,6 +423,24 @@ def add_lpf_mid_inp_sum(unit):
     setattr(unit, 'lpf_mid_inp_sum', unit.init_act) # arbitrary initialization
     setattr(unit, 'lpf_mid_inp_sum_buff', 
             np.array( [unit.init_act]*unit.steps, dtype=unit.bf_type))
+
+
+def add_lpf_slow_inp_sum(unit):
+    """ Adds the low-pass filtered sum of inputs with slow time constant.
+
+        Currently the input sum does not consider input weights for consistency
+        with lpf_mid_inp_sum. Using the scaled input sum requires a one-line
+        change in the upd_lpf_slow_inp_sum method.
+
+        This requirement was first used by the x_netC model, but the
+        implementation is in the unit class, as this is useful to obtain the
+        derivatives of inputs arising directly from plants.
+    """
+    if not hasattr(unit,'tau_slow'): 
+        raise NameError( 'lpf_slow_inp_sum requires unit parameter tau_slow, not yet set' )
+    if not hasattr(unit, 'slow_prop'):
+        add_propagator(unit, 'slow')
+    setattr(unit, 'lpf_slow_inp_sum', unit.init_act) # arbitrary initialization
 
 
 def add_lpf_slow_sc_inp_sum(unit):

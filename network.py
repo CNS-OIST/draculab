@@ -1265,6 +1265,9 @@ class network():
                     lpf: buffers used for low-pass filtered activity.
                     sim_time: a copy of network.sim_time
         """
+        #TODO: Seems like I forgot to restor the lpf buffers. Also, all
+        # requirement variables.
+
         # testing network has the same signature
         for uid, u in enumerate(self.units):
             if u.type != state['units'][uid]:

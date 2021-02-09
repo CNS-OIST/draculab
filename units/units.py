@@ -895,6 +895,15 @@ class unit():
         self.diff_avg = ( sum([u.get_lpf_fast(s) - u.get_lpf_mid(s) for u,s in 
                           self.dsnorm_list_dels]) / self.n_dhebbsnorm )
 
+    def upd_lpf_fast_inp_sum(self,time):
+        """ Update the lpf_fast_inp_sum variable. """
+        #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
+        #                                ' lpf_mid_inp_sum updated backwards in time']
+        #inp_sum = self.get_input_sum(t)
+        inp_sum = sum(self.get_inputs(time))
+        self.lpf_fast_inp_sum = inp_sum + ( (self.lpf_fast_inp_sum - inp_sum) *
+                                             self.fast_prop )
+
     def upd_lpf_mid_inp_sum(self,time):
         """ Update the lpf_mid_inp_sum variable. """
         #assert time >= self.last_time, ['Unit ' + str(self.ID) + 
@@ -911,6 +920,14 @@ class unit():
         # update the buffer
         self.lpf_mid_inp_sum_buff[:-1] = self.lpf_mid_inp_sum_buff[1:]
         self.lpf_mid_inp_sum_buff[-1] = self.lpf_mid_inp_sum
+
+
+    def upd_lpf_slow_inp_sum(self,time):
+        """ Update the lpf_slow_inp_sum variable. """
+        #inp_sum = self.get_input_sum(t)
+        inp_sum = sum(self.get_inputs(time))
+        self.lpf_slow_inp_sum = inp_sum + ( (self.lpf_slow_inp_sum - inp_sum) *
+                                             self.slow_prop )
 
 
     def upd_lpf_slow_sc_inp_sum(self, time):

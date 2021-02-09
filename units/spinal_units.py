@@ -2831,7 +2831,7 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         else: self.N = 10
         params['multidim'] = True
         if len(params['init_val']) != self.N*self.N + 1:
-            raise ValueError("Initial values for the v_net must " +
+            raise ValueError("Initial values for the x_net unit must " +
                              "consist of a (N*N + 1)-element array.")
         if 'n_ports' in params:
             if params['n_ports'] != 3:
@@ -2891,7 +2891,7 @@ class x_net(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
             Args:
                 y : numpy array with state variables.
                     y[0] : unit's activity
-                    y[1:] : L__V weights
+                    y[1:] : L__X weights
         """
         #if t - self.last_time >= self.min_delay:
         # obtain L inputs
@@ -3040,7 +3040,7 @@ class x_netB(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         else: self.N = 10
         params['multidim'] = True
         if len(params['init_val']) != self.N*self.N + 1:
-            raise ValueError("Initial values for the v_net must " +
+            raise ValueError("Initial values for x_netB must " +
                              "consist of a (N*N + 1)-element array.")
         if 'n_ports' in params:
             if params['n_ports'] != 3:
@@ -3109,7 +3109,7 @@ class x_netB(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
             Args:
                 y : numpy array with state variables.
                     y[0] : unit's activity
-                    y[1:] : L__V weights
+                    y[1:] : L__X weights
         """
         #if t - self.last_time >= self.min_delay:
         net_t = self.net.sim_time
@@ -3216,16 +3216,16 @@ class x_netB(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
                                          maxs - mins), axis=1)
 
 
-class x_netC(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
-    """ An X unit to be used in the rl_trans.ipynb notebook.
+class x_netC(unit): #, lpf_sc_inp_sum_mp_reqs, rga_reqs):
+    """ An X unit to be used in rl_trans.ipynb (not for general use).
     
         This unit is meant to receive a current angle at port 0. The desired
         angle is not necessary, since we know it is pi/2. Furthermore, a value
         is not necessary, since we will just use the sine of the angle (vertical
         height).
 
-        The current angle is first expanded into the activity of 20 units, as
-        would happen in the S1 network of rl5E. Those 20 units directly provide
+        The current angle is first expanded into the activity of N units, as
+        would happen in the S1 network of rl5E. Those N units directly provide
         the input to the X unit. The X unit directly provides a torque to the
         pendulum. The X sigmoidal is unique in the fact that its minimal output
         is -1, wheras its maximal output is 1 (it uses a hyperbolic tangent).
@@ -3238,23 +3238,11 @@ class x_netC(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         transition happens, t0 the time of the transition previous to t1, and
         t_pos be the time when V' stopped being positive. The change in weight
         for input s_j is:
-        w'(t1) = alpha [V(t1) - V(t0)] (s_j(t0) - <s(t0)>) X(t0)
-        .... 
-        
-        t0 the time of the
-        1, and a value input at port 2. The output is what would be expected
-        from the X unit (of the x_switch_sig class) in rl5E. Weights from SF
-        and SP inputs are ignored. The difference with x_net is in the learning
-        rule. x_net uses differential Hebbian learning with the
-        derivative of the value. In contrast, this unit uses the difference of
-        the value at the beginning and at the end of a presentation.
+        w'(t1) = alpha [V(t1) - V(t0)] (s_j(t0) - <s(t0)>) X(t0),
 
-        The dynamics are 101-dimensional. The first variable is for the
-        activity of X.The next 100 state variables correspond to the L__X
-        synaptic weights.  The number 100 corresponds to the square of the N
-        parameter given to the constructor (Default=10), which may be changed.
-
-        The plasticity happens only when the value of SP has recently changed.
+        Moreover, we want s(t_pos) to become a "transition state"; a state that
+        when reached triggers a transition. Currently transition states are nto
+        implemented.
     """
     def __init__(self, ID, params, network):
         """ The class constructor.
@@ -3264,92 +3252,72 @@ class x_netC(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
                 REQUIRED PARAMETERS
                 'tau' : time constant of the dynamics
                 'slope' : Slope of the sigmoidal function.
-                'del_steps' : an integer indicating the delay that the
-                            learning rule uses for the lateral port inputs. 
-                            The delay is in units of min_delay steps. 
                 'lrate' : learning rate of the synapses
+                'trans_t' : If time without positive V' is larger than this, a
+                            transition happens.
+                'tau_fast' : fast time constant for low-pass filtering
+                'tau_mid' : medium time constant for low-pass filtering
                 OPTIONAL PARAMETERS
-                'N' : number of units to represent an angle. Default=10
+                'N' : number of units to represent an angle. Default=20
                 'w_sum' : sum of synaptic weights. Default=10
-                'normalize' : if True, weights add to w_sum. Default=False
-                'L_wid' : controls the width of tuning in the L units. Default=N
+                'normalize' : if True, weights add to w_sum. Default=True
+                's_wid' : controls the width of tuning in the s units. Default=N
+                'beta' : How fast plasticity decays after transitions. Def = 1.
                 'refr_per' : minimum time between switches. Defaul=1 sec.
-                'sw_thresh' : If port 1 derivative larger than this, switch,
-                              or update (if "switch" is False). Default=0.5.
-                'sw_len' : Distance from L input sum after switch. Default=0.2 .
-                'switch' : Whether port 1 causes a switch. Default is True.
-                'beta' : How fast plasticity decays after SP changes. Def = 1.
-                'eta' : modulates how much time affects the value. Default=0.2
-                'r_thr' : angle is reached when |SP-SF|<r_thr. Default=2pi/12.
-
-
+                             
         """
+        self.tau = params['tau']
+        self.rtau = 1. / self.tau
         if 'N' in params: self.N = params['N']
-        else: self.N = 10
+        else: self.N = 20
         params['multidim'] = True
-        if len(params['init_val']) != self.N*self.N + 1:
-            raise ValueError("Initial values for the v_net must " +
-                             "consist of a (N*N + 1)-element array.")
+        if len(params['init_val']) != self.N + 1:
+            raise ValueError("Initial values for the x_netC must " +
+                             "consist of a (N + 1)-element array.")
         if 'n_ports' in params:
-            if params['n_ports'] != 3:
-                raise ValueError("x_net units require 3 input ports.")
+            if params['n_ports'] != 1:
+                raise ValueError("The x_netC unit uses only one input port.")
         else:
-            params['n_ports'] = 3
-        if 'del_steps' in params: self.del_steps = params['del_steps']
-        else: raise AssertionError('x_net units need a del_steps parameter')
-        self.custom_inp_del = self.del_steps
-        #if not 'tau_slow' in params:
-        #    raise AssertionError('params for x_net should include tau_slow')
-        sigmoidal.__init__(self, ID, params, network)
+            params['n_ports'] = 1
+        unit.__init__(self, ID, params, network)
+        self.slope = params['slope']
+        self.trans_t = params['trans_t']
         self.lrate = params['lrate']
         self.alpha = self.lrate * self.min_delay
         if 'w_sum' in params: self.w_sum = params['w_sum']
         else: self.w_sum = 10.
         if 'normalize' in params: self.normalize = params['normalize']
         else: self.normalize = False
-        if 'L_wid' in params: self.L_wid = params['L_wid']
-        else: self.L_wid = self.N
-        if 'refr_per' in params: self.refr_per = params['refr_per']
-        else: self.refr_per = 1.
-        if 'sw_thresh' in params: self.sw_thresh = params['sw_thresh']
-        else: self.sw_thresh = .5
-        if 'sw_len' in params: self.sw_len = params['sw_len']
-        else: self.sw_len = .2
-        if 'switch' in params: self.switch = params['switch']
-        else: self.switch = True
+        if 's_wid' in params: self.s_wid = params['s_wid']
+        else: self.s_wid = self.N
         if 'beta' in params: self.beta = params['beta']
         else: self.beta = 1.
-        if 'eta' in params: self.eta = params['eta']
-        else: self.eta = .2
-        if 'r_thr' in params: self.r_thr = params['r_thr']
-        else: self.r_thr = np.pi/6. 
-        # initializing the "centers" array
-        bit = 1./self.N
-        self.centers = []
-        for row in range(self.N):
-            for col in range(self.N):
-                self.centers.append(np.array([bit*(row+0.5), bit*(col+0.5)]))
-        self.centers = 2. * np.pi * np.array(self.centers)
-        self.syn_needs.update([syn_reqs.mp_inputs,
-                               syn_reqs.mp_weights,
-                               syn_reqs.del_inp_mp,
-                               syn_reqs.lpf_slow,
-                               syn_reqs.sc_inp_sum_mp,
-                               syn_reqs.lpf_fast_sc_inp_sum_mp,
-                               syn_reqs.lpf_mid_sc_inp_sum_mp ])
+        if 'refr_per' in params: self.refr_per = params['refr_per']
+        else: self.refr_per = 1.
+        
+        self.centers = np.linspace(0., 2.*np.pi, self.N+1)[:-1]
+        self.syn_needs.update([syn_reqs.inp_vector,
+                               syn_reqs.lpf_fast_inp_sum,
+                               syn_reqs.lpf_mid_inp_sum,
+                               syn_reqs.lpf_slow_inp_sum])
+                               #syn_reqs.del_inp_mp,
+                               #syn_reqs.lpf_slow,
+                               #syn_reqs.sc_inp_sum_mp,
+                               #syn_reqs.lpf_fast_sc_inp_sum_mp,
+                               #syn_reqs.lpf_mid_sc_inp_sum_mp ])
                                #syn_reqs.lpf_slow_sc_inp_sum_mp])
         self.z = np.zeros_like(params['init_val']) # to store derivatives
+        self.hp = 0.  # kept for debugging purposes
         #if self.normalize:
         #    self.z[1:] = self.lrate * (self.w_sum - np.abs(self.z[1:]).sum())
-        self.xtra_thr = 0. # extra threshold
         self.lst = -1. # last switch/update time
-        self.inp = 0. # L input minus extra threshold
+        self.lst_hp = 0. # time when height derivative was last positive
         self.wlmod = 1. # modulates the learning rule after desired angle changes
         self.v_init = 0.5  # value when starting the reach
-        self.l_init = np.zeros(self.dim-1) # L-layer activity starting the reach
-        self.lst_r = 0. # time of last reward
-        self.Dw = 0.
-        self.is1p_copy = 0. # for debugging
+        self.s_init = np.zeros(self.dim-1) # S-layer activity starting the reach
+        self.lst_hp = 0. # time of last reward
+        self.Dw = 0. # the direction of the weights derivative
+        self.inp = 0. # effective input to the X unit
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. 
@@ -3357,83 +3325,45 @@ class x_netC(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
             Args:
                 y : numpy array with state variables.
                     y[0] : unit's activity
-                    y[1:] : L__V weights
+                    y[1:] : S__X weights
         """
         #if t - self.last_time >= self.min_delay:
         net_t = self.net.sim_time
-        # obtain L inputs
-        #del_qc = self.del_inp_mp[0][0] # delayed current angle in (-pi,pi)
-        #del_qd = self.del_inp_mp[1][0] # delayed desired angle in (0,2*pi)
-        #del_qc = del_qc if del_qc > 0. else 2.*np.pi + del_qc # now in (0,2*pi)
-        #del_state = np.array([del_qd, del_qc])
-        #del_L_inps = np.linalg.norm(self.centers - del_state, axis=1)
-        #del_L_inps = self.dists(del_state) # periodic boundaries
-        #del_L_out = np.exp(-self.L_wid*(del_L_inps*del_L_inps))
-        #sf_id = self.net.syns[self.ID][self.port_idx[0][0]].preID
-        #sp_id = self.net.syns[self.ID][self.port_idx[1][0]].preID
-        #sf_unit = self.net.units[sf_id] # assuming single unit
-        #sp_unit = self.net.units[sp_id] # assuming single unit
-            # delayed and current state
-        #del_state = np.array([sp_unit.act_buff[-1-self.del_steps],
-        #                      sf_unit.act_buff[-1-self.del_steps]])
-        #qc = self.del_inp_mp[0][0] # current angle in (2,2*pi)
-        #qd = self.del_inp_mp[1][0] # desired angle in (0, 2*pi)
-        #state = np.array([qd, qc])
-            # delayed and current L outputs
-        qc = self.mp_inputs[0][0]
-        qc = qc if qc > 0. else 2.*np.pi + qc  # from (-pi,pi) to (0,2*pi)
-        qd = self.mp_inputs[1][0]
-        state = np.array([qd, qc])
-        L_inps = self.dists(state) # periodic boundaries
-        L_out = np.exp(-self.L_wid*(L_inps*L_inps)) # output from L
-        #state = np.array([self.mp_inputs[1][0], self.mp_inputs[0][0]])
-        #L_inps = np.linalg.norm(self.centers - state, axis=1)
-        #self.L_out_copy = L_out
-        # input sums and input derivatives
-        is1p = self.lpf_fast_sc_inp_sum_mp[1] - self.lpf_mid_sc_inp_sum_mp[1]
-        self.is1p_copy = is1p
-        #vp = self.lpf_fast_sc_inp_sum_mp[2] - self.lpf_mid_sc_inp_sum_mp[2]
-        # update activity
-        if  abs(is1p) > self.sw_thresh and net_t - self.lst > self.refr_per:
-            self.Dw = (self.del_inp_mp[2][0] - self.v_init -
-                       self.eta * (net_t - self.lst_r)) * (self.l_init -
-                       np.mean(self.l_init)) * (self.act_buff[-50] - 0.5)
-            # the -50 magic number is meant to capture the activity of X through
-            # the reach. It seems a hacky, as it might not generalize to
-            # the case when the refractory period is smaller than 50*min_delay.
-            is0 = (L_out * y[1:]).sum() # scaled input sum from L
+        # obtain S inputs
+        angle = sum(self.get_inputs(net_t))%(2.*np.pi)
+        d = self.dists(angle)
+        s_acts = np.exp(-self.s_wid * d * d)
+        # obtain derivative of height
+        hp = np.cos(angle) * (self.lpf_fast_inp_sum - self.lpf_mid_inp_sum)
+        self.hp = hp # for debugging
+
+        if hp > 0.01:
+            self.lst_hp = net_t
+
+        if net_t-self.lst_hp > self.trans_t and net_t-self.lst > self.refr_per:
             self.lst = net_t
-            if self.switch:
-                self.sw_len *= np.sign(np.random.random()-0.5)
-                self.xtra_thr = (is0 + self.sw_len * np.sign(is0 -
-                                 self.thresh - self.xtra_thr) - self.thresh)
-            else:
-                lpfs = self.get_lpf_slow(0)
-                self.xtra_thr = self.thresh + (np.log(lpfs) - 
-                                np.log(1.-lpfs))/self.slope
-            self.inp = is0  - self.xtra_thr
-            self.v_init = 0.5
-            self.l_init = np.zeros(self.dim-1)
-        else:
-            mx = max(qc,qd)
-            mn = min(qc,qd)
-            cur_dist = min(mx - mn, 2.*np.pi - mx + mn)
-            if cur_dist < self.r_thr:
-                self.lst_r = net_t
+            I = (s_acts * y[1:]).sum()
+            # Awfully inefficient, but it's easy
+            d_slow = self.dists(self.lpf_slow_inp_sum % (2.*np.pi))
+            s_acts_slow = np.exp(-self.s_wid * d_slow * d_slow)
+            I_slow = (s_acts_slow * y[1:]).sum()
+            
+            self.inp = self.slope * (I - I_slow +0.01*(np.random.random()-0.5))
+
+            self.Dw = ((np.sin(angle) - self.v_init) *
+                       (self.s_init - np.mean(self.s_init)) *
+                        self.act_buff[-50])
+
+            self.old_hp = hp
 
         if 0.05 < net_t - self.lst and net_t - self.lst < 0.1:
-            self.l_init += 0.1 * (L_out - self.l_init)
-            self.v_init += 0.1 * (self.mp_inputs[2][0] - self.v_init)
-        self.z[0] = (self.f(self.inp) - y[0]) * self.rtau
-        # update weights
-        #self.wlmod = 1. - np.exp(-self.beta * max(t - self.lst, 0.))
-        #if t < self.lst:
-        #    print('t :' + str(t))
-        #    print('lst :' + str(self.lst))
-        #    print('is1p :' + str(is1p))
-            
+            self.s_init += 0.1 * (s_acts - self.s_init)
+            self.v_init += 0.1 * (np.sin(angle) - self.v_init)
+        self.z[0] = (np.tanh(self.inp) - y[0]) * self.rtau
+                    
         self.wlmod = np.exp(-self.beta * (t - self.lst))
         self.z[1:] = self.alpha * self.wlmod * self.Dw
+
         if self.normalize:
             #self.z[1:] *= 1. + (0.1 * self.alpha * np.sign(self.w_sum - 
             #              np.abs(y[1:]).sum()) * self.z[1:] * y[1:])
@@ -3444,23 +3374,19 @@ class x_netC(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
 
     def dt_fun(self, y, s):
         """ The derivatives function used when the network is flat. """
-        raise NotImplementedError("x_net not available for flat networks.")
-        #return ( self.f(self.mp_inp_sum[0][s] - self.lpf_slow_sc_inp_sum_mp[0])
-        #         - y ) * self.rtau
+        raise NotImplementedError("x_netC not available for flat networks.")
 
-    def dists(self, state):
-        """ Given a state, provide periodic distances to centers.
+    def dists(self, angle):
+        """ Given an angle, provide periodic distances to s centers.
 
             Args:
-                state: 2-element numpy array
+                angle: angle in the [0, 2pi] range
             Returns:
-                100-element numpy array with distances from state to each one of
+                N-element numpy array with distances from the angle to
                 the elements in 'centers', using periodic boundaries.
         """
-        mins = np.minimum(self.centers, state)
-        maxs = np.maximum(self.centers, state)
-        diff = self.centers - state
-        return np.linalg.norm(np.minimum(2.*np.pi-maxs + mins, 
-                                         maxs - mins), axis=1)
+        mins = np.minimum(self.centers, angle)
+        maxs = np.maximum(self.centers, angle)
+        return np.minimum(2.*np.pi-maxs + mins, maxs - mins)
 
 

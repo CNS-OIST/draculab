@@ -91,6 +91,7 @@ class unit_types(Enum):
     v_net = 126
     x_net = 127
     x_netB = 128
+    x_netC = 129
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -288,6 +289,9 @@ class unit_types(Enum):
         elif self == unit_types.x_netB:
             from units.spinal_units import x_netB
             unit_class = x_netB
+        elif self == unit_types.x_netC:
+            from units.spinal_units import x_netC
+            unit_class = x_netC
         else:
             raise NotImplementedError('Attempting to retrieve the class of an '+ 
                                       'unknown unit model')
@@ -670,6 +674,8 @@ class syn_reqs(Enum):
     w_sum_mp = 133 # sum of weights per port
     i_ip_ip_mp = 134 # inner product of inputs and their derivatives per port
     ni_ip_ip_mp = 135 # dot product of normalized inputs times derivs per port
+    lpf_fast_inp_sum = 136 # LPF'd sum of presynaptic inputs with a fast time constant.
+    lpf_slow_inp_sum = 137 # LPF'd sum of presynaptic inputs with a slow time constant.
 
 
     def list_names():
@@ -685,7 +691,7 @@ class syn_reqs(Enum):
 
         """
         high_priority = {'lpf_fast', 'lpf_mid', 'lpf_slow', 
-                         'mp_inputs', 'mp_weights'}
+                         'mp_inputs', 'mp_weights', 'inp_vector'}
         mid_priority = {'sc_inp_sum', 'inp_deriv_mp', 'del_inp_mp'}
         if self.name in high_priority:
             return 1
