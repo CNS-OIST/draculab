@@ -3330,7 +3330,7 @@ class x_netC(unit): #, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         #if t - self.last_time >= self.min_delay:
         net_t = self.net.sim_time
         # obtain S inputs
-        angle = sum(self.get_inputs(net_t))%(2.*np.pi)
+        angle = (self.get_inputs(net_t)[0])%(2.*np.pi) # single input
         d = self.dists(angle)
         s_acts = np.exp(-self.s_wid * d * d)
         # obtain derivative of height
@@ -3343,20 +3343,32 @@ class x_netC(unit): #, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         if net_t-self.lst_hp > self.trans_t and net_t-self.lst > self.refr_per:
             self.lst = net_t
             I = (s_acts * y[1:]).sum()
-            # Awfully inefficient, but it's easy
+            # Inefficient, but easy
             d_slow = self.dists(self.lpf_slow_inp_sum % (2.*np.pi))
             s_acts_slow = np.exp(-self.s_wid * d_slow * d_slow)
-            I_slow = (s_acts_slow * y[1:]).sum()
+            I_slow = 0. #(s_acts_slow * y[1:]).sum()
             
-            self.inp = self.slope * (I - I_slow +0.01*(np.random.random()-0.5))
+            #self.inp = self.slope * (I - I_slow +0.01*(np.random.random()-0.5))
+            self.inp = self.slope * (I - I_slow)
+            #if abs(self.inp) < 0.5 : 
+            abs_inp = max(1.0, abs(self.inp))
+            self.inp = np.sign(self.inp) * abs_inp
+            #if abs(self.inp) < 0.1:
+                #self.inp = np.sign(self.inp) * np.sqrt(abs(self.inp))
+                #if self.inp > 0.:
+                #     self.inp = 0.6
+                #else:
+                #    self.inp = -0.6
 
-            self.Dw = ((np.sin(angle) - self.v_init) *
+            self.Dw = ((np.sin(angle) - self.v_init -0.1*(net_t-self.lst_hp) )*
                        (self.s_init - np.mean(self.s_init)) *
+                       #self.s_init *
                         self.act_buff[-50])
 
-            self.old_hp = hp
+            self.s_init = np.zeros(self.dim-1)
+            self.v_init = 0.
 
-        if 0.05 < net_t - self.lst and net_t - self.lst < 0.1:
+        if 0.03 < net_t - self.lst and net_t - self.lst < 0.08:
             self.s_init += 0.1 * (s_acts - self.s_init)
             self.v_init += 0.1 * (np.sin(angle) - self.v_init)
         self.z[0] = (np.tanh(self.inp) - y[0]) * self.rtau
@@ -3367,7 +3379,7 @@ class x_netC(unit): #, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         if self.normalize:
             #self.z[1:] *= 1. + (0.1 * self.alpha * np.sign(self.w_sum - 
             #              np.abs(y[1:]).sum()) * self.z[1:] * y[1:])
-            self.z[1:] += 0.1 * (y[1:] * (self.w_sum / max(1e-10, 
+            self.z[1:] += 0.05 * (y[1:] * (self.w_sum / max(1e-10, 
                                  np.abs(y[1:]).sum())) - y[1:])
             self.z[1:] -= 0.005 * np.mean(y[1:]) # moving to zero mean
         return self.z 
@@ -3387,6 +3399,6 @@ class x_netC(unit): #, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         """
         mins = np.minimum(self.centers, angle)
         maxs = np.maximum(self.centers, angle)
-        return np.minimum(2.*np.pi-maxs + mins, maxs - mins)
+        return np.minimum(2.*np.pi - maxs + mins, maxs - mins)
 
 
