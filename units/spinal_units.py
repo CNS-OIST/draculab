@@ -3318,6 +3318,7 @@ class x_netC(unit): #, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         self.lst_hp = 0. # time of last reward
         self.Dw = 0. # the direction of the weights derivative
         self.inp = 0. # effective input to the X unit
+        self.flag = False # indicates positive to negative change in hp
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. 
@@ -3339,9 +3340,13 @@ class x_netC(unit): #, lpf_sc_inp_sum_mp_reqs, rga_reqs):
 
         if hp > 0.01:
             self.lst_hp = net_t
+        elif hp < -0.01 and self.lst_hp > self.lst:
+            self.flag = True
 
-        if net_t-self.lst_hp > self.trans_t and net_t-self.lst > self.refr_per:
+        if (net_t-self.lst_hp > self.trans_t and 
+            net_t-self.lst > self.refr_per) or self.flag:
             self.lst = net_t
+            self.flag = False
             I = (s_acts * y[1:]).sum()
             # Inefficient, but easy
             d_slow = self.dists(self.lpf_slow_inp_sum % (2.*np.pi))
@@ -3351,7 +3356,7 @@ class x_netC(unit): #, lpf_sc_inp_sum_mp_reqs, rga_reqs):
             #self.inp = self.slope * (I - I_slow +0.01*(np.random.random()-0.5))
             self.inp = self.slope * (I - I_slow)
             #if abs(self.inp) < 0.5 : 
-            abs_inp = max(1.0, abs(self.inp))
+            abs_inp = max(1.5, abs(self.inp))
             self.inp = np.sign(self.inp) * abs_inp
             #if abs(self.inp) < 0.1:
                 #self.inp = np.sign(self.inp) * np.sqrt(abs(self.inp))
