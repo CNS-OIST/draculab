@@ -3340,7 +3340,7 @@ class x_netC(unit): #, lpf_sc_inp_sum_mp_reqs, rga_reqs):
 
         if hp > 0.01:
             self.lst_hp = net_t
-        elif hp < -0.01 and self.lst_hp > self.lst:
+        elif hp < -0.02 and self.lst_hp > self.lst:
             self.flag = True
 
         if (net_t-self.lst_hp > self.trans_t and 
@@ -3384,8 +3384,11 @@ class x_netC(unit): #, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         if self.normalize:
             #self.z[1:] *= 1. + (0.1 * self.alpha * np.sign(self.w_sum - 
             #              np.abs(y[1:]).sum()) * self.z[1:] * y[1:])
+            # "multiplicative"
             self.z[1:] += 0.05 * (y[1:] * (self.w_sum / max(1e-10, 
                                  np.abs(y[1:]).sum())) - y[1:])
+            # additive
+            #self.z[1:] += 0.01 * (self.w_sum - np.abs(y[1:]).sum())
             self.z[1:] -= 0.005 * np.mean(y[1:]) # moving to zero mean
         return self.z 
 
