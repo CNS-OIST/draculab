@@ -3482,6 +3482,9 @@ class x_netD(unit):
                 'beta' : How fast plasticity decays after transitions. Def = 1.
                 'eps' : dependence of value on time. Default=0.1
                 't_bin' : time bin for transition probability. Default=0.01
+                'sl2' : slope for the sigmoidal velocity dependence. Default=2.
+                'th2' : threshold for sigmoidal velocity dependence. Default=1.
+                'w_max' : max absolute value of individual weights. Default=1.
                              
         """
         self.tau = params['tau']
@@ -3515,6 +3518,12 @@ class x_netD(unit):
         else: self.eps= .1
         if 't_bin' in params: self.t_bin = params['t_bin']
         else: self.t_bin = .01
+        if 'sl2' in params: self.sl2= params['sl2']
+        else: self.sl2= 2.
+        if 'th2' in params: self.th2= params['th2']
+        else: self.th2 = 1.
+        if 'w_max' in params: self.w_max = params['w_max']
+        else: self.w_max = 1.
         
         self.centers = np.linspace(0., 2.*np.pi, self.N+1)[:-1]
         self.syn_needs.update([syn_reqs.inp_vector,
@@ -3534,9 +3543,11 @@ class x_netD(unit):
         self.Dw = 0. # the direction of the weights derivative
         self.inp = 0. # effective input to the X unit
         self.flag = False # indicates positive to negative change in hp
-        self.ang_buff = np.zeros(20) # to keep previous values of the angle
+        self.ang_buff = np.zeros(40) # to keep previous values of the angle
         self.last_net_t = 0. # previous update time for ang_buff
         self.last_t_bin = 0. # last time bin
+        self.p = 0. # transition probability (for debugging)
+        self.gain = 1. # controller gain in the 1 vs 2 scenario
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. 
@@ -3564,12 +3575,21 @@ class x_netD(unit):
             self.last_t_bin = net_t
             # update input activities
             s_acts = np.exp(-self.s_wid * d * d)
-            s_neg = s_acts / (1. + np.exp(angp - 0.5))
-            s_pos = s_acts /(1. + np.exp(-angp - 0.5))
+            s_neg = s_acts / (1. + np.exp(self.sl2*(angp + self.th2)))
+            s_pos = s_acts /(1. + np.exp(-self.sl2*(angp - self.th2)))
             s_null = s_acts * np.exp(-angp*angp)
             all_s = np.concatenate((s_neg, s_null, s_pos))
             # update transition probability
-            P = self.t_bin / (1. + np.exp(-(net_t-self.lst) + 1.)) * np.exp(-angp*angp)
+            if hp > 0.01:
+                P = 0.
+            else:
+                #P = self.t_bin * (1. / (1. + np.exp(-(net_t-self.lst) + 1.)) * 
+                #                  np.exp(-.2*angp*angp))
+                #P = (1. - np.sin(angle)) * max(-4.*hp,0.5) * self.t_bin * (
+                P = 5. * max(-4.*hp, 0.5) * self.t_bin * (
+                     1. / (1. + np.exp(-(net_t-self.lst) + 1.)) * 
+                                  np.exp(-.3*angp*angp))
+            self.p = P
             r = np.random.random() # random number in (0,1) range
             if r < P or self.flag:
                 self.lst = net_t
@@ -3584,13 +3604,28 @@ class x_netD(unit):
                 I_slow = 0. #(s_acts_slow * y[1:]).sum()
             
                 self.inp = self.slope * (I - I_slow)
-                abs_inp = 1.8 # max(1.5, abs(self.inp))
-                self.inp = np.sign(self.inp) * abs_inp
+                #-------------------------------
+                ### positive-negative controller
+                #-------------------------------
+                #abs_inp = 1.8 # max(1.5, abs(self.inp))
+                #self.inp = np.sign(self.inp) * abs_inp
+
+                #-------------------------------
+                # controller 1 vs controller 2
+                #-------------------------------
+                # align origin with negative y-axis
+                angle2 = angle+np.pi/2. if (angle<np.pi/2. or
+                         angle>3.*np.pi/2.) else -3.*np.pi/2. + angle
+                if self.inp > 0.:
+                    self.inp = self.gain * (np.pi - angle2)
+                else:
+                    self.inp = -self.gain * angle2
+                #self.inp = np.sign(self.inp) * 1. * (np.pi/2. - angle) 
                 self.Dw = ((np.sin(angle) - self.v_init - 
                            self.eps * (net_t-self.lst_hp) ) *
                           (self.s_init - np.mean(self.s_init)) *
                           #self.s_init *
-                           self.act_buff[-50])
+                           self.act_buff[-40])
 
                 self.s_init = np.zeros(self.dim-1)
                 self.v_init = 0.
@@ -3601,20 +3636,23 @@ class x_netD(unit):
             self.ang_buff = np.roll(self.ang_buff, -1)
             self.ang_buff[-1] = angle
 
-        if 0.03 < net_t - self.lst and net_t - self.lst < 0.08:
+        if 0.01 < net_t - self.lst and net_t - self.lst < 0.05:
             del_d = self.dists(self.ang_buff[0])
             del_s_acts = np.exp(-self.s_wid * del_d * del_d)
-            del_s_neg = del_s_acts / (1. + np.exp(angp - 0.5))
-            del_s_pos = del_s_acts /(1. + np.exp(-angp - 0.5))
+            del_s_neg = del_s_acts / (1. + np.exp(self.sl2*(angp + self.th2)))
+            del_s_pos = del_s_acts /(1. + np.exp(-self.sl2*(angp - self.th2)))
             del_s_null = del_s_acts * np.exp(-angp*angp)
             del_all_s = np.concatenate((del_s_neg, del_s_null, del_s_pos))
             self.s_init += 0.1 * (del_all_s - self.s_init)
-            self.v_init += 0.1 * (np.sin(angle) - self.v_init)
+            #self.v_init += 0.1 * (np.sin(angle) - self.v_init)
+            self.v_init += 0.1 * (np.sin(self.ang_buff[-15]) - self.v_init)
         # udpate activity derivative
         self.z[0] = (np.tanh(self.inp) - y[0]) * self.rtau
         # update weight derivatives
         self.wlmod = np.exp(-self.beta * (t - self.lst))
-        self.z[1:] = self.alpha * self.wlmod * self.Dw
+        #self.z[1:] = self.alpha * self.wlmod * self.Dw
+        self.z[1:] = self.alpha * self.wlmod * self.Dw * (
+                     self.w_max - self.z[1:]) * (self.z[1:] + self.w_max)
 
         if self.normalize:
             self.z[1:] += 0.05 * (y[1:] * (self.w_sum / max(1e-10, 
