@@ -3650,7 +3650,7 @@ class x_netD(unit):
         self.wlmod = np.exp(-self.beta * (t - self.lst))
         #self.z[1:] = self.alpha * self.wlmod * self.Dw
         self.z[1:] = self.alpha * self.wlmod * self.Dw * (
-                     self.w_max - self.z[1:]) * (self.z[1:] + self.w_max)
+                     self.w_max - y[1:]) * (y[1:] + self.w_max)
 
         if self.normalize:
             self.z[1:] += 0.05 * (y[1:] * (self.w_sum / max(1e-10, 
@@ -3726,7 +3726,10 @@ class x_netE(unit):
                 's_wid' : controls the width of tuning in the s units. Default=N
                 'beta' : How fast plasticity decays after transitions. Def = 1.
                 'eps' : dependence of value on time. Default=0.1
-                             
+                'w_max' : max absolute value of individual weights. Default=1.
+                'pnc' : if True, the negative-positive controller is used. If
+                        False, the 1v2 controller is used. Default=True.
+                'gain' : gain for the 1v2 controller. Default=1
         """
         self.tau = params['tau']
         self.rtau = 1. / self.tau
@@ -3756,6 +3759,13 @@ class x_netE(unit):
         else: self.beta = 1.
         if 'eps' in params: self.eps = params['eps']
         else: self.eps= .1
+        if 'w_max' in params: self.w_max = params['w_max']
+        else: self.w_max = 1.
+        if 'pnc' in params: self.pnc = params['pnc']
+        else: self.pnc = True
+        if 'gain' in params: self.gain = params['gain']
+        else: self.gain = 1.
+
         
         self.centers = np.linspace(0., 2.*np.pi, self.N+1)[:-1]
         self.syn_needs.update([syn_reqs.inp_vector,
@@ -3774,7 +3784,7 @@ class x_netE(unit):
         self.s_init = np.zeros(self.dim-1) # S-layer activity starting the reach
         self.Dw = 0. # the direction of the weights derivative
         self.inp = 0. # effective input to the X unit
-        self.ang_buff = np.zeros(30) # to keep previous values of the angle
+        self.ang_buff = np.zeros(20) # to keep previous values of the angle
         self.last_net_t = 0. # previous update time for ang_buff
         self.trans_times = [] # transition times, for visualization
 
@@ -3812,14 +3822,29 @@ class x_netE(unit):
             #self.inp = self.slope * (I - I_slow +0.01*(np.random.random()-0.5))
             self.inp = self.slope * (I - I_slow)
             #if abs(self.inp) < 0.5 : 
-            abs_inp = 1.8 #max(1.5, abs(self.inp))
-            #abs_inp = np.sqrt(abs(self.inp))
-            self.inp = np.sign(self.inp) * abs_inp
+            if self.pnc:
+                #-------------------------------
+                ### positive-negative controller
+                #-------------------------------
+                abs_inp = 1.8 #max(1.5, abs(self.inp))
+                #abs_inp = np.sqrt(abs(self.inp))
+                self.inp = np.sign(self.inp) * abs_inp
+            else:
+                #-------------------------------
+                # controller 1 vs controller 2
+                #-------------------------------
+                #align origin with negative y-axis
+                angle2 = angle+np.pi/2. if (angle<np.pi/2. or
+                    angle>3.*np.pi/2.) else -3.*np.pi/2. + angle
+                if self.inp > 0.:
+                    self.inp = self.gain * (np.pi - angle2)
+                else:
+                    self.inp = -self.gain * angle2
 
             self.Dw = ( (np.sin(angle) - self.v_init - 
                          self.eps * (net_t-self.lst_hp) ) *
-                       (self.s_init - np.mean(self.s_init)) *
-                       #self.s_init *
+                       #(self.s_init - np.mean(self.s_init)) *
+                       self.s_init *
                         self.act_buff[-20])
 
             self.s_init = np.zeros(self.dim-1)
@@ -3840,11 +3865,14 @@ class x_netE(unit):
                     
         self.wlmod = np.exp(-self.beta * (t - self.lst))
         self.z[1:] = self.alpha * self.wlmod * self.Dw
+        # soft weight bounding
+        #self.z[1:] = self.alpha * self.wlmod * self.Dw * (
+        #             self.w_max - y[1:]) * (y[1:] + self.w_max)
 
         if self.normalize:
             self.z[1:] += 0.05 * (y[1:] * (self.w_sum / max(1e-10, 
                                  np.abs(y[1:]).sum())) - y[1:])
-            self.z[1:] -= 0.01 * np.mean(y[1:]) # moving to zero mean
+            self.z[1:] -= 0.005 * np.mean(y[1:]) # moving to zero mean
         return self.z 
 
     def dt_fun(self, y, s):
