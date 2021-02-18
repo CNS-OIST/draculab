@@ -93,6 +93,7 @@ class unit_types(Enum):
     x_netB = 128
     x_netC = 129
     x_netD = 130
+    x_netE = 131
 
     def get_class(self):
         """ Return the class object corresponding to a given object type enum. 
@@ -296,6 +297,9 @@ class unit_types(Enum):
         elif self == unit_types.x_netD:
             from units.spinal_units import x_netD
             unit_class = x_netD
+        elif self == unit_types.x_netE:
+            from units.spinal_units import x_netE
+            unit_class = x_netE
         else:
             raise NotImplementedError('Attempting to retrieve the class of an '+ 
                                       'unknown unit model')

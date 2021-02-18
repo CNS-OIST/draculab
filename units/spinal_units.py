@@ -3316,7 +3316,6 @@ class x_netC(unit): #, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         self.wlmod = 1. # modulates the learning rule after desired angle changes
         self.v_init = 0.5  # value when starting the reach
         self.s_init = np.zeros(self.dim-1) # S-layer activity starting the reach
-        self.lst_hp = 0. # time of last reward
         self.Dw = 0. # the direction of the weights derivative
         self.inp = 0. # effective input to the X unit
         self.flag = False # indicates positive to negative change in hp
@@ -3539,7 +3538,6 @@ class x_netD(unit):
         self.wlmod = 1. # modulates the learning rule after desired angle changes
         self.v_init = 0.5  # value when starting the reach
         self.s_init = np.zeros(self.dim-1) # S-layer activity starting the reach
-        self.lst_hp = 0. # time of last reward
         self.Dw = 0. # the direction of the weights derivative
         self.inp = 0. # effective input to the X unit
         self.flag = False # indicates positive to negative change in hp
@@ -3658,6 +3656,195 @@ class x_netD(unit):
             self.z[1:] += 0.05 * (y[1:] * (self.w_sum / max(1e-10, 
                                  np.abs(y[1:]).sum())) - y[1:])
             self.z[1:] -= 0.005 * np.mean(y[1:]) # moving to zero mean
+        return self.z 
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        raise NotImplementedError("x_netC not available for flat networks.")
+
+    def dists(self, angle):
+        """ Given an angle, provide periodic distances to s centers.
+
+            Args:
+                angle: angle in the [0, 2pi] range
+            Returns:
+                N-element numpy array with distances from the angle to
+                the elements in 'centers', using periodic boundaries.
+        """
+        mins = np.minimum(self.centers, angle)
+        maxs = np.maximum(self.centers, angle)
+        return np.minimum(2.*np.pi - maxs + mins, maxs - mins)
+
+
+class x_netE(unit):
+    """ An X unit to be used in rl_trans.ipynb (not for general use).
+    
+        This is a variation of x_netC, but the transition rules are based on
+        ideas written down on the 2/18/20 entry.
+
+        This unit is meant to receive a current angle at port 0. The desired
+        angle is not necessary, since we know it is pi/2. Furthermore, a value
+        is not necessary, since we will just use the sine of the angle (vertical
+        height).
+
+        The current angle is first expanded into the activity of N units, as
+        would happen in the S1 network of rl5E. Those N units directly provide
+        the input to the X unit. The X unit directly provides a torque to the
+        pendulum. The X sigmoidal is unique in the fact that its minimal output
+        is -1, wheras its maximal output is 1 (it uses a hyperbolic tangent).
+
+        The S1--X connections learn using the difference in value (e.g. height)
+        between the beggining and the end of the transition.
+
+        Transitions follow two rules. Let V be the value:
+            1) If V'' > 0 or V' > 0, then no transition happens
+            2) If V'' < 0 and V' < 0, transitions happen every t_trans seconds.
+        
+        Let t1 be the time when a transition happens, t0 the time of the
+        transition previous to t1, and t_hp be the time when V' stopped being
+        positive. The change in weight for input s_j is:
+        w'(t1) = alpha [V(t1) - V(t0) - eps*(t1-t_hp)] (s_j(t0) - <s(t0)>) X(t0),
+        where t_hp is the last time the value was increasing.
+    """
+    def __init__(self, ID, params, network):
+        """ The class constructor.
+
+            Args:
+                ID, params, network: same as the unit class
+                REQUIRED PARAMETERS
+                'tau' : time constant of the dynamics
+                'slope' : Slope of the hyperbolic tangent.
+                'lrate' : learning rate of the synapses
+                't_trans' : If time without positive V' or V'' is larger than
+                            this, a transition happens.
+                'tau_fast' : fast time constant for low-pass filtering
+                'tau_mid' : medium time constant for low-pass filtering
+                OPTIONAL PARAMETERS
+                'N' : number of units to represent an angle. Default=20
+                'w_sum' : sum of synaptic weights. Default=10
+                'normalize' : if True, weights add to w_sum. Default=True
+                's_wid' : controls the width of tuning in the s units. Default=N
+                'beta' : How fast plasticity decays after transitions. Def = 1.
+                'eps' : dependence of value on time. Default=0.1
+                             
+        """
+        self.tau = params['tau']
+        self.rtau = 1. / self.tau
+        if 'N' in params: self.N = params['N']
+        else: self.N = 20
+        params['multidim'] = True
+        if len(params['init_val']) != self.N + 1:
+            raise ValueError("Initial values for x_netE must " +
+                             "consist of a (N + 1)-element array.")
+        if 'n_ports' in params:
+            if params['n_ports'] != 1:
+                raise ValueError("The x_netC unit uses only one input port.")
+        else:
+            params['n_ports'] = 1
+        unit.__init__(self, ID, params, network)
+        self.slope = params['slope']
+        self.t_trans = params['t_trans']
+        self.lrate = params['lrate']
+        self.alpha = self.lrate * self.min_delay
+        if 'w_sum' in params: self.w_sum = params['w_sum']
+        else: self.w_sum = 10.
+        if 'normalize' in params: self.normalize = params['normalize']
+        else: self.normalize = False
+        if 's_wid' in params: self.s_wid = params['s_wid']
+        else: self.s_wid = self.N
+        if 'beta' in params: self.beta = params['beta']
+        else: self.beta = 1.
+        if 'eps' in params: self.eps = params['eps']
+        else: self.eps= .1
+        
+        self.centers = np.linspace(0., 2.*np.pi, self.N+1)[:-1]
+        self.syn_needs.update([syn_reqs.inp_vector,
+                               syn_reqs.lpf_fast_inp_sum,
+                               syn_reqs.lpf_mid_inp_sum,
+                               syn_reqs.lpf_slow_inp_sum])
+        self.z = np.zeros_like(params['init_val']) # to store derivatives
+        self.hp = 0.  # kept for debugging purposes
+        self.hpp = 0. # ditto
+        self.slow_hp = 0. # used to calculate hpp
+        self.slow_fac = 5.*self.net.min_delay # used to update slow_hp
+        self.lst = -1. # last switch/update time
+        self.lst_hp = 0. # time when height derivative was last positive
+        self.wlmod = 1. # modulates the learning rule after desired angle changes
+        self.v_init = 0.5  # value when starting the reach
+        self.s_init = np.zeros(self.dim-1) # S-layer activity starting the reach
+        self.Dw = 0. # the direction of the weights derivative
+        self.inp = 0. # effective input to the X unit
+        self.ang_buff = np.zeros(30) # to keep previous values of the angle
+        self.last_net_t = 0. # previous update time for ang_buff
+        self.trans_times = [] # transition times, for visualization
+
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity at time t. 
+        
+            Args:
+                y : numpy array with state variables.
+                    y[0] : unit's activity
+                    y[1:] : S__X weights
+        """
+        #if t - self.last_time >= self.min_delay:
+        net_t = self.net.sim_time
+        # obtain S inputs
+        angle = (self.get_inputs(net_t)[0])%(2.*np.pi) # single input
+        d = self.dists(angle)
+        s_acts = np.exp(-self.s_wid * d * d)
+        # obtain derivative of height
+        hp = np.cos(angle) * (self.lpf_fast_inp_sum - self.lpf_mid_inp_sum)
+        self.hp = hp # for tracking and visualization
+        self.slow_hp += self.slow_fac * (hp - self.slow_hp)
+        hpp = hp - self.slow_hp
+        self.hpp = hpp # for tracking and visualization
+
+        if hp > 0.01:
+            self.lst_hp = net_t # used to update Dw
+
+        if hp < 0.01 and hpp < 0. and (net_t - self.lst > self.t_trans):
+            self.lst = net_t
+            self.trans_times.append(net_t)
+            I = (s_acts * y[1:]).sum()
+            d_slow = self.dists(self.lpf_slow_inp_sum % (2.*np.pi))
+            s_acts_slow = np.exp(-self.s_wid * d_slow * d_slow)
+            I_slow = 0. #(s_acts_slow * y[1:]).sum()
+            #self.inp = self.slope * (I - I_slow +0.01*(np.random.random()-0.5))
+            self.inp = self.slope * (I - I_slow)
+            #if abs(self.inp) < 0.5 : 
+            abs_inp = 1.8 #max(1.5, abs(self.inp))
+            #abs_inp = np.sqrt(abs(self.inp))
+            self.inp = np.sign(self.inp) * abs_inp
+
+            self.Dw = ( (np.sin(angle) - self.v_init - 
+                         self.eps * (net_t-self.lst_hp) ) *
+                       (self.s_init - np.mean(self.s_init)) *
+                       #self.s_init *
+                        self.act_buff[-20])
+
+            self.s_init = np.zeros(self.dim-1)
+            self.v_init = 0.
+
+        # update ang_buff
+        if net_t - self.last_net_t > self.net.min_delay:
+            self.last_net_t = net_t
+            self.ang_buff = np.roll(self.ang_buff, -1)
+            self.ang_buff[-1] = angle
+
+        if 0.02 < net_t - self.lst and net_t - self.lst < 0.07:
+            del_d = self.dists(self.ang_buff[0])
+            del_s_acts = np.exp(-self.s_wid * del_d * del_d)
+            self.s_init += 0.1 * (del_s_acts - self.s_init)
+            self.v_init += 0.1 * (np.sin(self.ang_buff[-15]) - self.v_init)
+        self.z[0] = (np.tanh(self.inp) - y[0]) * self.rtau
+                    
+        self.wlmod = np.exp(-self.beta * (t - self.lst))
+        self.z[1:] = self.alpha * self.wlmod * self.Dw
+
+        if self.normalize:
+            self.z[1:] += 0.05 * (y[1:] * (self.w_sum / max(1e-10, 
+                                 np.abs(y[1:]).sum())) - y[1:])
+            self.z[1:] -= 0.01 * np.mean(y[1:]) # moving to zero mean
         return self.z 
 
     def dt_fun(self, y, s):
