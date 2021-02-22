@@ -3829,17 +3829,17 @@ class x_netE(unit):
                 abs_inp = 1.8 #max(1.5, abs(self.inp))
                 #abs_inp = np.sqrt(abs(self.inp))
                 self.inp = np.sign(self.inp) * abs_inp
-            else:
+            #else:
                 #-------------------------------
                 # controller 1 vs controller 2
                 #-------------------------------
                 #align origin with negative y-axis
-                angle2 = angle+np.pi/2. if (angle<np.pi/2. or
-                    angle>3.*np.pi/2.) else -3.*np.pi/2. + angle
-                if self.inp > 0.:
-                    self.inp = self.gain * (np.pi - angle2)
-                else:
-                    self.inp = -self.gain * angle2
+                #angle2 = angle+np.pi/2. if (angle<np.pi/2. or
+                #    angle>3.*np.pi/2.) else -3.*np.pi/2. + angle
+            #    if self.inp > 0.:
+            #        self.inp = self.gain * (np.pi - angle2)
+            #    else:
+            #        self.inp = -self.gain * angle2
 
             self.Dw = ( (np.sin(angle) - self.v_init - 
                          self.eps * (net_t-self.lst_hp) ) *
@@ -3861,6 +3861,19 @@ class x_netE(unit):
             del_s_acts = np.exp(-self.s_wid * del_d * del_d)
             self.s_init += 0.1 * (del_s_acts - self.s_init)
             self.v_init += 0.1 * (np.sin(self.ang_buff[-15]) - self.v_init)
+
+        if not self.pnc:
+            if (s_acts * y[1:]).sum() < 0.:
+                #align origin with negative y-axis
+                angle2 = angle+np.pi/2. if (angle<np.pi/2. or
+                         angle>3.*np.pi/2.) else -3.*np.pi/2. + angle
+                self.inp = self.gain * (np.pi - angle2)
+            else:
+                # origin downwards, range in (-pi, pi)
+                angle2 = (angle - 3.*np.pi/2. if angle > np.pi/2.
+                          else angle + np.pi/2.)
+                self.inp = -self.gain * angle2
+
         self.z[0] = (np.tanh(self.inp) - y[0]) * self.rtau
                     
         self.wlmod = np.exp(-self.beta * (t - self.lst))
