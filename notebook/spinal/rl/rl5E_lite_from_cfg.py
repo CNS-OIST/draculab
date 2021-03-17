@@ -42,6 +42,8 @@ def rl5E_net(cfg,
     cfg['X_normalize'] = X_normalize
     if not 'X_type' in cfg: cfg['X_type'] = unit_types.x_net
     if not 'r_thr' in cfg: cfg['r_thr'] = np.pi/6.
+    if not 'X_tau_slow' in cfg: cfg['X_tau_slow'] = 50.
+    if not 'X_refr_per' in cfg: cfg['X_refr_per'] = 2.
 
     # some parameters 
     C_type = "rga_sig" # unit type for the C population
@@ -205,13 +207,13 @@ def rl5E_net(cfg,
                 'delay' : X_del + 2.*net_params['min_delay'],
                 'tau_fast' : 0.02,
                 'tau_mid' : 0.2,
-                'tau_slow' : 50.,
+                'tau_slow' : cfg['X_tau_slow'],
                 'sw_thresh' : 0.03,
                 'sw_len' : 0.4,
                 'switch' : cfg['X_switch'],
                 'normalize' : cfg['X_normalize'],
                 'w_sum' : cfg['X_w_sum'],
-                'refr_per' : 2.,
+                'refr_per' : cfg['X_refr_per'],
                 'beta' : 2.,
                 'r_thr' : cfg['r_thr'],
                 'coordinates' : np.array([0.7, 0.3]) }
