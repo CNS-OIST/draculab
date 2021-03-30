@@ -3102,6 +3102,7 @@ class x_netB(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         self.lst_r = 0. # time of last reward
         self.Dw = 0.
         self.is1p_copy = 0. # for debugging
+        self.trans_times = [] # transition times, for debugging
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. 
@@ -3155,14 +3156,15 @@ class x_netB(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
             # the case when the refractory period is smaller than 50*min_delay.
             is0 = (L_out * y[1:]).sum() # scaled input sum from L
             self.lst = net_t
+            self.trans_times.append(net_t)
             if self.switch:
                 self.sw_len *= np.sign(np.random.random()-0.5)
                 self.xtra_thr = (is0 + self.sw_len * np.sign(is0 -
                                  self.thresh - self.xtra_thr) - self.thresh)
             else:
                 lpfs = self.get_lpf_slow(0)
-                self.xtra_thr = self.thresh + (np.log(lpfs) - 
-                                np.log(1.-lpfs))/self.slope
+                self.xtra_thr = 0. #self.thresh + (np.log(lpfs) - 
+                                #np.log(1.-lpfs))/self.slope
             self.inp = is0  - self.xtra_thr
             self.v_init = 0.5
             self.l_init = np.zeros(self.dim-1)
