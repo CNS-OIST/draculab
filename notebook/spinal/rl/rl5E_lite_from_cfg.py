@@ -540,7 +540,7 @@ def rl5E_net(cfg,
                 for syn in syn_list:
                     if syn.preID == m_id:
                         syn.w = M__C_mat[c_idx, m_idx]
-                        syn.alpha = 1e-4 # slowing down learning
+                        #syn.alpha = 1e-4 # slowing down learning
                         break
 
         for a_idx, a_id in enumerate([A[1], A[3]]):
@@ -549,7 +549,7 @@ def rl5E_net(cfg,
                 for syn in syn_list:
                     if syn.preID == a_id:
                         syn.w = A__M_mat[m_idx, a_idx]
-                        syn.alpha = 1e-4 # slowing down learning
+                        #syn.alpha = 1e-4 # slowing down learning
                         break
 
     #--------------------------------------------------------------------
