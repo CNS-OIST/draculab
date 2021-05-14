@@ -1082,7 +1082,7 @@ class gated_out_norm_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, acc_sda_reqs):
                                           for the outgoing connections.
                     'tau_slow' : slow LPF time constant.
                     OPTIONAL PARAMETERS
-                    'p1_inp' : The scaled sum of port 0 inputs is multiplied by
+                    'p1_inp' : The scaled sum of port 1 inputs is multiplied by
                                this parameter before becoming being added to the
                                arguments of the sigmoidal. Default 0.
                     'out_norm_type' : a synapse type's integer value. If included,
@@ -1484,7 +1484,9 @@ class m_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         rga_syn class.
 
         There are 2 main uses of this unit, one in the `rl5B` programs, and
-        another in the `rl5E`.
+        another in the `rl5E`. An unexpected implementation is in
+        t2p3_from_rl5El.ipynb, and an experimental implementation is in
+        v3_from_t3p2_ph1.ipynb.
 
         In the case of the rl5B and similar programs, the M units may receive
         4 types of inputs. The first type (port 0 by default)
