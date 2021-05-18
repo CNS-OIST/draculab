@@ -1898,6 +1898,103 @@ class act(unit, lpf_sc_inp_sum_mp_reqs):
             du = -40.*y # rushing towards 0
         return du
 
+class rga_adapt_sig(sigmoidal, rga_reqs, acc_sda_reqs):
+    """ A sigmoidal unit that can use gated adaptation.
+
+        This model has 3 ports. When the inputs at port 2 surpass a threshold
+        the unit experiences adaptation, which means that its slow-lpf'd
+        activity will be used to decrease its current activation. This is
+        achieved through the slow_decay_adapt requirement.
+
+        Ports 0 and 1 are for the "error" and "lateral" inputs, although this
+        distinction is only done by the synapses. 
+
+        Like the other rga models it has the extra custom_inp_del attribute, 
+        as well as implementations of all required requirement update 
+        functions.
+
+        The des_out_w_abs_sum parameter is included in case the
+        pre_out_norm_factor requirement is used.
+
+        The presynaptic units should have the lpf_fast and lpf_mid requirements,
+        since these will be added by the gated_rga synapse.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'slope' : Slope of the sigmoidal function.
+                    'thresh' : Threshold of the sigmoidal function.
+                    'tau' : Time constant of the update dynamics.
+                    'tau_slow' : Slow LPF time constant.
+                    'tau_mid' : Medium LPF time constant.
+                    Using rga synapses brings an extra required parameter:
+                    'custom_inp_del' : an integer indicating the delay that the rga
+                                  learning rule uses for the lateral port inputs. 
+                                  The delay is in units of min_delay steps. 
+
+                OPTIONAL PARAMETERS
+                    'des_out_w_abs_sum' : desired sum of absolute weight values
+                                          for the outgoing connections.
+                                          Default is 1.
+                    'adapt_amp' : amplitude of adapation. Default is 1.
+                    'mu' : drift for the euler_maru solver.
+                    'sigma' : standard deviation for the euler_maru solver
+            Raises:
+                AssertionError.
+        """
+        if 'n_ports' in params and params['n_ports'] != 3:
+            raise AssertionError('rga_adapt_sig units must have n_ports=3')
+        else:
+            params['n_ports'] = 3
+        if 'custom_inp_del' in params:
+            self.custom_inp_del = params['custom_inp_del']
+        else:
+            raise AssertionError('rga_adapt_sig units need a ' +
+                                'custom_inp_del parameter')
+        sigmoidal.__init__(self, ID, params, network)
+        if 'des_out_w_abs_sum' in params:
+            self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        else:
+            self.des_out_w_abs_sum = 1.
+        if 'adapt_amp' in params:
+            self.adapt_amp = params['adapt_amp']
+        else:
+            self.adapt_amp = 1.
+        self.syn_needs.update([syn_reqs.mp_weights, 
+                               syn_reqs.mp_inputs,
+                               syn_reqs.sc_inp_sum_mp,
+                               #syn_reqs.acc_slow,
+                               syn_reqs.lpf_slow, 
+                               syn_reqs.slow_decay_adapt])
+        params['inp_deriv_ports'] = [0] # ports for inp_deriv_mp
+        rga_reqs.__init__(self, params)
+        params['sda_port'] = 2 # port to trigger adaptation
+        if 'mu' in params: 
+            self.mu = params['mu']
+            self.mudt = self.mu * self.time_bit # used by flat updater
+            self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
+        if 'sigma' in params: 
+            self.sigma = params['sigma']
+        acc_sda_reqs.__init__(self, params)
+        self.needs_mp_inp_sum = True # to avoid adding the reset signal
+
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity at time t. """
+        sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(t),
+                                           self.get_mp_weights(t))]
+        inp = sums[0] + sums[1] - self.adapt_amp * self.slow_decay_adapt
+        return ( self.f(inp) - y[0] ) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        inp = (self.mp_inp_sum[0][s] + self.mp_inp_sum[1][s] - 
+               self.adapt_amp * self.slow_decay_adapt)
+        return ( self.f(inp) - y ) * self.rtau
+
 
 class gated_rga_sig(sigmoidal, rga_reqs, acc_sda_reqs):
     """ A sigmoidal unit that can receive gated_rga synapses.
