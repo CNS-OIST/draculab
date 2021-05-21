@@ -732,7 +732,7 @@ class rga_21(synapse):
             OPTIONAL PARAMETERS
             'err_port' : port for "error" inputs. Default is 0.
             'lat_port' : port for "lateral" inputs. Default is 1.
-            'w_sum' : desire value for the sum of synaptic weights. Default 1.
+            'w_sum' : desired value for the sum of synaptic weights. Default 1.
 
         Raises:
             AssertionError.
