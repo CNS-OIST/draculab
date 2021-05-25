@@ -361,8 +361,8 @@ def net_from_cfg(cfg,
         p_del = np.arctan(np.mean(P_params['tau'])*w)/w
         a_del = np.arctan(np.mean(A_params['tau'])*w)/w
         m_del = np.arctan(np.mean(M_params['tau'])*w)/w
-        D = [CE__AL_conn['delay'], AL__P_conn['delays'], np.mean(P__A_conn['delays']),
-             A__M_conn['delay'], M__C_conn['delay'] ]
+        D = [CE__AL_conn['delay'], AL__P_conn['delays'],
+             np.mean(P__A_conn['delays']), A__M_conn['delay'], M__C_conn['delay']]
         time_del = al_del + p_del + a_del + m_del + sum(D)
         del_steps = int(np.ceil(time_del/net_params['min_delay']))
         time_del = del_steps*net_params['min_delay']
@@ -374,9 +374,10 @@ def net_from_cfg(cfg,
         CE_params['custom_inp_del'] = C_del_steps
         CI_params['custom_inp_del'] = C_del_steps
 
-    CE_params['delay'] = (CE_params['custom_inp_del'] + 2) * net_params['min_delay']
-    CI_params['delay'] = (CI_params['custom_inp_del'] + 2) * net_params['min_delay']
-    M_params['delay'] = (M_params['custom_inp_del'] + 2) * net_params['min_delay']
+    CE_params['delay'] = (CE_params['custom_inp_del']+2)*net_params['min_delay']
+    CI_params['delay'] = (CI_params['custom_inp_del']+2)*net_params['min_delay']
+    M_params['delay'] = max(CE_params['delay'], CI_params['delay'],
+                       (M_params['custom_inp_del']+2) * net_params['min_delay'])
     
     #--------------------------------------------------------------------
     # CREATING NETWORK AND UNITS
