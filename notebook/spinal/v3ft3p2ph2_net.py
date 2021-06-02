@@ -13,7 +13,8 @@ def net_from_cfg(cfg,
                  rand_targets = True,
                  track_weights = False,
                  track_ips = False,
-                 C_noise = False):
+                 C_noise = False,
+                 M__C_rand_w = True):
     """ Create a draculab network with the given configuration. 
 
         Args:
@@ -25,6 +26,7 @@ def net_from_cfg(cfg,
             set_C_delay: whether set C_cid using analytical approach
             rand_targets: whether to train using a large number of random targets
             C_noise: whether C units are noisy (use euler_maru integrator)
+            M__C_rand_w: randomly initialize weights for the M__C connections
 
         Returns:
             A tuple with the following entries:
@@ -276,11 +278,33 @@ def net_from_cfg(cfg,
     # motor to spinal
     M__C_conn = {'rule': 'all_to_all',
                  'delay': 0.02 }
-    M__C_syn = {'type' : synapse_types.rga_21,
-                'lrate': cfg['M__C_lrate'],
-                'inp_ports': 0,
-                'w_sum' : cfg['M__C_w_sum'],
-                'init_w' : {'distribution':'uniform', 'low':0.05, 'high':.1}}
+    if not M__C_rand_w:
+        # initializing M__C weights manually
+        M_CE = np.array(
+            [[ 1., .3, 0.,-.5, .3, 0.],
+             [ .3, 1.,-.5, 0., 0., 0.],
+             [ 0.,-.5, 1., .3, 0., 0.],
+             [-.5, 0., .3, 1., 0., .3],
+             [ .3, 0., 0., 0., 1.,-.5],
+             [ 0., 0., 0., .3,-.5, 1.]])
+        M_CE = M_CE.flatten('C')
+        M_CE = np.concatenate((M_CE, -M_CE))
+        M_CI = -M_CE
+        M__CE_iw = M_CE
+        M__CI_iw = M_CI
+    else:
+        M__CE_iw = {'distribution':'uniform', 'low':0.05, 'high':.1}
+        M__CI_iw = {'distribution':'uniform', 'low':0.05, 'high':.1}
+    M__CE_syn = {'type' : synapse_types.rga_21,
+                 'lrate': cfg['M__C_lrate'],
+                 'inp_ports': 0,
+                 'w_sum' : cfg['M__C_w_sum'],
+                 'init_w' : M__CE_iw}
+    M__CI_syn = {'type' : synapse_types.rga_21,
+                 'lrate': cfg['M__C_lrate'],
+                 'inp_ports': 0,
+                 'w_sum' : cfg['M__C_w_sum'],
+                 'init_w' : M__CI_iw}
     # motor error lateral connections
     M__M_conn = {'rule': 'one_to_one',
                  'allow_autapses' : False,
@@ -535,8 +559,8 @@ def net_from_cfg(cfg,
     #         net.connect([CI[pair[0]]], [CE[pair[1]]], C__C_conn, C__C_syn_null_lat)
     #         net.connect([CI[pair[0]]], [CI[pair[1]]], C__C_conn, C__C_syn_null_lat)
     # From M 
-    net.connect(M, CE, M__C_conn, M__C_syn)
-    net.connect(M, CI, M__C_conn, M__C_syn)
+    net.connect(M, CE, M__C_conn, M__CE_syn)
+    net.connect(M, CI, M__C_conn, M__CI_syn)
     net.connect(M, M, M__M_conn, M__M_syn)
     # From plant to afferents
     net.set_plant_outputs(P, A, P__A_conn, P__A_syn) 
