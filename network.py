@@ -434,7 +434,7 @@ class network():
                             weights[id_w] = norm_vec[id_u]
             else:
                 raise NotImplementedError('Initializing weights with an unknown distribution')
-        elif type(syn_spec['init_w']) is float or type(syn_spec['init_w']) is int:
+        elif type(syn_spec['init_w']) in [float, int, np.float_, np.int_]:
             weights = [float(syn_spec['init_w'])] * n_conns
         elif type(syn_spec['init_w']) is list or type(syn_spec['init_w']) is np.ndarray:
             if len(syn_spec['init_w']) == n_conns:
