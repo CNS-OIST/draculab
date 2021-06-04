@@ -40,6 +40,11 @@ def net_from_cfg(cfg,
 
     if not C_noise and not 'C_sigma' in cfg:
         cfg['C_sigma'] = 0.
+    if not 'C_tau' in cfg:
+        cfg['C_tau'] = 0.05
+    if not 'C_tau_slow' in cfg:
+        cfg['C_tau_slow'] = 10.
+
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Parameter dictionaries for the network and the plant
@@ -124,10 +129,10 @@ def net_from_cfg(cfg,
                 'multidim' : False,
                 'slope' : cfg['C_slope'],
                 'thresh' : cfg['C_thresh'],
-                'tau' : 0.02,
+                'tau' : cfg['C_tau'],
                 'tau_fast': 0.01,
                 'tau_mid' : 0.05,
-                'tau_slow' : 4.,
+                'tau_slow' : cfg['C_tau_slow'],
                 'custom_inp_del' : int(round(cfg['C_cid']/net_params['min_delay'])),
                 'delay' : 0.31, # to be set below
                 'adapt_amp' : cfg['C_adapt_amp'],
@@ -139,10 +144,10 @@ def net_from_cfg(cfg,
                 'multidim' : False,
                 'slope' : cfg['C_slope'],
                 'thresh' : cfg['C_thresh'], 
-                'tau' : 0.02,
+                'tau' : cfg['C_tau'],
                 'tau_fast': 0.01,
                 'tau_mid' : 0.05,
-                'tau_slow' : 4.,
+                'tau_slow' : cfg['C_tau_slow'],
                 'custom_inp_del' : int(round(cfg['C_cid']/net_params['min_delay'])),
                 'delay' : 0.31, # to be set below
                 'adapt_amp' : cfg['C_adapt_amp'],

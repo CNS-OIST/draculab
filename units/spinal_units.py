@@ -219,7 +219,7 @@ class acc_sda_reqs():
     def __init__(self, params):
         """ Class constructor. 
 
-            Receives the params dictionray of the unit's creator.
+            Receives the params dictionary of the unit's creator.
             It considers these entries:
             'acc_slow_port' : port number of the acc_slow reset input.
             'acc_mid_port' : port number of the acc_mid reset input.
