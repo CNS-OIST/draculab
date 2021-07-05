@@ -35,6 +35,7 @@ def net_from_cfg(cfg,
             pops_dict : a dictionary with the list of ID's for each population in net.
             hand_coords : list with the coordinates for all possible targets
             m_idxs : which target coordinats will be used for the i-th presentation
+            pds : some parameter dictionaries used to change targets
     """
     M_size = 12 # number of units in the M population
     SPF_size = 12 # number of units in the SPF population
@@ -637,8 +638,10 @@ def net_from_cfg(cfg,
                   'SPF', 'A_M0_track', 'M_CE0_track', 'ipx_track', 'ipy_track']
     pops_dict = {pops_names[idx] : pops_list[idx] for 
                  idx in range(len(pops_names))}
+    pds = {'P__A_syn' : P__A_syn, 'SF_params' : SF_params, 
+           'A__SF_syn' : A__SF_syn }
     
-    return net, pops_dict, hand_coords, m_idxs
+    return net, pops_dict, hand_coords, m_idxs, pds
 
 
 def syne_net(cfg,
@@ -669,6 +672,7 @@ def syne_net(cfg,
             pops_dict : a dictionary with the list of ID's for each population in net.
             hand_coords : list with the coordinates for all possible targets
             m_idxs : which target coordinats will be used for the i-th presentation
+            pds : some parameter dictionaries used to change targets
     """
     M_size = 12 # number of units in the M population
     SPF_size = 12 # number of units in the SPF population
@@ -1361,7 +1365,9 @@ def syne_net(cfg,
                   'SPF', 'A_M0_track', 'M_SYNE0_track', 'ipx_track', 'ipy_track']
     pops_dict = {pops_names[idx] : pops_list[idx] for 
                  idx in range(len(pops_names))}
-    
-    return net, pops_dict, hand_coords, m_idxs
+    pds = {'P__A_syn' : P__A_syn, 'SF_params' : SF_params, 
+           'A__SF_syn' : A__SF_syn }
+
+    return net, pops_dict, hand_coords, m_idxs, pds
 
 
