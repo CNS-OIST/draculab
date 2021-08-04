@@ -15,7 +15,8 @@ def net_from_cfg(cfg,
                  track_weights = False,
                  track_ips = False,
                  C_noise = False,
-                 M__C_rand_w = True):
+                 M__C_rand_w = True,
+                 rot_SPF = False):
     """ Create a draculab network with the given configuration. 
 
         Args:
@@ -28,6 +29,7 @@ def net_from_cfg(cfg,
             rand_targets: whether to train using a large number of random targets
             C_noise: whether C units are noisy (use euler_maru integrator)
             M__C_rand_w: randomly initialize weights for the M__C connections
+            rot_SPF: whether to rotate the output of SPF
 
         Returns:
             A tuple with the following entries:
@@ -46,6 +48,10 @@ def net_from_cfg(cfg,
         cfg['C_tau'] = 0.05
     if not 'C_tau_slow' in cfg:
         cfg['C_tau_slow'] = 10.
+    if not 'k_pe_e' in cfg:
+        cfg['k_pe_e'] = 20.
+    if not 'k_se_e' in cfg:
+        cfg['k_se_e'] = 20.
 
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -82,8 +88,8 @@ def net_from_cfg(cfg,
                                        cfg['II_g_03'], 8., 8.]),
               'Ib_gain' : 1.,
               'T_0' : 10.,
-              'k_pe_e' : 20.,  #8
-              'k_se_e' : 20., #13
+              'k_pe_e' : cfg['k_pe_e'],  #8
+              'k_se_e' : cfg['k_se_e'], #13
               'b_e' : cfg['b_e'],
               'g_s' : 0.02,
               'k_pe_s' : 2., 
@@ -366,11 +372,27 @@ def net_from_cfg(cfg,
                     'inp_ports' : 0,
                     'init_w' : 1. }
     # SPF to M
-    SPF__M_conn = {'rule': 'one_to_one',
-                   'delay': 0.02 }
-    SPF__M_syn = {'type' : synapse_types.static,
-                  'inp_ports' : 1,
-                  'init_w' : 1. }
+    if rot_SPF:
+        SPF__M_conn = {'rule': 'all_to_all',
+                       'delay': 0.02 }
+        SPF__M_mat= np.array([[ 1,  1,  1,  1,  1,  1],
+                              [ 1,  1,  1, -1, -1, -1],
+                              [ 1, -2,  1, -1,  2, -1],
+                              [-1, -1,  2,  2, -1, -1],
+                              [-1,  1,  0,  0,  1, -1],
+                              [-1,  0,  1, -1,  0,  1]], dtype=float).transpose()
+        for idx, norm in enumerate(np.sqrt([6., 6., 12., 12., 4., 4.])):
+            SPF__M_mat[:,idx] = (1./norm) * SPF__M_mat[:,idx]
+        SPF__M_mat = np.concatenate((SPF__M_mat.flatten('C'), -SPF__M_mat.flatten('C'), -SPF__M_mat.flatten('C'), SPF__M_mat.flatten('C')))
+        SPF__M_syn = {'type' : synapse_types.static,
+                      'inp_ports' : 1,
+                      'init_w' : SPF__M_mat }
+    else:
+        SPF__M_conn = {'rule': 'one_to_one',
+                       'delay': 0.02 }
+        SPF__M_syn = {'type' : synapse_types.static,
+                      'inp_ports' : 1,
+                      'init_w' : 1. }
     # sensory error lateral connections
     SPF__SPF_conn = {'rule': 'one_to_one',
                      'allow_autapses' : False,
@@ -654,7 +676,8 @@ def syne_net(cfg,
              track_weights = False,
              track_ips = False,
              C_noise = False,
-             M__C_rand_w = True):
+             M__C_rand_w = True,
+             rot_SPF = False):
     """ Create a draculab network with the given configuration. 
 
         Args:
@@ -667,6 +690,7 @@ def syne_net(cfg,
             rand_targets: whether to train using a large number of random targets
             C_noise: whether SYNE units are noisy (use euler_maru integrator)
             M__C_rand_w: randomly initialize weights for the M__C connections
+            rot_SPF: whether to rotate the output of SPF
 
         Returns:
             A tuple with the following entries:
@@ -686,6 +710,10 @@ def syne_net(cfg,
         cfg['C_tau'] = 0.05
     if not 'C_tau_slow' in cfg:
         cfg['C_tau_slow'] = 10.
+    if not 'k_pe_e' in cfg:
+        cfg['k_pe_e'] = 20.
+    if not 'k_se_e' in cfg:
+        cfg['k_se_e'] = 20.
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Parameter dictionaries for the network and the plant
@@ -721,8 +749,8 @@ def syne_net(cfg,
                                        cfg['II_g_03'], 8., 8.]),
               'Ib_gain' : 1.,
               'T_0' : 10.,
-              'k_pe_e' : 20.,  #8
-              'k_se_e' : 20., #13
+              'k_pe_e' : cfg['k_pe_e'], #8
+              'k_se_e' : cfg['k_se_e'], #13
               'b_e' : cfg['b_e'],
               'g_s' : 0.02,
               'k_pe_s' : 2., 
@@ -1061,11 +1089,27 @@ def syne_net(cfg,
                     'inp_ports' : 0,
                     'init_w' : 1. }
     # SPF to M
-    SPF__M_conn = {'rule': 'one_to_one',
-                   'delay': 0.02 }
-    SPF__M_syn = {'type' : synapse_types.static,
-                  'inp_ports' : 1,
-                  'init_w' : 1. }
+    if rot_SPF:
+        SPF__M_conn = {'rule': 'all_to_all',
+                       'delay': 0.02 }
+        SPF__M_mat= np.array([[ 1,  1,  1,  1,  1,  1],
+                              [ 1,  1,  1, -1, -1, -1],
+                              [ 1, -2,  1, -1,  2, -1],
+                              [-1, -1,  2,  2, -1, -1],
+                              [-1,  1,  0,  0,  1, -1],
+                              [-1,  0,  1, -1,  0,  1]], dtype=float).transpose()
+        for idx, norm in enumerate(np.sqrt([6., 6., 12., 12., 4., 4.])):
+            SPF__M_mat[:,idx] = (1./norm) * SPF__M_mat[:,idx]
+        SPF__M_mat = np.concatenate((SPF__M_mat.flatten('C'), -SPF__M_mat.flatten('C')))
+        SPF__M_syn = {'type' : synapse_types.static,
+                      'inp_ports' : 1,
+                      'init_w' : SPF__M_mat }
+    else:
+        SPF__M_conn = {'rule': 'one_to_one',
+                       'delay': 0.02 }
+        SPF__M_syn = {'type' : synapse_types.static,
+                      'inp_ports' : 1,
+                      'init_w' : 1. }
     # sensory error lateral connections
     SPF__SPF_conn = {'rule': 'one_to_one',
                      'allow_autapses' : False,
