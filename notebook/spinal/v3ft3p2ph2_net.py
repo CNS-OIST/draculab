@@ -384,6 +384,9 @@ def net_from_cfg(cfg,
         for idx, norm in enumerate(np.sqrt([6., 6., 12., 12., 4., 4.])):
             SPF__M_mat[:,idx] = (1./norm) * SPF__M_mat[:,idx]
         SPF__M_mat = np.concatenate((SPF__M_mat.flatten('C'), -SPF__M_mat.flatten('C'), -SPF__M_mat.flatten('C'), SPF__M_mat.flatten('C')))
+#         SPF__M_mat = np.concatenate((SPF__M_mat, -SPF__M_mat), axis=0)
+#         SPF__M_mat = np.concatenate((SPF__M_mat, -SPF__M_mat), axis=1)
+#         SPF__M_mat = SPF__M_mat.flatten('C')
         SPF__M_syn = {'type' : synapse_types.static,
                       'inp_ports' : 1,
                       'init_w' : SPF__M_mat }
@@ -1100,7 +1103,10 @@ def syne_net(cfg,
                               [-1,  0,  1, -1,  0,  1]], dtype=float).transpose()
         for idx, norm in enumerate(np.sqrt([6., 6., 12., 12., 4., 4.])):
             SPF__M_mat[:,idx] = (1./norm) * SPF__M_mat[:,idx]
-        SPF__M_mat = np.concatenate((SPF__M_mat.flatten('C'), -SPF__M_mat.flatten('C')))
+        SPF__M_mat = np.concatenate((SPF__M_mat.flatten('C'), -SPF__M_mat.flatten('C'), -SPF__M_mat.flatten('C'), SPF__M_mat.flatten('C')))
+#         SPF__M_mat = np.concatenate((SPF__M_mat, -SPF__M_mat), axis=0)
+#         SPF__M_mat = np.concatenate((SPF__M_mat, -SPF__M_mat), axis=1)
+#         SPF__M_mat = SPF__M_mat.flatten('C')
         SPF__M_syn = {'type' : synapse_types.static,
                       'inp_ports' : 1,
                       'init_w' : SPF__M_mat }
