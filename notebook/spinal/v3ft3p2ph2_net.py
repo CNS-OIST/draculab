@@ -557,8 +557,7 @@ def net_from_cfg(cfg,
     net.connect(A[12:18], SF, A__SF_conn, A__SF_syn)
     # From ACT
     net.connect(ACT, CE, ACT__C_conn, ACT__C_syn)
-    net.connect(ACT, CI
-                , ACT__C_conn, ACT__C_syn)
+    net.connect(ACT, CI, ACT__C_conn, ACT__C_syn)
     # from AL to P
     net.set_plant_inputs(AL, P, AL__P_conn, AL__P_syn)
     # from CE to AL
@@ -1255,7 +1254,7 @@ def syne_net(cfg,
     # We need to translate these lengths to corresponding SF activity levels.
     # For that it is necessary to recreate all their transformations
     # The first transformation is from length to II afferent activity.
-    ### OUT OF THE 36 AFFERENT SIGNALS, WE TAKE II ###
+    ### OUT OF THE 18 AFFERENT SIGNALS, WE TAKE II ###
     par = net.plants[P].m_params
     # steady state tensions in the static and dynamic bag fibers (no gamma inputs)
     Ts_ss = (par['k_se_s']/(par['k_se_s']+par['k_pe_s'])) * (
