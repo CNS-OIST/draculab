@@ -2643,7 +2643,7 @@ class planar_arm_v3(plant):
             Returns:
                 The 2-tuple (m_lengths, m_speeds):
                     m_lengths : 6-element numpy array with muscle lengths
-                    m_speeds : 6-element numpy array with muscle lengths
+                    m_speeds : 6-element numpy array with muscle speed
         """
         #######################################################################
         # For each muscle, the speed is the projection of the distal endpoint's
