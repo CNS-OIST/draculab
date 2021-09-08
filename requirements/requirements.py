@@ -777,12 +777,12 @@ def add_norm_factor(unit):
 
 
 def add_l1_norm_factor(unit):
-    """ Factor to normalize the L0 norm of the weight vector.
+    """ Factor to normalize the L1 norm of the weight vector.
 
         This requirement was originially created for the 'normalized' synapse
         class, and is implemented in the unit class.
         The requirement  is general enough to be used in any model where the 
-        sum of absolute values for the weights should be 1.
+        sum of absolute values for the weights should be a fixed value.
 
         l1_norm_factor is 1 divided by the sum of absolute values for the
         weights in all the unit's synapses.

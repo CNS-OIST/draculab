@@ -2249,7 +2249,7 @@ class planar_arm_v3(plant):
                 k_pe_d : parallel elasticity constant, dynamic fibers.
                 k_se_s : series elasticity constant, static fibers.
                 k_se_d : series elasticity constant, dynamic fibers.
-                b_s : dampening for dynamic bag fibers.
+                b_s : dampening for static bag fibers.
                 b_d : dampening for dynamic bag fibers.
                 II_gain : output gain for muscle II afferents.
                 Ib_gain : output gain for GTO afferents.
