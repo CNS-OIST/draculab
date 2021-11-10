@@ -197,7 +197,10 @@ class rga_synapse(synapse):
         #self.w += self.alpha * (up - xp) * (sp - spj) # default
         #self.w += self.alpha * up * (sp - spj)
         # soft weight bounding
-        self.w += self.alpha * (up - xp) * (sp - spj) * self.w
+        dw = max(min(self.alpha * (up - xp) * (sp - spj) * self.w, self.alpha),
+                    -self.alpha)
+
+        self.w += dw #self.alpha * (up - xp) * (sp - spj) * self.w
         #          (self.max_w - self.w) * (self.w - self.min_w)) # alternatively
 
 
