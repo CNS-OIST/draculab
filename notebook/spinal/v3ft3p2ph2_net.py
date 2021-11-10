@@ -784,12 +784,12 @@ def syne_net(cfg,
                   'tau_u' : 10., #6., #8
                   'gamma' : 8., #6., #2
                   'g' : 2.,
-                  'theta' : 1.5, #1.,
+                  'theta' : 1., #1.,
                   'tau_slow' : 5.,
                   'y_min' : 0.1, #0.2
                   'rst_thr' : 0.1,
                   'init_val' : 0. }
-    spf_sum_min = 1. # .6 # value where no corrections are needed anymore
+    spf_sum_min = .6 # .6 # value where no corrections are needed anymore
     y_min = 1./(1. + np.exp(-ACT_params['g']*(spf_sum_min - ACT_params['theta'])))
     ACT_params['y_min'] = y_min
 

@@ -699,7 +699,7 @@ class meca_hebb(synapse):
 class rga_21(synapse):
     """ The RGA rule modulated with a second derivative for the errors.
     
-        This rule is described in the NeurIPS paper.
+        This rule is described in the NNs paper.
 
         Presynaptic units are given the lpf_fast and lpf_mid requirements.
 
