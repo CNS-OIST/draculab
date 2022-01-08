@@ -792,19 +792,23 @@ class am_oscillator2D(unit, rga_reqs):
         I = [ np.dot(i, w) for i, w in 
               zip(self.get_mp_inputs(t), self.get_mp_weights(t)) ]
         # Obtain the derivatives
-        Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        if y[1] < 0.97 or y[0] < 0.97:
+            Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        else:
+            Dc = 0.9 - y[1]
         #Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         th = self.omega*t
         Du = (y[1] - y[0] + Dc +
               self.A * np.tanh(I[0]+I[1]) * np.sin(th)) / self.tau_u
         #Du = (1. - y[0]) * (y[1] - y[0] + Dc +
         #      self.A * np.tanh(I[0]) * np.sin(th)) / self.tau_u
+        Du = max(min(1., Du), -1.)
         return np.array([Du, Dc])
 
     def dt_fun(self, y, s):
         """ The derivatives function when the network is flat.
 
-            y : list or Numpy array with the 3-element state vector:
+            y : list or Numpy array with the 2-element state vector:
               y[0] : u  -- unit's activity,
               y[1] : c  -- constant part of the input,
             s : index to inp_sum for current time point
@@ -816,13 +820,17 @@ class am_oscillator2D(unit, rga_reqs):
         #I = sum(self.mp_inp_sum[:,s])
         I = [ port_sum[s] for port_sum in self.mp_inp_sum ]
         # Obtain the derivatives
-        Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        if y[1] < 0.97 or y[0] < 0.97:
+            Dc = y[1]*(I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
+        else:
+            Dc = 0.9 - y[1]
         #Dc = (I[0] + I[1]*y[1]) * (1. - y[1]) / self.tau_c
         th = self.omega*t
         Du = (y[1] - y[0] + Dc +
               self.A * np.tanh(I[0]+I[1])*np.sin(th)) / self.tau_u
         #Du = (1. - y[0]) * (y[1] - y[0] + Dc +
         #      self.A * np.tanh(I[0])*np.sin(th)) / self.tau_u
+        Du = max(min(1., Du), -1.)
         return np.array([Du, Dc])
 
 
