@@ -2363,6 +2363,165 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
         return ( self.f(inp) - y ) * self.rtau
 
 
+class rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs):
+    """ Sigmoidal with rga, inp_sel synapses and gated adaptation.
+
+        This model was obtained by stripping the gated plasticity from the
+        gated_rga_inpsel_adapt_sig model. The integral component was also
+        removed.
+
+        There are 4 ports in this model.
+        The scaled sum of inputs at port 0 constitutes the error signal for 
+        both the rga and gated_input_selection synapses. Inputs at port 1
+        are the "lateral" inputs for the rga synapses. Inputs at port 2
+        are the "afferent" inputs for the gated_input_selection synapse.
+        Inputs at port 3 trigger adaptation.
+        When the input at port 3 surpasses a threshold the unit experiences
+        adaptation, which means that its slow-lpf'd activity will be used to 
+        decrease its current activation. This is achieved through the 
+        slow_decay_adapt requirement.
+
+        The output of the unit is the sigmoidal function applied to the scaled
+        sum of inputs at ports 0, 1, and 2, minus the adaptation component.
+
+
+        Like the other rga models it has the extra custom_inp_del attribute, 
+        as well as implementations of all required requirement update 
+        functions.
+
+        Like gated_rga_sig this unit has an integral component. This means
+        that the input is integrated using the integ_decay_act requirement,
+        and the output comes from the sigmoidal function applied to the scaled
+        input sum plus a term proportional to the integral component.
+
+        The des_out_w_abs_sum parameter is included in case the
+        pre_out_norm_factor requirement is used.
+
+        The presynaptic units should have the lpf_fast and lpf_mid requirements,
+        since these will be added by the gated_rga synapse.
+
+        This unit has the required parameters to use euler_maru integration if
+        this is specified in the parameters.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'slope' : Slope of the sigmoidal function.
+                    'thresh' : Threshold of the sigmoidal function.
+                    'tau' : Time constant of the update dynamics.
+                    'tau_slow' : Slow LPF time constant.
+                    'tau_mid' : Medium LPF time constant.
+                    Using rga synapses brings an extra required parameter:
+                    'custom_inp_del' : an integer indicating the delay that the rga
+                                  learning rule uses for the lateral port inputs. 
+                                  The delay is in units of min_delay steps. 
+                    Using rga_diff synapses brings two extra required parameters:
+                    'custom_inp_del' : the shortest of the two delays.
+                    'custom_inp_del2': the longest of the two delays.
+                    When custom_inp_del2 is not in the params dictionary no
+                    exception is thrown, but instead it is assumed that
+                    rga_diff synapses are not used, and the custom_del_diff
+                    attribute will not be generated.
+                    Using slide_rga_diff synapses, in addition to the two delay
+                    values, requires maximum and minimum delay modifiers:
+                    'del_mod_max': maximum delay modifier.
+                    'del_mod_min': minimum delay modifier.
+                    The two delay modifiers are expressed as number of time
+                    steps, as is the case for the custom delays.
+                OPTIONAL PARAMETERS
+                    'des_out_w_abs_sum' : desired sum of absolute weight values
+                                          for the outgoing connections.
+                                          Default is 1.
+                    'out_norm_type' : a synapse type's integer value. If included,
+                                 the sum of absolute weights for outgoing
+                                 connections will only consider synapses of
+                                 that type. For example, you may set it as:
+                                 {...,
+                                 'out_norm_type' : synapse_types.gated_rga_diff.value}
+                    'adapt_amp' : amplitude of adapation. Default is 1.
+                    'mu' : noise bias in for euler_maru integration.
+                    'sigma' : standard deviation for euler_maru integration.
+            Raises:
+                AssertionError.
+        """
+        if 'n_ports' in params and params['n_ports'] != 4:
+            raise AssertionError('rga_inpsel_adapt_sig units must have n_ports=4')
+        else:
+            params['n_ports'] = 4
+        if 'custom_inp_del' in params:
+            self.custom_inp_del = params['custom_inp_del']
+        else:
+            raise AssertionError('rga_inpsel_adapt_sig units need a ' +
+                                 'custom_inp_del parameter')
+        if 'custom_inp_del2' in params:
+            if params['custom_inp_del2'] > params['custom_inp_del']:
+                self.custom_inp_del2 = params['custom_inp_del2']
+                self.custom_del_diff = self.custom_inp_del2-self.custom_inp_del
+            else:
+                raise ValueError('custom_inp_del2 must be larger than ' +
+                                 'custom_inp_del')
+
+        sigmoidal.__init__(self, ID, params, network)
+
+        if 'del_mod_max' in params or 'del_mod_min' in params:
+            if params['del_mod_max'] < params['del_mod_min']:
+                raise ValueError('del_mod_max cannot be smaller than del_mod_min')
+            self.del_mod_max = params['del_mod_max']
+            self.del_mod_min = params['del_mod_min']
+            if self.delay < (self.custom_inp_del2 + 
+                             self.del_mod_max)*self.min_delay:
+                raise ValueError('The delay in a gated_slide_rga_diff unit is ' +
+                                 'smaller than custom_inp_del2 + del_mod_max')
+            if 1 > (self.custom_inp_del + self.del_mod_min):
+                raise ValueError('custom_inp_del + del_mod_min is too small')
+        if 'des_out_w_abs_sum' in params:
+            self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        else:
+            self.des_out_w_abs_sum = 1.
+        if 'adapt_amp' in params:
+            self.adapt_amp = params['adapt_amp']
+        else:
+            self.adapt_amp = 1.
+        if 'out_norm_type' in params:
+            self.out_norm_type = params['out_norm_type']
+        self.syn_needs.update([syn_reqs.acc_slow,
+                               syn_reqs.lpf_slow,
+                               syn_reqs.slow_decay_adapt,
+                               syn_reqs.mp_inputs, 
+                               syn_reqs.mp_weights,
+                               syn_reqs.sc_inp_sum_mp])
+                               # syn_reqs.lpf_slow_mp_inp_sum
+        params['inp_deriv_ports'] = [0, 1] # ports for inp_deriv_mp
+        rga_reqs.__init__(self, params)
+        lpf_sc_inp_sum_mp_reqs.__init__(self, params)
+        self.needs_mp_inp_sum = True # to avoid adding signals from port 3
+        params['sda_port'] = 3
+        acc_sda_reqs.__init__(self, params)
+        if 'mu' in params and 'sigma' in params: 
+            self.mu = params['mu']
+            self.sigma = params['sigma']
+            self.mudt = self.mu * self.time_bit # used by flat updater
+            self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
+
+
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity at time t. """
+        sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(t),
+                                           self.get_mp_weights(t))]
+        inp = (sums[0] + sums[1] + sums[2]
+               - self.adapt_amp * self.slow_decay_adapt)
+        return ( self.f(inp) - y[0] ) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        inp = (self.mp_inp_sum[0][s] + self.mp_inp_sum[1][s] + self.mp_inp_sum[2][s]
+               - self.adapt_amp * self.slow_decay_adapt)
+        return ( self.f(inp) - y ) * self.rtau
+
 
 from units.units import linear
 
