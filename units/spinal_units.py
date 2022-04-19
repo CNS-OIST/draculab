@@ -2363,7 +2363,8 @@ class gated_rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs,
         return ( self.f(inp) - y ) * self.rtau
 
 
-class rga_inpsel_adapt_sig(sigmoidal, rga_reqs, lpf_sc_inp_sum_mp_reqs):
+class rga_inpsel_adapt_sig(sigmoidal, rga_reqs,
+                           lpf_sc_inp_sum_mp_reqs, acc_sda_reqs):
     """ Sigmoidal with rga, inp_sel synapses and gated adaptation.
 
         This model was obtained by stripping the gated plasticity from the
