@@ -471,8 +471,9 @@ def net_from_cfg(cfg,
     SPF = net.create(12, SPF_params)
 
     # tracking units
-    M_CE0_track = net.create(M_size, track_params) # to track weights from M to C0
+    A_CE0_track = net.create(18, track_params) # to track weights from A to C0
     A_M0_track = net.create(12, track_params) # to track weights from A to M0
+    M_CE0_track = net.create(M_size, track_params) # to track weights from M to C0
     ipx_track = net.create(12, track_params) # x coordinates of insertion points
     ipy_track = net.create(12, track_params) # y coordinates of insertion points
 
@@ -660,7 +661,22 @@ def net_from_cfg(cfg,
                     if base > 100:
                         raise AssertionError('Could not create A_M tracker unit')
             net.units[uid].set_function(A_M0_fun(base+idx))
-
+            
+        def A_CE0_fun(idx):
+            """ Creates a function to track a weight from AF to CE0. """
+            return lambda t: net.syns[CE[0]][idx].w
+        base = 0
+        for idx, uid in enumerate(A_CE0_track):
+            inpsel_syn = False
+            while not inpsel_syn:
+                if net.syns[CE[0]][base+idx].type in [synapse_types.inp_sel]:
+                    inpsel_syn = True
+                else:
+                    base += 1
+                    if base > 100:
+                        raise AssertionError('Could not create A_C tracker unit')
+            net.units[A_CE0_track[idx]].set_function(A_CE0_fun(base+idx))
+            
     # TRACKING OF INSERTION POINTS (for the arm animation)
     if track_ips:
         # make the source units track the tensions
@@ -674,9 +690,9 @@ def net_from_cfg(cfg,
             net.units[uid].set_function(create_ytracker(P, idx))
 
     pops_list = [A, ACT, AL, CE, CI, M, P, SF, SP, SP_CHG, SPF,
-                 A_M0_track, M_CE0_track, ipx_track, ipy_track]
-    pops_names = ['A', 'ACT', 'AL', 'CE', 'CI', 'M', 'P', 'SF', 'SP', 'SP_CHG',
-                  'SPF', 'A_M0_track', 'M_CE0_track', 'ipx_track', 'ipy_track']
+                 A_CE0_track, A_M0_track, M_CE0_track, ipx_track, ipy_track]
+    pops_names = ['A', 'ACT', 'AL', 'CE', 'CI', 'M', 'P', 'SF', 'SP', 'SP_CHG', 'SPF',
+                  'A_CE0_track', 'A_M0_track', 'M_CE0_track', 'ipx_track', 'ipy_track']
     pops_dict = {pops_names[idx] : pops_list[idx] for 
                  idx in range(len(pops_names))}
     pds = {'P__A_syn' : P__A_syn, 'SF_params' : SF_params, 
