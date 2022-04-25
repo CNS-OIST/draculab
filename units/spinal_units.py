@@ -1420,6 +1420,9 @@ class rga_sig(sigmoidal, rga_reqs):
         tau_slow time constant), and the output comes from the sigmoidal 
         function applied to the scaled input sum plus the integral component.
 
+        This unit needs at least 2 ports. Inputs from all ports are equally
+        included in the input sum.
+
         The des_out_w_abs_sum parameter is included in case the
         pre_out_norm_factor requirement is used.
     """
@@ -1450,8 +1453,9 @@ class rga_sig(sigmoidal, rga_reqs):
             Raises:
                 AssertionError.
         """
-        if 'n_ports' in params and params['n_ports'] != 2:
-            raise AssertionError('rga_sig units must have n_ports=2')
+        if 'n_ports' in params: 
+            if params['n_ports'] < 2:
+                raise AssertionError('rga_sig units must have n_ports >= 2')
         else:
             params['n_ports'] = 2
         if 'custom_inp_del' in params:

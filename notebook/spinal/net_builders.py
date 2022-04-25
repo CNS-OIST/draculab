@@ -19,6 +19,7 @@ def net_from_cfg(cfg,
                  track_ips = False,
                  C_noise = False,
                  M__C_rand_w = True,
+                 rga_on_M = False,
                  rot_SPF = False):
     """ Create a draculab network with the given configuration. 
 
@@ -32,6 +33,7 @@ def net_from_cfg(cfg,
             rand_targets: whether to train using a large number of random targets
             C_noise: whether C units are noisy (use euler_maru integrator)
             M__C_rand_w: randomly initialize weights for the M__C connections
+            rga_on_M: whether to have rga_21 synapses on SPF__M connections
             rot_SPF: whether to rotate the output of SPF
 
         Returns:
@@ -133,10 +135,19 @@ def net_from_cfg(cfg,
     y_min = 1./(1. + np.exp(-ACT_params['g']*(spf_sum_min - ACT_params['theta'])))
     ACT_params['y_min'] = y_min
 
-    AL_params = {'type' : unit_types.sigmoidal,
+    AL_params = {'type' : unit_types.rga_sig,
                  'thresh' : cfg['AL_thresh'] * randz(6),
                  'slope' : 2. * randz(6),
                  'init_val' : 0.1 * randz(6),
+                 'delay' : 0.31, # to be set below
+                 'multidim' : False,
+                 'n_ports' : 3,
+                 'tau_fast': 0.01,
+                 'tau_mid' : 0.05,
+                 'tau_slow' : cfg['C_tau_slow'],
+                 'integ_amp' : 0.,
+                 'custom_inp_del' : int(round(
+                                    (cfg['C_cid']-0.01)/net_params['min_delay'])),
                  'tau' : 0.02 * randz(6) }
     CE_params = {'type' : unit_types.rga_inpsel_adapt_sig,
                 'integ_meth' : 'euler_maru' if C_noise else 'odeint',
@@ -179,7 +190,7 @@ def net_from_cfg(cfg,
                 'tau_slow' : 8.,
                 'tau' : cfg['M_tau'] * randz(M_size),
                 'integ_amp' : 0.,
-                'custom_inp_del' : int(np.round(cfg['M_cid']/net_params['min_delay'])) ,
+                'custom_inp_del' : int(np.round(cfg['M_cid']/net_params['min_delay'])),
                 'des_out_w_abs_sum' : cfg['M_des_out_w_abs_sum'] }
     # SF, SP
     SFth = cfg['SF_thresh_03'] 
@@ -242,7 +253,7 @@ def net_from_cfg(cfg,
     # Afferent to motor error selection -----------------------
     A__M_conn = {'rule' : 'all_to_all',
                  'delay' : 0.02 }
-    A__M_syn = {'type' : synapse_types.inp_sel, 
+    A__M_syn = {'type' : synapse_types.inp_sel,
                 'inp_ports' : 2, # the default for m_sig targets
                 'error_port' : 1, # the default for m_sig targets
                 'aff_port' : 2,
@@ -264,11 +275,13 @@ def net_from_cfg(cfg,
     CE__AL_conn = {'rule' : 'one_to_one',
                    'delay' : 0.01 }
     CE__AL_syn = {'type' : synapse_types.static,
-                  'init_w' : 1. }
+                  'inp_ports' : 2,
+                  'init_w' : .8 }
     CI__AL_conn = {'rule' : 'one_to_one',
                    'delay' : 0.01 }
     CI__AL_syn = {'type' : synapse_types.static,
-                  'init_w' : -1. }
+                  'inp_ports' : 2,
+                  'init_w' : -.8 }
     # CE,CI to CE,CI within the same population ----------------
     CE__CI_conn = {'rule' : 'one_to_one',
                    'delay' : 0.01 }
@@ -306,6 +319,16 @@ def net_from_cfg(cfg,
                  'delays': 0.02 }
     AL__P_syn = {'type': synapse_types.static,
                 'init_w' : 1. }
+    # direct motor cortex to motoneurons ------------------------
+    M__AL_conn = {'rule': 'all_to_all',
+                  'delay': 0.02 }
+    M__AL_syn = {'type' : synapse_types.rga_21,
+                 'lrate': cfg['M__AL_lrate'],
+                 'inp_ports': 0,
+                 'err_port' : 0,
+                 'lat_port' : 1,
+                 'w_sum' : cfg['M__AL_w_sum'],
+                 'init_w' : {'distribution':'uniform', 'low':0.05, 'high':.1}}
     # motor to spinal ------------------------------------------
     M__C_conn = {'rule': 'all_to_all',
                  'delay': 0.02 }
@@ -337,7 +360,11 @@ def net_from_cfg(cfg,
                  'w_sum' : cfg['M__C_w_sum'],
                  'init_w' : M__CI_iw}
     # motor error lateral connections -----------------------------
-    M__M_conn = {'rule': 'one_to_one',
+    if rga_on_M:
+        M__M_rule = 'all_to_all'
+    else:
+        M__M_rule = 'one_to_one'
+    M__M_conn = {'rule': M__M_rule,
                  'allow_autapses' : False,
                  'delay' : 0.02 } # the delay assumes an intermediate interneuron
     M__M_syn = {'type' : synapse_types.static,
@@ -385,6 +412,13 @@ def net_from_cfg(cfg,
                     'inp_ports' : 0,
                     'init_w' : 1. }
     # SPF to M --------------------------------------------------
+    if rga_on_M:
+        SPF__M_rule = 'all_to_all'
+        SPF__M_syn_type = synape_types.rga_21
+        SPF__M_iw = {'distribution':'uniform', 'low':0.05, 'high':.5}
+    else:
+        SPF__M_rule = 'one_to_one'
+        SPF__M_syn_type = synapse_types.static
     if rot_SPF:
         SPF__M_conn = {'rule': 'all_to_all',
                        'delay': 0.02 }
@@ -396,19 +430,30 @@ def net_from_cfg(cfg,
                               [-1,  0,  1, -1,  0,  1]], dtype=float).transpose()
         for idx, norm in enumerate(np.sqrt([6., 6., 12., 12., 4., 4.])):
             SPF__M_mat[:,idx] = (1./norm) * SPF__M_mat[:,idx]
-        SPF__M_mat = np.concatenate((SPF__M_mat.flatten('C'), -SPF__M_mat.flatten('C'), -SPF__M_mat.flatten('C'), SPF__M_mat.flatten('C')))
-#         SPF__M_mat = np.concatenate((SPF__M_mat, -SPF__M_mat), axis=0)
-#         SPF__M_mat = np.concatenate((SPF__M_mat, -SPF__M_mat), axis=1)
-#         SPF__M_mat = SPF__M_mat.flatten('C')
-        SPF__M_syn = {'type' : synapse_types.static,
-                      'inp_ports' : 1,
-                      'init_w' : SPF__M_mat }
+        SPF__M_mat = np.concatenate((SPF__M_mat.flatten('C'),
+                                     -SPF__M_mat.flatten('C'),
+                                     -SPF__M_mat.flatten('C'),
+                                     SPF__M_mat.flatten('C')))
+        SPF__M_syn = {'type': SPF__M_syn_type,
+                      'inp_ports': 1,
+                      'init_w': SPF__M_mat }
     else:
-        SPF__M_conn = {'rule': 'one_to_one',
+        SPF__M_conn = {'rule': SPF__M_rule,
                        'delay': 0.02 }
-        SPF__M_syn = {'type' : synapse_types.static,
-                      'inp_ports' : 1,
-                      'init_w' : 1. }
+        SPF__M_syn = {'type': SPF__M_syn_type,
+                      'lrate': 0. if not rga_on_M else cfg['SPF__M_lrate'],
+                      'w_sum': 1. if not rga_on_M else cfg['SPF__M_w_sum'],
+                      'err_port': 1,
+                      'lat_port': 3,
+                      'inp_ports': 1,
+                      'init_w': 1. }
+        
+    M__CE_syn = {'type' : synapse_types.rga_21,
+                 'lrate': cfg['M__C_lrate'],
+                 'inp_ports': 0,
+                 'w_sum' : cfg['M__C_w_sum'],
+                 'init_w' : M__CE_iw}
+    
     # sensory error lateral connections --------------------------
     SPF__SPF_conn = {'rule': 'one_to_one',
                      'allow_autapses' : False,
@@ -448,6 +493,7 @@ def net_from_cfg(cfg,
         CE_params['custom_inp_del'] = C_del_steps
         CI_params['custom_inp_del'] = C_del_steps
 
+    AL_params['delay'] = (AL_params['custom_inp_del']+2)*net_params['min_delay']
     CE_params['delay'] = (CE_params['custom_inp_del']+2)*net_params['min_delay']
     CI_params['delay'] = (CI_params['custom_inp_del']+2)*net_params['min_delay']
     M_params['delay'] = max(CE_params['delay'], CI_params['delay'],
@@ -473,7 +519,9 @@ def net_from_cfg(cfg,
     # tracking units
     A_CE0_track = net.create(18, track_params) # to track weights from A to C0
     A_M0_track = net.create(12, track_params) # to track weights from A to M0
-    M_CE0_track = net.create(M_size, track_params) # to track weights from M to C0
+    M_CE0_track = net.create(M_size, track_params) # to track weights from M to C[0]
+    M_AL0_track = net.create(M_size, track_params) # to track weights from M to AL[0]
+    SPF_M0_track = net.create(len(SPF), track_params) # weights from SPF to M[0]
     ipx_track = net.create(12, track_params) # x coordinates of insertion points
     ipy_track = net.create(12, track_params) # y coordinates of insertion points
 
@@ -582,6 +630,7 @@ def net_from_cfg(cfg,
     net.connect(CI, AL, CI__AL_conn, CI__AL_syn)
     # intraspinal connections
     for pair in all_pairs:
+        net.connect([AL[pair[0]]], [AL[pair[1]]], C__C_conn, C__C_syn_null_lat)
         if pair in synergists:
             net.connect([CE[pair[0]]], [CE[pair[1]]], C__C_conn, C__C_syn_syne)
             #net.connect([CE[pair[0]]], [CI[pair[1]]], C__C_conn, C__C_syn_null_lat)
@@ -605,12 +654,13 @@ def net_from_cfg(cfg,
         elif pair in self_conn:
             net.connect([CE[pair[0]]], [CI[pair[1]]], CE__CI_conn, CE__CI_syn)
             net.connect([CI[pair[0]]], [CE[pair[1]]], CI__CE_conn, CI__CE_syn)
-    #     else:
-    #         net.connect([CE[pair[0]]], [CE[pair[1]]], C__C_conn, C__C_syn_null_lat)
-    #         net.connect([CE[pair[0]]], [CI[pair[1]]], C__C_conn, C__C_syn_null_lat)
-    #         net.connect([CI[pair[0]]], [CE[pair[1]]], C__C_conn, C__C_syn_null_lat)
-    #         net.connect([CI[pair[0]]], [CI[pair[1]]], C__C_conn, C__C_syn_null_lat)
+        else:
+            net.connect([CE[pair[0]]], [CE[pair[1]]], C__C_conn, C__C_syn_null_lat)
+            net.connect([CE[pair[0]]], [CI[pair[1]]], C__C_conn, C__C_syn_null_lat)
+            net.connect([CI[pair[0]]], [CE[pair[1]]], C__C_conn, C__C_syn_null_lat)
+            net.connect([CI[pair[0]]], [CI[pair[1]]], C__C_conn, C__C_syn_null_lat)
     # From M 
+    net.connect(M, AL, M__AL_conn, M__AL_syn)
     net.connect(M, CE, M__C_conn, M__CE_syn)
     net.connect(M, CI, M__C_conn, M__CI_syn)
     net.connect(M, M, M__M_conn, M__M_syn)
@@ -646,6 +696,21 @@ def net_from_cfg(cfg,
                     if base > 100:
                         raise AssertionError('Could not create M_C tracker unit')
             net.units[M_CE0_track[idx]].set_function(M_CE0_fun(base+idx))
+            
+        def M_AL0_fun(idx):
+            """ Creates a function to track a weight from M to AL0. """
+            return lambda t: net.syns[AL[0]][idx].w
+        base = 0
+        for idx in range(len(M)):
+            rga_syn = False
+            while not rga_syn:
+                if net.syns[AL[0]][base+idx].type in [synapse_types.rga_21]:
+                    rga_syn = True
+                else:
+                    base += 1
+                    if base > 100:
+                        raise AssertionError('Could not create M_AL tracker unit')
+            net.units[M_AL0_track[idx]].set_function(M_AL0_fun(base+idx))
     
         def A_M0_fun(idx):
             """ Creates a function to track a weight from AF to M0. """
@@ -677,6 +742,22 @@ def net_from_cfg(cfg,
                         raise AssertionError('Could not create A_C tracker unit')
             net.units[A_CE0_track[idx]].set_function(A_CE0_fun(base+idx))
             
+        def SPF_M0_fun(idx):
+            """ Creates a function to track a weight from SPF to M0. """
+            return lambda t: net.syns[M[0]][idx].w
+        if rga_on_M:
+            base = 0
+            for idx in range(len(SPF)):
+                rga_syn = False
+                while not rga_syn:
+                    if net.syns[M[0]][base+idx].type in [synapse_types.rga_21]:
+                        rga_syn = True
+                    else:
+                        base += 1
+                        if base > 100:
+                            raise AssertionError('Could not create SPF_M tracker unit')
+                net.units[SPF_M0_track[idx]].set_function(SPF_M0_fun(base+idx))
+        
     # TRACKING OF INSERTION POINTS (for the arm animation)
     if track_ips:
         # make the source units track the tensions
@@ -689,10 +770,13 @@ def net_from_cfg(cfg,
         for idx, uid in enumerate(ipy_track):
             net.units[uid].set_function(create_ytracker(P, idx))
 
-    pops_list = [A, ACT, AL, CE, CI, M, P, SF, SP, SP_CHG, SPF,
-                 A_CE0_track, A_M0_track, M_CE0_track, ipx_track, ipy_track]
-    pops_names = ['A', 'ACT', 'AL', 'CE', 'CI', 'M', 'P', 'SF', 'SP', 'SP_CHG', 'SPF',
-                  'A_CE0_track', 'A_M0_track', 'M_CE0_track', 'ipx_track', 'ipy_track']
+    pops_list = [A, ACT, AL, CE, CI, M, P, SF, SP, SP_CHG,
+                 SPF, A_CE0_track, A_M0_track, M_AL0_track,
+                 M_CE0_track, SPF_M0_track, ipx_track, ipy_track]
+    pops_names = ['A', 'ACT', 'AL', 'CE', 'CI', 'M', 'P', 'SF', 'SP', 'SP_CHG',
+                  'SPF', 'A_CE0_track', 'A_M0_track', 'M_AL0_track',
+                  'M_CE0_track', 'SPF_M0_track','ipx_track', 'ipy_track']
+    
     pops_dict = {pops_names[idx] : pops_list[idx] for 
                  idx in range(len(pops_names))}
     pds = {'P__A_syn' : P__A_syn, 'SF_params' : SF_params, 

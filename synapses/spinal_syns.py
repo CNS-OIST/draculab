@@ -745,20 +745,13 @@ class rga_21(synapse):
         # most of the heavy lifting is done by requirements
         self.upd_requirements = set([syn_reqs.pre_lpf_fast,
                              syn_reqs.pre_lpf_mid, 
-                             #syn_reqs.pre_lpf_slow, # experimental
-                             #syn_reqs.del_inp_mp, # testing
-                             #syn_reqs.del_inp_avg_mp, # testing
-                             #syn_reqs.lpf_slow, # testing
-                             #syn_reqs.mp_inputs, # testing
-                             syn_reqs.mp_weights, # testing
-                             #syn_reqs.inp_avg_mp, # testing
+                             syn_reqs.mp_weights,
                              syn_reqs.lpf_fast,
                              syn_reqs.lpf_mid, 
                              syn_reqs.inp_deriv_mp, 
                              syn_reqs.avg_inp_deriv_mp,
                              syn_reqs.del_inp_deriv_mp,
                              syn_reqs.del_avg_inp_deriv_mp,
-                             #syn_reqs.sc_inp_sum_deriv_mp,
                              syn_reqs.l1_norm_factor_mp,
                              syn_reqs.pre_out_norm_factor])
         assert self.type is synapse_types.rga_21, ['Synapse from ' + str(self.preID) + 
@@ -786,7 +779,7 @@ class rga_21(synapse):
         
         # The procedure above fails because port_idx doesn't get updated after
         # each individual synapse is created. It gets updated after all the
-        # synapse is a call to 'connect' are created. 
+        # synapses in a call to 'connect' are created. 
         # Trying something else. idm_id should be equal to the number of
         # synapses in net.units[self.postID] whose port is equal to this
         # synapse's port.
