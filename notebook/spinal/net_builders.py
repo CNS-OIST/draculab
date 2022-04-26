@@ -210,14 +210,15 @@ def net_from_cfg(cfg,
                   'init_val' : 0.1,
                   'tau' : 0.01 }
     # 1-D error units
-    SPF_params = {'type' : unit_types.sigmoidal,
+    SPF_params = {'type' : unit_types.out_norm_sig,
                   'thresh' : 0.1 * randz(SPF_size),
                   'slope' : 9. * randz(SPF_size),
                   'init_val' : 0.3 * randz(SPF_size),
                   'tau_fast': 0.005,
                   'tau_mid': 0.05,
                   'tau_slow' : 5.,
-                  'tau' : 0.02 * randz(SPF_size) }      
+                  'tau' : 0.02 * randz(SPF_size),
+                  'des_out_w_abs_sum' : cfg['SPF_des_out_w_abs_sum']}
     # units to track synaptic weights or other values
     track_params = {'type' : unit_types.source,
                     'init_val' : 0.02,
@@ -414,7 +415,7 @@ def net_from_cfg(cfg,
     # SPF to M --------------------------------------------------
     if rga_on_M:
         SPF__M_rule = 'all_to_all'
-        SPF__M_syn_type = synape_types.rga_21
+        SPF__M_syn_type = synapse_types.rga_21
         SPF__M_iw = {'distribution':'uniform', 'low':0.05, 'high':.5}
     else:
         SPF__M_rule = 'one_to_one'
