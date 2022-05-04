@@ -1403,20 +1403,22 @@ class noisy_sigmoidal(unit):
     """
         An implementation of a sigmoidal unit with intrinsic noise. 
     
-        Its output is produced by linearly suming the inputs (times the synaptic weights), 
-        and feeding the sum to a sigmoidal function, which constraints the output to values 
-        beween zero and one. The sigmoidal unit has the equation:
+        Its output is produced by linearly suming the inputs (times the 
+        synaptic weights), and feeding the sum to a sigmoidal function, which
+        constraints the output to values beween zero and one. The sigmoidal
+        unit has the equation:
         f(x) = 1. / (1. + exp(-slope*(x - thresh)))
     
-        Because this unit operates in real time, it updates its value gradualy, with
-        a 'tau' time constant. When there is no noise the dynamics of the unit are:
+        Because this unit operates in real time, it updates its value gradualy,
+        with a 'tau' time constant. When there is no noise the dynamics of 
+        the unit are: 
         tau * u' = f(inp) - lambda * u,
-        where 'inp' is the sum of inputs, 'u' is the firing rate, and lambda is a decay rate.
-
-        The update function of this unit uses a stochastic solver that adds Gaussian
-        white noise to the unit's derivative. If a solver is not explicitly specified,
-        when lambda>0, the solver used is exponential Euler, and when lambda=0, the 
-        solver is Euler-Maruyama.
+        where 'inp' is the sum of inputs, 'u' is the firing rate, and lambda 
+        is a decay rate.  
+        The update function of this unit uses a stochastic solver that adds 
+        Gaussian white noise to the unit's derivative. If a solver is not 
+        explicitly specified, when lambda>0, the solver used is exponential 
+        Euler, and when lambda=0, the solver is Euler-Maruyama.
     """
     def __init__(self, ID, params, network):
         """ The unit constructor.

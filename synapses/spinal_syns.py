@@ -2463,17 +2463,18 @@ class anti_covariance_inh_synapse(synapse):
     """ Anticovariance rule for inhibitory synapses
     
         w' = - lrate * (post - theta) * pre,
-        where theta is a low-pass filtered version of post with a slow time constant.
-        This correspond to equation 8.8 in Dayan and Abbott's "Theoretical Neuroscience"
-        (MIT Press 2001), with the sign reversed.
-        The presynaptic activity includes its corresponding transmission delay.
+        where theta is a low-pass filtered version of post with a slow time 
+        constant.  This correspond to equation 8.8 in Dayan and Abbott's "
+        Theoretical Neuroscience" (MIT Press 2001), with the sign 
+        reversed.  The presynaptic activity includes its corresponding 
+        transmission delay.
 
-        This synapse type expects to be initialized with a negative weight, and will
-        implement soft weight bounding in order to ensure the sign of the weigh  does
-        not become positive, so the rule is actually:
+        This synapse type expects to be initialized with a negative weight, 
+        and will implement soft weight bounding in order to ensure the sign 
+        of the weigh  does not become positive, so the rule is actually: 
         w' = lrate * w * (post - theta) * pre,
-        Notice that the negative sign was removed due to the assumption that w
-        is negative.
+        Notice that the negative sign was removed due to the assumption that 
+        w is negative.
     
         Presynaptic units require the 'tau_fast' parameter.
         Postsynaptic units require 'tau_fast' and 'tau_slow'.

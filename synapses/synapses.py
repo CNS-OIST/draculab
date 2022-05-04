@@ -738,8 +738,9 @@ class corr_homeo_inhib_synapse(synapse):
         self.alpha = self.lrate * self.net.min_delay # factor that scales the update rule
         self.upd_requirements = set([syn_reqs.lpf_fast, syn_reqs.pre_lpf_fast])
 
-        assert self.type is synapse_types.corr_inh, ['Synapse from ' + str(self.preID) + ' to ' +
-                                                       str(self.postID) + ' instantiated with the wrong type']
+        assert self.type is synapse_types.corr_inh, ['Synapse from ' + 
+                str(self.preID) + ' to ' + str(self.postID) + 
+                ' instantiated with the wrong type']
 
     
     def update(self, time):

@@ -19,7 +19,9 @@ def net_from_cfg(cfg,
                  track_ips = False,
                  C_noise = False,
                  M__C_rand_w = True,
+                 M_noise = False,
                  rga_on_M = False,
+                 rdc_on_M = False,
                  rot_SPF = False):
     """ Create a draculab network with the given configuration. 
 
@@ -33,7 +35,9 @@ def net_from_cfg(cfg,
             rand_targets: whether to train using a large number of random targets
             C_noise: whether C units are noisy (use euler_maru integrator)
             M__C_rand_w: randomly initialize weights for the M__C connections
+            M_noise: whether M units are noisy (use euler_maru integration)
             rga_on_M: whether to have rga_21 synapses on SPF__M connections
+            rdc_on_M: use rate distribution control on M?
             rot_SPF: whether to rotate the output of SPF
 
         Returns:
@@ -121,6 +125,7 @@ def net_from_cfg(cfg,
                 'init_val' : 0.,
                 'tau' : 0.01, # 0.02
                 'tau_fast': 0.005,
+                'tau_mid' : 0.05,
                 'thresh' : np.array([.2]*6 + [0.]*6 + [.2]*6) } # [Ib, Ia, II]
     ACT_params = {'type' : unit_types.act,
                   'tau_u' : 10., #6., #8
@@ -180,7 +185,8 @@ def net_from_cfg(cfg,
                 'mu' : 0.,
                 'sigma' : cfg['C_sigma'] }
     M_params = {'type' : unit_types.m_sig,
-                'thresh' : 0.5 * randz(M_size) + cfg['A__M_w_sum'] / 2.,
+                'integ_meth' : 'euler_maru' if M_noise else 'odeint',
+                'thresh' : cfg['M_thresh'] * randz(M_size) + cfg['A__M_w_sum'] / 2.,
                 'slope' : 2.5 * randz(M_size),
                 'init_val' : 0.2 * randz(M_size),
                 'delay' : 0.35, # to be set below
@@ -190,8 +196,19 @@ def net_from_cfg(cfg,
                 'tau_slow' : 8.,
                 'tau' : cfg['M_tau'] * randz(M_size),
                 'integ_amp' : 0.,
+                'inp_deriv_ports' : [[1,3] for _ in range(M_size)],
                 'custom_inp_del' : int(np.round(cfg['M_cid']/net_params['min_delay'])),
-                'des_out_w_abs_sum' : cfg['M_des_out_w_abs_sum'] }
+                'des_out_w_abs_sum' : cfg['M_des_out_w_abs_sum'],
+                'use_rdc' : rdc_on_M,
+                'mu' : 0.,
+                'sigma' : cfg['M_sigma'] }
+    if rdc_on_M:
+        M_params['c'] = cfg['M_c']
+        M_params['thr_fix'] = sum(M_params['thresh'])/len(M_params['thresh'])
+        M_params['tau_fix'] = 2.
+        M_params['tau_thr'] = cfg['M_tau_thr']
+        M_params['rdc_port'] = 3
+        M_params['sharpen_port'] = 0
     # SF, SP
     SFth = cfg['SF_thresh_03'] 
     SF_params = {'type' : unit_types.sigmoidal,
@@ -218,6 +235,7 @@ def net_from_cfg(cfg,
                   'tau_mid': 0.05,
                   'tau_slow' : 5.,
                   'tau' : 0.02 * randz(SPF_size),
+                  'delay' : 0.35, # to be set below
                   'des_out_w_abs_sum' : cfg['SPF_des_out_w_abs_sum']}
     # units to track synaptic weights or other values
     track_params = {'type' : unit_types.source,
@@ -271,6 +289,12 @@ def net_from_cfg(cfg,
                    'delay' : 0.02 } 
     ACT__C_syn = {'type' : synapse_types.static,
                   'inp_ports' : 3,
+                  'init_w' : 1. }
+    # ACT to M ------------------------------------------------
+    ACT__M_conn = {'rule' : "all_to_all",
+                   'delay' : 0.01 } 
+    ACT__M_syn = {'type' : synapse_types.static,
+                  'inp_ports' : 0,
                   'init_w' : 1. }
     # CE, CI to AL ---------------------------------------------
     CE__AL_conn = {'rule' : 'one_to_one',
@@ -447,7 +471,7 @@ def net_from_cfg(cfg,
                       'err_port': 1,
                       'lat_port': 3,
                       'inp_ports': 1,
-                      'init_w': 1. }
+                      'init_w': SPF__M_iw if rga_on_M else 1. }
         
     M__CE_syn = {'type' : synapse_types.rga_21,
                  'lrate': cfg['M__C_lrate'],
@@ -499,6 +523,7 @@ def net_from_cfg(cfg,
     CI_params['delay'] = (CI_params['custom_inp_del']+2)*net_params['min_delay']
     M_params['delay'] = max(CE_params['delay'], CI_params['delay'],
                        (M_params['custom_inp_del']+2) * net_params['min_delay'])
+    SPF_params['delay'] = (M_params['custom_inp_del']+2) * net_params['min_delay']
     
     #--------------------------------------------------------------------
     # CREATING NETWORK AND UNITS
@@ -623,6 +648,8 @@ def net_from_cfg(cfg,
     # From ACT
     net.connect(ACT, CE, ACT__C_conn, ACT__C_syn)
     net.connect(ACT, CI, ACT__C_conn, ACT__C_syn)
+    if rdc_on_M:
+        net.connect(ACT, M, ACT__M_conn, ACT__M_syn)
     # from AL to P
     net.set_plant_inputs(AL, P, AL__P_conn, AL__P_syn)
     # from CE to AL

@@ -1522,6 +1522,11 @@ class m_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         implementation, the number of input ports is still 4, although only 3
         ports are used. 
         
+        An experimental version of `reach_analysis_C` uses a version of this
+        unit with rate distribution control (which explains the "use_rdc"
+        optional parameter). The sharpening input is also included in the
+        input sum; hopefully it's not too much interference.
+
         When calculating the derivatives, the current version sums the inputs
         from all ports to get the scaled input sum. Notice this will also
         include the "value" inputs in the rl5B scenario, but hopefully the
@@ -1537,7 +1542,8 @@ class m_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         function applied to the scaled input sum plus the integral component.
 
         The des_out_w_abs_sum parameter is included in case the
-        pre_out_norm_factor requirement is used.
+        pre_out_norm_factor requirement is used. The optional paramters 'mu' and
+        'sigma' are included, in case a noisy integrator is used.
     """
     def __init__(self, ID, params, network):
         """ The unit constructor.
@@ -1546,20 +1552,39 @@ class m_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
                 ID, params, network: same as in the 'unit' class.
                 In addition, params should have the following entries.
                     REQUIRED PARAMETERS
-                    'slope' : Slope of the sigmoidal function.
-                    'thresh' : Threshold of the sigmoidal function.
-                    'tau' : Time constant of the update dynamics.
-                    'tau_slow' : Slow LPF time constant.
-                    'integ_amp' : amplitude multiplier of the integral
+                    'slope': Slope of the sigmoidal function.
+                    'thresh': Threshold of the sigmoidal function.
+                    'tau': Time constant of the update dynamics.
+                    'tau_slow': Slow LPF time constant.
+                    'integ_amp': amplitude multiplier of the integral
                                     component.
-                    'custom_inp_del' : an integer indicating the delay that the
+                    'custom_inp_del': an integer indicating the delay that the
                                   learning rule uses for the lateral port inputs. 
                                   The delay is in units of min_delay steps. 
 
                 OPTIONAL PARAMETERS
-                    'des_out_w_abs_sum' : desired sum of absolute weight values
+                    'des_out_w_abs_sum': desired sum of absolute weight values
                                           for the outgoing connections.
                                           Default is 1.
+                    'mu': drift for the euler_maru solver.
+                    'sigma': standard deviation for the euler_maru solver
+                    'use_rdc': Use rate distro control? Default:False
+
+                    When use_rdc==True, these parameters are required:
+                    'c': Changes the homogeneity of the firing rate distribution.
+                         Values very close to 0 make all firing rates equally
+                         probable, whereas larger values make small firing
+                         rates more probable. 
+                         Shouldn't be set to zero (causes zero division in the
+                         cdf function).
+                    'rdc_port' : port ID of inputs used for rate distribution control.
+                    'tau_thr': sets the speed of change for the threshold 
+                               (reciprocal of time constant). 
+                    'thr_fix': default value of the threshold (when no 
+                               distribution control is applied) (not used yet)
+                    'tau_fix' : reciprocal of time constant for threshold's return to thr_fix.
+                    'sharpen_port' : port ID where the inputs controlling trdc arrive.
+
             Raises:
                 AssertionError.
         """
@@ -1576,11 +1601,27 @@ class m_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         else:
             self.des_out_w_abs_sum = 1.
         sigmoidal.__init__(self, ID, params, network)
+        if 'mu' in params: 
+            self.mu = params['mu']
+            self.mudt = self.mu * self.time_bit # used by flat updater
+            self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
+        if 'sigma' in params: 
+            self.sigma = params['sigma']
         self.integ_amp = params['integ_amp']
         rga_reqs.__init__(self, params) # add requirements and update functions 
         lpf_sc_inp_sum_mp_reqs.__init__(self, params)
         self.needs_mp_inp_sum = False # the sigmoidal uses self.inp_sum
         self.syn_needs.update([syn_reqs.lpf_slow_sc_inp_sum]) 
+        if 'use_rdc' in params and params['use_rdc']:
+            self.rdc_port = params['rdc_port'] # port for rate distribution control
+            self.tau_thr = params['tau_thr']  # the reciprocal of the threshold sliding time constant
+            self.c = params['c']  # The coefficient in the exponential distribution
+            self.thr_fix = params['thr_fix']  # the value where the threshold returns
+            self.tau_fix = params['tau_fix']  # the speed of the threshold's return to thr_fix
+            self.sharpen_port = params['sharpen_port']
+            self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, 
+                               syn_reqs.slide_thresh_shrp, syn_reqs.lpf_fast])
+
 
     def derivatives(self, y, t):
         """ Return the derivative of the activity at time t. """

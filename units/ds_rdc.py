@@ -517,7 +517,8 @@ class sig_trdc(unit):
         self.rtau = 1/self.tau   # because you always use 1/tau instead of tau
         self.rdc_port = params['rdc_port'] # port for rate distribution control
         self.needs_mp_inp_sum = False # use upd_flat_inp_sum when network is flat
-        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp, syn_reqs.slide_thresh, syn_reqs.lpf_fast]) 
+        self.syn_needs.update([syn_reqs.mp_inputs, syn_reqs.balance_mp,
+                               syn_reqs.slide_thresh, syn_reqs.lpf_fast]) 
         
     def f(self, arg):
         """ This is the sigmoidal function. Could roughly think of it as an f-I curve. """
@@ -542,14 +543,15 @@ class sig_trdc(unit):
 
 class trdc_sharp_base(unit):
     """ 
-    The parent class for units with switchable threshold-based rate distribution control. 
+    Parent class for units with switchable threshold-based rate distro control. 
     
-    One of the parameters is a port number, called "sharpen_port". When the scaled sum of inputs to the 
-    sharpen port are larger than 0.5, based on the distribution of inputs at port 'rdc_port' this unit 
-    will use threshold-based rate distribution control to produce an exponential distribution of firing 
-    rates. When the inputs to the sharpen port are smaller than 0.5 the threshold will decay exponentially
-    to a default value called "thr_fix", with time constant reciprocal to "tau_fix".
-    
+    One of the parameters is a port number, called "sharpen_port". When the 
+    scaled sum of inputs to the sharpen port are larger than 0.5, based on 
+    the distribution of inputs at port 'rdc_port' this unit will use threshold-
+    based rate distribution control to produce an exponential distribution of 
+    firing rates. When the inputs to the sharpen port are smaller than 0.5 
+    the threshold will decay exponentially to a default value called "thr_fix",
+    with time constant reciprocal to "tau_fix".
     """
     # The only difference with multiport_trdc_base is the use of the slide_thresh_shrp 
     # instead of slide_thresh
