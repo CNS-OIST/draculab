@@ -22,7 +22,8 @@ def net_from_cfg(cfg,
                  M_noise = False,
                  rga_on_M = False,
                  rdc_on_M = False,
-                 rot_SPF = False):
+                 rot_SPF = False,
+                 old_M__C = True):
     """ Create a draculab network with the given configuration. 
 
         Args:
@@ -39,6 +40,7 @@ def net_from_cfg(cfg,
             rga_on_M: whether to have rga_21 synapses on SPF__M connections
             rdc_on_M: use rate distribution control on M?
             rot_SPF: whether to rotate the output of SPF
+            old_M__C: M not permuted, and static connections from M can inhibit.
 
         Returns:
             A tuple with the following entries:
@@ -61,7 +63,6 @@ def net_from_cfg(cfg,
         cfg['k_pe_e'] = 20.
     if not 'k_se_e' in cfg:
         cfg['k_se_e'] = 20.
-
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Parameter dictionaries for the network and the plant
@@ -159,7 +160,7 @@ def net_from_cfg(cfg,
                 'init_val' : [r*np.array([0.5]) for r in np.random.random(6)],
                 'multidim' : False,
                 'slope' : cfg['C_slope'],
-                'thresh' : cfg['C_thresh'],
+                'thresh' : cfg['CE_thresh'],
                 'tau' : cfg['C_tau'],
                 'tau_fast': 0.01,
                 'tau_mid' : 0.05,
@@ -174,7 +175,7 @@ def net_from_cfg(cfg,
                 'init_val' : [r*np.array([0.5]) for r in np.random.random(6)],
                 'multidim' : False,
                 'slope' : cfg['CI_slope'] if 'CI_slope' in cfg else cfg['C_slope'],
-                'thresh' : cfg['CI_thresh'] if 'CI_thresh' in cfg else cfg['C_thresh'],
+                'thresh' : cfg['CI_thresh'],
                 'tau' :  cfg['CI_tau'] if 'CI_tau' in cfg else cfg['C_tau'],
                 'tau_fast': 0.01,
                 'tau_mid' : 0.05,
@@ -187,7 +188,7 @@ def net_from_cfg(cfg,
     M_params = {'type' : unit_types.m_sig,
                 'integ_meth' : 'euler_maru' if M_noise else 'odeint',
                 'thresh' : cfg['M_thresh'] * randz(M_size) + cfg['A__M_w_sum'] / 2.,
-                'slope' : 2.5 * randz(M_size),
+                'slope' : cfg['M_slope'] * randz(M_size),
                 'init_val' : 0.2 * randz(M_size),
                 'delay' : 0.35, # to be set below
                 'n_ports' : 4,
@@ -201,7 +202,7 @@ def net_from_cfg(cfg,
                 'des_out_w_abs_sum' : cfg['M_des_out_w_abs_sum'],
                 'use_rdc' : rdc_on_M,
                 'mu' : 0.,
-                'sigma' : cfg['M_sigma'] }
+                'sigma' : 0 if not 'M_sigma' in cfg else cfg['M_sigma'] }
     if rdc_on_M:
         M_params['c'] = cfg['M_c']
         M_params['thr_fix'] = sum(M_params['thresh'])/len(M_params['thresh'])
@@ -227,6 +228,7 @@ def net_from_cfg(cfg,
                   'init_val' : 0.1,
                   'tau' : 0.01 }
     # 1-D error units
+    dowas = 1. if not 'SPF_des_out_w_abs_sum' in cfg else cfg['SPF_des_out_w_abs_sum']
     SPF_params = {'type' : unit_types.out_norm_sig,
                   'thresh' : 0.1 * randz(SPF_size),
                   'slope' : 9. * randz(SPF_size),
@@ -236,7 +238,7 @@ def net_from_cfg(cfg,
                   'tau_slow' : 5.,
                   'tau' : 0.02 * randz(SPF_size),
                   'delay' : 0.35, # to be set below
-                  'des_out_w_abs_sum' : cfg['SPF_des_out_w_abs_sum']}
+                  'des_out_w_abs_sum' : dowas }
     # units to track synaptic weights or other values
     track_params = {'type' : unit_types.source,
                     'init_val' : 0.02,
@@ -347,30 +349,69 @@ def net_from_cfg(cfg,
     # direct motor cortex to motoneurons ------------------------
     M__AL_conn = {'rule': 'all_to_all',
                   'delay': 0.02 }
+    if not M__C_rand_w:
+        if old_M__C:
+            M_AL = np.array([[1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0.],
+                             [0., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.],
+                             [0., 0., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
+                             [0., 0., 0., 1., 0., 0., 0., 0., 0., 1., 0., 0.],
+                             [0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 1., 0.],
+                             [0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 1.]])
+        else:
+            M_AL = np.array([[1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0.],
+                             [0., 0., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
+                             [0., 0., 0., 1., 0., 0., 0., 0., 0., 1., 0., 0.],
+                             [0., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.],
+                             [0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 1., 0.],
+                             [0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 1.]])
+        M_AL_iw = (cfg['M__AL_w_sum']*0.5) * M_AL.flatten('F')
+    else:
+        M_AL_iw = {'distribution':'uniform', 'low':0.05, 'high':.1}
     M__AL_syn = {'type' : synapse_types.rga_21,
                  'lrate': cfg['M__AL_lrate'],
                  'inp_ports': 0,
                  'err_port' : 0,
                  'lat_port' : 1,
                  'w_sum' : cfg['M__AL_w_sum'],
-                 'init_w' : {'distribution':'uniform', 'low':0.05, 'high':.1}}
+                 'init_w' : M_AL_iw }
     # motor to spinal ------------------------------------------
     M__C_conn = {'rule': 'all_to_all',
                  'delay': 0.02 }
     if not M__C_rand_w:
         # initializing M__C weights manually
-        M_CE = np.array(
-            [[ 1., .3, 0.,-.5, .3, 0.],
-             [ .3, 1.,-.5, 0., 0., 0.],
-             [ 0.,-.5, 1., .3, 0., 0.],
-             [-.5, 0., .3, 1., 0., .3],
-             [ .3, 0., 0., 0., 1.,-.5],
-             [ 0., 0., 0., .3,-.5, 1.]])
-        M_CE = M_CE.flatten('C')
-        M_CE = np.concatenate((M_CE, -M_CE))
-        M_CI = -M_CE
-        M__CE_iw = M_CE
-        M__CI_iw = M_CI
+        if old_M__C:
+            M_CE = np.array(
+                [[ 1., .3, 0.,-.5, .3, 0.],
+                 [ .3, 1.,-.5, 0., 0., 0.],
+                 [ 0.,-.5, 1., .3, 0., 0.],
+                 [-.5, 0., .3, 1., 0., .3],
+                 [ .3, 0., 0., 0., 1.,-.5],
+                 [ 0., 0., 0., .3,-.5, 1.]])
+            M_CE = M_CE.flatten('C')
+            M_CE = np.concatenate((M_CE, -M_CE))
+            M_CI = -M_CE
+        else:
+            M_CE = np.array(
+                [[1., 0., .5, 0., 0., .5, 1., 0., .5, 0., 0., .5],
+                 [.5, 0., 1., 0., 0., 0., .5, 0., 1., 0., 0., 0.],
+                 [0., .5, 0., 1., 0., 0., 0., .5, 0., 1., 0., 0.],
+                 [0., 1., 0., .5, .5, 0., 0., 1., 0., .5, .5, 0.],
+                 [0., .5, 0., 0., 1., 0., 0., .5, 0., 0., 1., 0.],
+                 [.5, 0., 0., 0., 0., 1., .5, 0., 0., 0., 0., 1.]])
+            M_CI = np.array(
+                [[0., 1., 0., .5, .5, 0., 0., 1., 0., .5, .5, 0.],
+                 [0., .5, 0., 1., 0., 0., 0., .5, 0., 1., 0., 0.],
+                 [.5, 0., 1., 0., 0., 0., .5, 0., 1., 0., 0., 0.],
+                 [1., 0., .5, 0., 0., .5, 1., 0., .5, 0., 0., .5] ,
+                 [.5, 0., 0., 0., 0., 1., .5, 0., 0., 0., 0., 1.],
+                 [0., .5, 0., 0., 1., 0., 0., .5, 0., 0., 1., 0.]])
+            for row_idx in range(M_CE.shape[0]):
+                M_CE[row_idx] = M_CE[row_idx] / sum(M_CE[row_idx])
+                M_CI[row_idx] = M_CI[row_idx] / sum(M_CI[row_idx])
+            M_CE = M_CE.flatten('F')
+            M_CI = M_CI.flatten('F')
+        M__CE_iw = cfg['M__C_w_sum'] * M_CE
+        M__CI_iw = cfg['M__C_w_sum'] * M_CI
     else:
         M__CE_iw = {'distribution':'uniform', 'low':0.05, 'high':.1}
         M__CI_iw = {'distribution':'uniform', 'low':0.05, 'high':.1}
@@ -437,13 +478,9 @@ def net_from_cfg(cfg,
                     'inp_ports' : 0,
                     'init_w' : 1. }
     # SPF to M --------------------------------------------------
-    if rga_on_M:
-        SPF__M_rule = 'all_to_all'
-        SPF__M_syn_type = synapse_types.rga_21
-        SPF__M_iw = {'distribution':'uniform', 'low':0.05, 'high':.5}
-    else:
-        SPF__M_rule = 'one_to_one'
-        SPF__M_syn_type = synapse_types.static
+    SPF__M_iw = 1. # default initial weight
+    SPF__M_rule = 'one_to_one' # default connection rule
+    SPF__M_syn_type = synapse_types.static # default synapse type
     if rot_SPF:
         SPF__M_conn = {'rule': 'all_to_all',
                        'delay': 0.02 }
@@ -459,25 +496,36 @@ def net_from_cfg(cfg,
                                      -SPF__M_mat.flatten('C'),
                                      -SPF__M_mat.flatten('C'),
                                      SPF__M_mat.flatten('C')))
-        SPF__M_syn = {'type': SPF__M_syn_type,
-                      'inp_ports': 1,
-                      'init_w': SPF__M_mat }
-    else:
-        SPF__M_conn = {'rule': SPF__M_rule,
-                       'delay': 0.02 }
-        SPF__M_syn = {'type': SPF__M_syn_type,
-                      'lrate': 0. if not rga_on_M else cfg['SPF__M_lrate'],
-                      'w_sum': 1. if not rga_on_M else cfg['SPF__M_w_sum'],
-                      'err_port': 1,
-                      'lat_port': 3,
-                      'inp_ports': 1,
-                      'init_w': SPF__M_iw if rga_on_M else 1. }
-        
-    M__CE_syn = {'type' : synapse_types.rga_21,
-                 'lrate': cfg['M__C_lrate'],
-                 'inp_ports': 0,
-                 'w_sum' : cfg['M__C_w_sum'],
-                 'init_w' : M__CE_iw}
+        SPF__M_iw = SPF__M_mat
+        SPF__M_rule = 'all_to_all'
+    if rga_on_M:
+        SPF__M_rule = 'all_to_all'
+        SPF__M_syn_type = synapse_types.rga_21
+        SPF__M_iw = {'distribution':'uniform', 'low':0.05, 'high':.5}
+    if not (M__C_rand_w or old_M__C): # permuted entries in M
+        SPF__M_rule = 'all_to_all'
+        SPF__M_mat = np.array([[1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+                               [0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.],
+                               [0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+                               [0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
+                               [0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0.],
+                               [0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.],
+                               [0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.],
+                               [0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0.],
+                               [0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0.],
+                               [0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
+                               [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.],
+                               [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.]])
+        SPF__M_iw = SPF__M_mat.flatten('F')
+    SPF__M_conn = {'rule': SPF__M_rule,
+                   'delay': 0.02 }
+    SPF__M_syn = {'type': SPF__M_syn_type,
+                  'lrate': 0. if not rga_on_M else cfg['SPF__M_lrate'],
+                  'w_sum': 1. if not rga_on_M else cfg['SPF__M_w_sum'],
+                  'err_port': 1,
+                  'lat_port': 3,
+                  'inp_ports': 1,
+                  'init_w': SPF__M_iw }
     
     # sensory error lateral connections --------------------------
     SPF__SPF_conn = {'rule': 'one_to_one',
@@ -543,13 +591,24 @@ def net_from_cfg(cfg,
     SPF = net.create(12, SPF_params)
 
     # tracking units
-    A_CE0_track = net.create(18, track_params) # to track weights from A to C0
-    A_M0_track = net.create(12, track_params) # to track weights from A to M0
-    M_CE0_track = net.create(M_size, track_params) # to track weights from M to C[0]
-    M_AL0_track = net.create(M_size, track_params) # to track weights from M to AL[0]
-    SPF_M0_track = net.create(len(SPF), track_params) # weights from SPF to M[0]
-    ipx_track = net.create(12, track_params) # x coordinates of insertion points
-    ipy_track = net.create(12, track_params) # y coordinates of insertion points
+    if track_weights:
+        A_CE0_track = net.create(18, track_params) # to track weights from A to C0
+        A_M0_track = net.create(12, track_params) # to track weights from A to M0
+        M_CE0_track = net.create(M_size, track_params) # to track weights from M to C[0]
+        M_AL0_track = net.create(M_size, track_params) # to track weights from M to AL[0]
+        SPF_M0_track = net.create(len(SPF), track_params) # weights from SPF to M[0]
+    else:
+        A_CE0_track = []
+        A_M0_track = []
+        M_CE0_track = []
+        M_AL0_track = []
+        SPF_M0_track = []
+    if track_ips:
+        ipx_track = net.create(12, track_params) # x coordinates of insertion points
+        ipy_track = net.create(12, track_params) # y coordinates of insertion points
+    else:
+        ipx_track = []
+        ipy_track = []
 
     #--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--
     # SET THE PATTERNS IN SP -----------------------------------------------------
@@ -972,7 +1031,7 @@ def syne_net(cfg,
                 'mu' : 0.,
                 'sigma' : cfg['C_sigma'] }
     M_params = {'type' : unit_types.m_sig,
-                'thresh' : 0.5 * randz(M_size) + cfg['A__M_w_sum'] / 2.,
+                'thresh' : 0.5 * randz(M_size),
                 'slope' : 2.5 * randz(M_size),
                 'init_val' : 0.2 * randz(M_size),
                 'delay' : 0.35, # to be set below

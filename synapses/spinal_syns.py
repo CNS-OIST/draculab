@@ -819,8 +819,9 @@ class rga_21(synapse):
         self.w += 0.03 * self.alpha * (norm_fac - 1.)*self.w 
         # plasticity equation (so far the best)
         #self.w -= self.alpha * (ejpp - epp) * (cip - cp)
-        # Using only positive weights (experimental)
+        # Using only positive weights 
         self.w -= self.alpha * (ejpp - epp) * (cip - cp) * self.w
+        #self.w -= self.alpha * (ejpp - epp) * (cip - cp) * (self.w+0.1)
 
 
 class gated_rga_21(synapse):
