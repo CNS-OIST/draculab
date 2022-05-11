@@ -521,7 +521,7 @@ def net_from_cfg(cfg,
                    'delay': 0.02 }
     SPF__M_syn = {'type': SPF__M_syn_type,
                   'lrate': 0. if not rga_on_M else cfg['SPF__M_lrate'],
-                  'w_sum': 1. if not rga_on_M else cfg['SPF__M_w_sum'],
+                  'w_sum': 1. if not 'SPF__M_w_sum' in cfg else cfg['SPF__M_w_sum'],
                   'err_port': 1,
                   'lat_port': 3,
                   'inp_ports': 1,
