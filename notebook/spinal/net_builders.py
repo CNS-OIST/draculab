@@ -23,6 +23,7 @@ def net_from_cfg(cfg,
                  rga_on_M = False,
                  rdc_on_M = False,
                  rot_SPF = False,
+                 M__M_conns = False,
                  old_M__C = True):
     """ Create a draculab network with the given configuration. 
 
@@ -40,6 +41,7 @@ def net_from_cfg(cfg,
             rga_on_M: whether to have rga_21 synapses on SPF__M connections
             rdc_on_M: use rate distribution control on M?
             rot_SPF: whether to rotate the output of SPF
+            M__M_conns : whether to have M__M_connections
             old_M__C: M not permuted, and static connections from M can inhibit.
 
         Returns:
@@ -426,16 +428,37 @@ def net_from_cfg(cfg,
                  'w_sum' : cfg['M__C_w_sum'],
                  'init_w' : M__CI_iw}
     # motor error lateral connections -----------------------------
-    if rga_on_M:
+    if M__M_conns:
         M__M_rule = 'all_to_all'
+        M_autap = True
+        if old_M__C: # M units are not rotated
+            M__M_iw = cfg['M__M_w'] * np.concatenate(
+                                 (np.concatenate((np.zeros((12,12)), -np.eye(12)), axis=1),
+                                  np.concatenate((-np.eye(12), np.zeros((12,12))), axis=1)),
+                                 axis=0)
+            M__M_iw = cfg['M__M_w'] * M__M_iw.flatten('F')
+        else:
+            twist = np.array([[0., 1., 0., 0., 0., 0.],
+                              [1., 0., 0., 0., 0., 0.],
+                              [0., 0., 0., 1., 0., 0.],
+                              [0., 0., 1., 0., 0., 0.],
+                              [0., 0., 0., 0., 0., 1.],
+                              [0., 0., 0., 0., 1., 0.]])
+            M__M_iw = np.concatenate((
+                      np.concatenate((twist, np.eye(6)), axis=1),
+                      np.concatenate((np.eye(6), twist), axis=1)), axis=0)
+            M__M_iw = cfg['M__M_w'] * M__M_iw.flatten('F')
     else:
-        M__M_rule = 'one_to_one'
+        M__M_rule = 'one_to_one' # no autapses means no connections will be added
+        M_autap = False
+        M__M_iw = 0.
+    
     M__M_conn = {'rule': M__M_rule,
-                 'allow_autapses' : False,
+                 'allow_autapses' : M_autap,
                  'delay' : 0.02 } # the delay assumes an intermediate interneuron
     M__M_syn = {'type' : synapse_types.static,
                 'inp_ports': 3, # default for m_sig targets
-                'init_w' : cfg['M__M_w'] }
+                'init_w' : M__M_iw }
     # plant to afferent -------------------------------------------
     idx_aff = np.arange(22,40) # indexes for afferent output in the arm
     P__A_conn = {'port_map' : [[(p,0)] for p in idx_aff],
