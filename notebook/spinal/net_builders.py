@@ -92,20 +92,20 @@ def net_from_cfg(cfg,
               'mu2': 3.,
               'l_torque' : 0.01,
               'l_visco' : 0.01,
-              'g_e' : cfg['g_e_factor']*np.array([cfg['g_e_03'], 20., 20.,
-                                                  cfg['g_e_03'], 22., 23.]),
+              'g_e' : cfg['g_e_factor']*np.array([cfg['g_e_03'], 25., 25., # 20, 20,
+                                                  cfg['g_e_03'], 30., 30.]), # 22., 23.]),
               'l0_e' : [1.]*6,
-              'Ia_gain' : 2.5*np.array([3.,10.,10., 3.,10.,10.]),
+              'Ia_gain' : 2.5*np.array([3.,10.,10., 3.,11.,11.]), # 3,10,10,3,10,10
               'II_gain' : 2.*np.array([cfg['II_g_03'], 8., 8.,
-                                       cfg['II_g_03'], 8., 8.]),
+                                       cfg['II_g_03'], 9., 8.]), # 8., 8.]),
               'Ib_gain' : 1.,
               'T_0' : 10.,
               'k_pe_e' : cfg['k_pe_e'],  #8
               'k_se_e' : cfg['k_se_e'], #13
               'b_e' : cfg['b_e'],
               'g_s' : 0.02,
-              'k_pe_s' : 2., 
-              'k_se_s' : 2.,
+              'k_pe_s' : [2., 2., 2., 2., 2., 2.], #2., 
+              'k_se_s' : [2., 2., 2., 2., 2., 2.], # 2.,
               'g_d' : 0.01,
               'k_pe_d' : .2, #.1,
               'k_se_d' : 1., #2.,
@@ -129,7 +129,9 @@ def net_from_cfg(cfg,
                 'tau' : 0.01, # 0.02
                 'tau_fast': 0.005,
                 'tau_mid' : 0.05,
-                'thresh' : np.array([.2]*6 + [0.]*6 + [.2]*6) } # [Ib, Ia, II]
+                'thresh' : np.array([.35]*6 + 
+                                    [-.15]*6 + 
+                                    [1.5, .12, .22, 1.2, .2, .2])} #[1.5,.12,.22,1.2,.14,.26] } # [Ib, Ia, II]
     ACT_params = {'type' : unit_types.act,
                   'tau_u' : 10., #6., #8
                   'gamma' : 8., #6., #2
@@ -213,10 +215,10 @@ def net_from_cfg(cfg,
         M_params['rdc_port'] = 3
         M_params['sharpen_port'] = 0
     # SF, SP
-    SFth = cfg['SF_thresh_03'] 
+    SFth = cfg['SF_thresh_03']
     SF_params = {'type' : unit_types.sigmoidal,
-                 'thresh' : np.array([SFth, 0.4, 0.4, SFth, 0.4, 0.4]),
-                 'slope' : np.array([4.]*6),
+                 'thresh' : np.array([SFth, 0.4, 0.4, SFth, 0.3, 0.4]), # 0.4, 0.4]),
+                 'slope' : np.array([cfg['SF_slope']]*6),
                  'init_val' : 0.2,
                  'tau' : 0.02 }  # 0.05
     SP_params = {'type' : unit_types.source,
