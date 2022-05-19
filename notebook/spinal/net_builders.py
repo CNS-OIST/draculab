@@ -354,20 +354,12 @@ def net_from_cfg(cfg,
     M__AL_conn = {'rule': 'all_to_all',
                   'delay': 0.02 }
     if not M__C_rand_w:
-        if old_M__C:
-            M_AL = np.array([[1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0.],
-                             [0., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.],
-                             [0., 0., 1., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
-                             [0., 0., 0., 1., 0., 0., 0., 0., 0., 1., 0., 0.],
-                             [0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 1., 0.],
-                             [0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 1.]])
-        else:
-            M_AL = np.array([[1., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.],
-                             [0., 0., 1., 0., 0., 0., 0., 0., 0., 1., 0., 0.],
-                             [0., 0., 0., 1., 0., 0., 0., 0., 1., 0., 0., 0.],
-                             [0., 1., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0.],
-                             [0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 1.],
-                             [0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 1., 0.]])
+        M_AL = np.array([[1., 0., 0., 0., 0., 0.,  0., 0., 0., 1., 0., 0.],
+                         [0., 1., 0., 0., 0., 0.,  0., 0., 1., 0., 0., 0.],
+                         [0., 0., 1., 0., 0., 0.,  0., 1., 0., 0., 0., 0.],
+                         [0., 0., 0., 1., 0., 0.,  1., 0., 0., 0., 0., 0.],
+                         [0., 0., 0., 0., 1., 0.,  0., 0., 0., 0., 0., 1.],
+                         [0., 0., 0., 0., 0., 1.,  0., 0., 0., 0., 1., 0.]])
         M_AL_iw = (cfg['M__AL_w_sum']*0.5) * M_AL.flatten('F')
     else:
         M_AL_iw = {'distribution':'uniform', 'low':0.05, 'high':.1}
@@ -395,20 +387,19 @@ def net_from_cfg(cfg,
             M_CE = np.concatenate((M_CE, -M_CE))
             M_CI = -M_CE
         else:
-            M_CE = np.array(
-                [[1., 0., .5, 0., 0., .5, 0., 1., 0., .5, .5, 0.],
-                 [.5, 0., 1., 0., 0., 0., 0., .5, 0., 1., 0., 0.],
-                 [0., .5, 0., 1., 0., 0., .5, 0., 1., 0., 0., 0.],
-                 [0., 1., 0., .5, .5, 0., 1., 0., .5, 0., 0., 5.],
-                 [0., .5, 0., 0., 1., 0., .5, 0., 0., 0., 0., 1.],
-                 [.5, 0., 0., 0., 0., 1., 0., .5, 0., 0., 1., 0.]])
-            M_CI = np.array(
-                [[0., 1., 0., .5, .5, 0., 1., 0., .5, 0., 0., .5],
-                 [0., .5, 0., 1., 0., 0., .5, 0., 1., 0., 0., 0.],
-                 [.5, 0., 1., 0., 0., 0., 0., .5, 0., 1., 0., 0.],
-                 [1., 0., .5, 0., 0., .5, 0., 1., 0., .5, .5, 0.] ,
-                 [.5, 0., 0., 0., 0., 1., 0., .5, 0., 0., 1., 0.],
-                 [0., .5, 0., 0., 1., 0., .5, 0., 0., 0., 0., 1.]])
+            M_CE_core = np.array(
+                [[1.0, 0.5, 0.0, 0.0, 0.5, 0.0],
+                 [0.5, 1.0, 0.0, 0.0, 0.0, 0.0],
+                 [0.0, 0.0, 1.0, 0.5, 0.0, 0.0],
+                 [0.0, 0.0, 0.5, 1.0, 0.0, 0.5],
+                 [0.5, 0.0, 0.0, 0.0, 1.0, 0.0],
+                 [0.0, 0.0, 0.0, 0.5, 0.0, 1.0]])
+            antag_idx = [3, 2, 1, 0, 5, 4] # index of antagonist
+            M_CE_rev = np.zeros_like(M_CE_core)
+            for idx, ant_idx in enumerate(antag_idx):
+                M_CE_rev[:,idx] = M_CE_core[:,ant_idx] 
+            M_CE = np.concatenate((M_CE_core, M_CE_rev), axis=1)
+            M_CI = np.concatenate((M_CE_rev, M_CE_core), axis=1)
             for row_idx in range(M_CE.shape[0]):
                 M_CE[row_idx] = M_CE[row_idx] / sum(M_CE[row_idx])
                 M_CI[row_idx] = M_CI[row_idx] / sum(M_CI[row_idx])
@@ -433,23 +424,11 @@ def net_from_cfg(cfg,
     if M__M_conns:
         M__M_rule = 'all_to_all'
         M_autap = True
-        if old_M__C: # M units are not rotated
-            M__M_iw = cfg['M__M_w'] * np.concatenate(
-                                 (np.concatenate((np.zeros((12,12)), -np.eye(12)), axis=1),
-                                  np.concatenate((-np.eye(12), np.zeros((12,12))), axis=1)),
-                                 axis=0)
-            M__M_iw = cfg['M__M_w'] * M__M_iw.flatten('F')
-        else:
-            twist = np.array([[0., 1., 0., 0., 0., 0.],
-                              [1., 0., 0., 0., 0., 0.],
-                              [0., 0., 0., 1., 0., 0.],
-                              [0., 0., 1., 0., 0., 0.],
-                              [0., 0., 0., 0., 0., 1.],
-                              [0., 0., 0., 0., 1., 0.]])
-            M__M_iw = np.concatenate((
-                      np.concatenate((twist, np.eye(6)), axis=1),
-                      np.concatenate((np.eye(6), twist), axis=1)), axis=0)
-            M__M_iw = cfg['M__M_w'] * M__M_iw.flatten('F')
+        M__M_iw = np.concatenate(
+                             (np.concatenate((np.zeros((6,6)), np.eye(6)), axis=1),
+                              np.concatenate((np.eye(6), np.zeros((6,6))), axis=1)),
+                             axis=0)
+        M__M_iw = cfg['M__M_w'] * M__M_iw.flatten('F')
     else:
         M__M_rule = 'one_to_one' # no autapses means no connections will be added
         M_autap = False
@@ -503,7 +482,7 @@ def net_from_cfg(cfg,
                     'inp_ports' : 0,
                     'init_w' : 1. }
     # SPF to M --------------------------------------------------
-    SPF__M_iw = 1. # default initial weight
+    SPF__M_iw = 1. #cfg['SPF__M_w_sum'] # default initial weight
     SPF__M_rule = 'one_to_one' # default connection rule
     SPF__M_syn_type = synapse_types.static # default synapse type
     if rot_SPF:
@@ -527,21 +506,6 @@ def net_from_cfg(cfg,
         SPF__M_rule = 'all_to_all'
         SPF__M_syn_type = synapse_types.rga_21
         SPF__M_iw = {'distribution':'uniform', 'low':0.05, 'high':.5}
-    if not (M__C_rand_w or old_M__C): # permuted entries in M
-        SPF__M_rule = 'all_to_all'
-        SPF__M_mat = np.array([[1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-                               [0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0.],
-                               [0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-                               [0., 0., 1., 0., 0., 0., 0., 0., 0., 0., 0., 0.],
-                               [0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0., 0.],
-                               [0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0., 0.],
-                               [0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0.],
-                               [0., 0., 0., 0., 0., 0., 1., 0., 0., 0., 0., 0.],
-                               [0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0.],
-                               [0., 0., 0., 0., 0., 0., 0., 0., 1., 0., 0., 0.],
-                               [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1.],
-                               [0., 0., 0., 0., 0., 0., 0., 0., 0., 0., 1., 0.]])
-        SPF__M_iw = SPF__M_mat.flatten('F')
     SPF__M_conn = {'rule': SPF__M_rule,
                    'delay': 0.02 }
     SPF__M_syn = {'type': SPF__M_syn_type,
