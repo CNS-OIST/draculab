@@ -2470,13 +2470,13 @@ class planar_arm_v3(plant):
             if 'l0'+s in params:
                 self.m_params['l0'+s] = (self.param_vector(params['l0'+s]) *
                                          self.ref_lengths)
-        # parameters used under full dynamic gamma stimualtion
+        # parameters used under full dynamic gamma stimulation
         self.pd_params = {'k_pe_d' : self.param_vector(0.1),
                           'k_se_d' : self.param_vector(2.),
                           'b_d' : self.param_vector(5.),
                           'Ia_gain' : 2.*self.m_params['Ia_gain']
                          }
-        # parameters used under full static gamma stimualtion
+        # parameters used under full static gamma stimulation
         self.ps_params = {'II_gain' : 2.*self.m_params['II_gain'],
                           'fs' : self.param_vector(0.5),
                           'se_II' : 0.7

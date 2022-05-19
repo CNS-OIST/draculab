@@ -35,12 +35,12 @@ class network():
     This class has the tools to build and simulate a network.
 
     Roughly, the steps are:
-    First, you create an instance of network(); 
-    second, you use the create() method to add units and plants;
-    third, you use source.set_function() for source units, which provide inputs;
-    fourth, you use the connect() method to connect the units, 
-    fifth, you use set_plant_inputs() and set_plant_outputs() to connect the plants;
-    finally you use the run() method to run the simulation.
+    First, create an instance of network(); 
+    second, use the create() method to add units and plants;
+    third, use source.set_function() for source units, which provide inputs;
+    fourth, use the connect() method to connect the units, 
+    fifth, use set_plant_inputs() and set_plant_outputs() to connect the plants;
+    finally use the run() method to run the simulation.
 
     More information is provided by the tutorials.
     """

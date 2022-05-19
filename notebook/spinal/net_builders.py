@@ -93,11 +93,11 @@ def net_from_cfg(cfg,
               'l_torque' : 0.01,
               'l_visco' : 0.01,
               'g_e' : cfg['g_e_factor']*np.array([cfg['g_e_03'], 25., 25., # 20, 20,
-                                                  cfg['g_e_03'], 30., 30.]), # 22., 23.]),
+                                                  cfg['g_e_03'], 25., 25.]), #30., 30.]), # 22., 23.]),
               'l0_e' : [1.]*6,
               'Ia_gain' : 2.5*np.array([3.,10.,10., 3.,11.,11.]), # 3,10,10,3,10,10
               'II_gain' : 2.*np.array([cfg['II_g_03'], 8., 8.,
-                                       cfg['II_g_03'], 9., 8.]), # 8., 8.]),
+                                       cfg['II_g_03'], 8., 8.]), # 8., 8.]),
               'Ib_gain' : 1.,
               'T_0' : 10.,
               'k_pe_e' : cfg['k_pe_e'],  #8
@@ -346,7 +346,7 @@ def net_from_cfg(cfg,
                        'inp_ports': 1,
                        'init_w' : 0. }
     # spinal units to plant ------------------------------------
-    AL__P_conn = {'inp_ports' : list(range(6)),
+    AL__P_conn = {'inp_ports' : list(range(6)), #list([0, 1, 2, 3, 5, 4]),
                  'delays': 0.02 }
     AL__P_syn = {'type': synapse_types.static,
                 'init_w' : 1. }
@@ -638,15 +638,24 @@ def net_from_cfg(cfg,
     #--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--
     # SET THE PATTERNS IN SP -----------------------------------------------------
     # list with hand coordinates [x,y] (meters)
+    n_coords = 1000 # number of coordinates to generate
     if rand_targets is False:
-        hand_coords = [[0.3, 0.45], 
-                       [0.35, 0.4],
-                       [0.4, 0.35],
-                       [0.35, 0.3],
-                       [0.3, 0.25],
-                       [0.25, 0.3],
-                       [0.2, 0.35],
-                       [0.25, 0.4]]
+        center = np.array([0.3, 0.3]) # initial hand location
+        n_trgs = 8 # number of targets around center
+        r = .1  # distance of targets from center
+        angs = np.linspace(0., 2.*np.pi, n_trgs+1)[:-1]
+        circle = np.array([np.array([np.cos(ang),np.sin(ang)]) for ang in angs])
+        targets = center + r*circle # coordinates of the targets
+        hand_coords = [center, targets[0],
+                       center, targets[1],
+                       center, targets[2],
+                       center, targets[3],
+                       center, targets[4],
+                       center, targets[5],
+                       center, targets[6],
+                       center, targets[7]]
+        n_rep = int(round(n_coords / len(hand_coords)))
+        hand_coords = n_rep * hand_coords
     else:
         # creating a list of random coordinates to use as targets
         min_s_ang = -0.1 # minimum shoulder angle
@@ -697,8 +706,10 @@ def net_from_cfg(cfg,
     SF_out = 1./ (1. + np.exp(-SF_params['slope']*(SF_arg - SF_params['thresh'])))
     SF_params['init_val'] = SF_out # this might cause a smooth start
     # now we set the values in SP
-    m_idxs = np.random.randint(len(hand_coords), size=1000) # index of all targets
-        #m_idxs[0] = 0 # for testing
+    if rand_targets:
+        m_idxs = np.random.randint(len(hand_coords), size=1000) # index of all targets
+    else:
+        m_idxs = np.arange(len(hand_coords))
     A_us = [net.units[u] for u in A]
 
     def SF_sigmo(idx, arg):
