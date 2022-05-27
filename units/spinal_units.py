@@ -1634,6 +1634,98 @@ class m_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
         return ( self.f(inp) - y ) * self.rtau
 
 
+class adapt_m_sig(sigmoidal, acc_sda_reqs, lpf_sc_inp_sum_mp_reqs, rga_reqs):
+    """ A unit meant to be in the motor error layer.
+
+        This is a version of m_sig that can experience adaptation when the
+        input at port 0 exceeds a threshold (0.8). Such a model is used for the
+        'M_learns' configuration in 'reach_analysis_C'.
+
+        As initially used, port 0 receives the signal that triggers
+        adaptation. Port 1 receives "error" inputs from SPF, connected
+        with rga_21 synpases. Port 2 receives "afferent" inputs from A, with
+        inp_sel synapses. Port 3 receives "lateral" connections from within
+        M, with static synapses.
+
+        This unit has the extra custom_inp_del attribute, and inherits all the
+        update functions necessary for rga and inp_sel synapses.
+
+        The des_out_w_abs_sum parameter is included in case the
+        pre_out_norm_factor requirement is used. The optional paramters 'mu' and
+        'sigma' are included, in case a noisy integrator is used.
+    """
+    def __init__(self, ID, params, network):
+        """ The unit constructor.
+
+            Args:
+                ID, params, network: same as in the 'unit' class.
+                In addition, params should have the following entries.
+                    REQUIRED PARAMETERS
+                    'slope': Slope of the sigmoidal function.
+                    'thresh': Threshold of the sigmoidal function.
+                    'tau': Time constant of the update dynamics.
+                    'tau_slow': Slow LPF time constant.
+                    'custom_inp_del': an integer indicating the delay that the
+                                  learning rule uses for the lateral port inputs. 
+                                  The delay is in units of min_delay steps. 
+                    'adapt_amp': amplitude of the adaptation.
+
+                OPTIONAL PARAMETERS
+                    'des_out_w_abs_sum': desired sum of absolute weight values
+                                          for the outgoing connections.
+                                          Default is 1.
+                    'mu': drift for the euler_maru solver.
+                    'sigma': standard deviation for the euler_maru solver
+                    
+            Raises:
+                AssertionError.
+        """
+        if 'n_ports' in params and params['n_ports'] != 4:
+            raise AssertionError('m_sig units must have n_ports=4')
+        else:
+            params['n_ports'] = 4
+        if 'custom_inp_del' in params:
+            self.custom_inp_del = params['custom_inp_del']
+        else:
+            raise AssertionError('m_sig units need a custom_inp_del parameter')
+        if 'des_out_w_abs_sum' in params:
+            self.des_out_w_abs_sum = params['des_out_w_abs_sum']
+        else:
+            self.des_out_w_abs_sum = 1.
+        sigmoidal.__init__(self, ID, params, network)
+        if 'mu' in params: 
+            self.mu = params['mu']
+            self.mudt = self.mu * self.time_bit # used by flat updater
+            self.sqrdt = np.sqrt(self.time_bit) # used by flat updater
+        if 'sigma' in params: 
+            self.sigma = params['sigma']
+        self.sda_port = 0 # port that triggers adaptation
+        self.adapt_amp = params['adapt_amp']
+        self.needs_mp_inp_sum = True # to remove port 0 input
+        rga_reqs.__init__(self, params) # add requirements and update functions 
+        lpf_sc_inp_sum_mp_reqs.__init__(self, params)
+        self.syn_needs.update([syn_reqs.lpf_slow,
+                               syn_reqs.slow_decay_adapt,
+                               syn_reqs.mp_inputs,
+                               syn_reqs.mp_weights,
+                               syn_reqs.sc_inp_sum_mp]) 
+        
+    def derivatives(self, y, t):
+        """ Return the derivative of the activity at time t. """
+        sums = [(w*i).sum() for i,w in zip(self.get_mp_inputs(t),
+                                           self.get_mp_weights(t))]
+        inp = (sums[1] + sums[2] + sums[3]
+               - self.adapt_amp * self.slow_decay_adapt)
+        return ( self.f(inp) - y[0] ) * self.rtau
+
+    def dt_fun(self, y, s):
+        """ The derivatives function used when the network is flat. """
+        inp = (self.mp_inp_sum[1][s] + self.mp_inp_sum[2][s] + 
+               self.mp_inp_sum[3][s] -
+               self.adapt_amp * self.slow_decay_adapt)
+        return ( self.f(inp) - y ) * self.rtau
+
+
 class x_sig(sigmoidal, lpf_sc_inp_sum_mp_reqs, rga_reqs):
     """ A unit to configure controllers so they increase a value.
 
@@ -2429,7 +2521,6 @@ class rga_inpsel_adapt_sig(sigmoidal, rga_reqs,
 
         The output of the unit is the sigmoidal function applied to the scaled
         sum of inputs at ports 0, 1, and 2, minus the adaptation component.
-
 
         Like the other rga models it has the extra custom_inp_del attribute, 
         as well as implementations of all required requirement update 

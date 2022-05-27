@@ -189,7 +189,7 @@ def net_from_cfg(cfg,
                 'adapt_amp' : cfg['C_adapt_amp'],
                 'mu' : 0.,
                 'sigma' : cfg['C_sigma'] }
-    M_params = {'type' : unit_types.m_sig,
+    M_params = {'type' : unit_types.adapt_m_sig if rga_on_M else unit_types.m_sig,
                 'integ_meth' : 'euler_maru' if M_noise else 'odeint',
                 'thresh' : cfg['M_thresh'] * randz(M_size) + cfg['A__M_w_sum'] / 2.,
                 'slope' : cfg['M_slope'] * randz(M_size),
@@ -201,6 +201,7 @@ def net_from_cfg(cfg,
                 'tau_slow' : 8.,
                 'tau' : cfg['M_tau'] * randz(M_size),
                 'integ_amp' : 0.,
+                'adapt_amp': 0. if not 'M_adapt_amp' in cfg else cfg['M_adapt_amp'],
                 'inp_deriv_ports' : [[1,3] for _ in range(M_size)],
                 'custom_inp_del' : int(np.round(cfg['M_cid']/net_params['min_delay'])),
                 'des_out_w_abs_sum' : cfg['M_des_out_w_abs_sum'],
@@ -707,7 +708,7 @@ def net_from_cfg(cfg,
     # From ACT
     net.connect(ACT, CE, ACT__C_conn, ACT__C_syn)
     net.connect(ACT, CI, ACT__C_conn, ACT__C_syn)
-    if rdc_on_M:
+    if rdc_on_M or rga_on_M:
         net.connect(ACT, M, ACT__M_conn, ACT__M_syn)
     # from AL to P
     net.set_plant_inputs(AL, P, AL__P_conn, AL__P_syn)
