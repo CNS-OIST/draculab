@@ -483,7 +483,7 @@ def net_from_cfg(cfg,
                     'inp_ports' : 0,
                     'init_w' : 1. }
     # SPF to M --------------------------------------------------
-    SPF__M_iw = 1. #cfg['SPF__M_w_sum'] # default initial weight
+    SPF__M_iw = cfg['SPF__M_w_sum'] # default initial weight
     SPF__M_rule = 'one_to_one' # default connection rule
     SPF__M_syn_type = synapse_types.static # default synapse type
     if rot_SPF:
