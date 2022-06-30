@@ -65,6 +65,10 @@ def net_from_cfg(cfg,
         cfg['k_pe_e'] = 20.
     if not 'k_se_e' in cfg:
         cfg['k_se_e'] = 20.
+        
+    if rot_SPF:
+        assert (not rga_on_M and C_noise and M__C_rand_w and
+                not M_noise and not M__M_conns), "rot_SPF conditions unsatisfied"
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Parameter dictionaries for the network and the plant
@@ -882,8 +886,15 @@ def syne_net(cfg,
              track_ips = False,
              C_noise = False,
              M__C_rand_w = True,
-             rot_SPF = False):
-    """ Create a draculab network with the given configuration. 
+             M_noise = False,
+             rga_on_M = False,
+             rdc_on_M = False,
+             rot_SPF = False,
+             M__M_conns = False,
+             old_M__C = None):
+    """ Create a draculab network with the given configuration.
+    
+        In the network returned, each interneuron stimulates two muscles.
 
         Args:
             cfg : a parameter dictionary
@@ -893,9 +904,14 @@ def syne_net(cfg,
             par_heter: range of heterogeneity as a fraction of the original value
             set_C_delay: whether set C_cid using analytical approach
             rand_targets: whether to train using a large number of random targets
-            C_noise: whether SYNE units are noisy (use euler_maru integrator)
+            C_noise: whether C units are noisy (use euler_maru integrator)
             M__C_rand_w: randomly initialize weights for the M__C connections
+            M_noise: whether M units are noisy (use euler_maru integration)
+            rga_on_M: whether to have rga_21 synapses on SPF__M connections
+            rdc_on_M: use rate distribution control on M? (not implemented)
             rot_SPF: whether to rotate the output of SPF
+            M__M_conns : whether to have M__M_connections
+            old_M__C: Not implemented.
 
         Returns:
             A tuple with the following entries:
@@ -919,7 +935,17 @@ def syne_net(cfg,
         cfg['k_pe_e'] = 20.
     if not 'k_se_e' in cfg:
         cfg['k_se_e'] = 20.
-
+        
+    if rot_SPF:
+        assert (not rga_on_M and C_noise and M__C_rand_w and
+                not M_noise and not M__M_conns), "rot_SPF conditions unsatisfied"
+        
+    if not C_noise or not M__C_rand_w or M_noise or rga_on_M or rot_SPF:
+        raise ValueError("syne_net is using an untested configuration.")
+        
+    if rdc_on_M:
+        raise NotImplementedError('rdc_on_M not available on syne_net')
+    
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Parameter dictionaries for the network and the plant
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -949,7 +975,7 @@ def syne_net(cfg,
               'g_e' : cfg['g_e_factor']*np.array([cfg['g_e_03'], 20., 20.,
                                                   cfg['g_e_03'], 22., 23.]),
               'l0_e' : [1.]*6,
-              'Ia_gain' : 2.5*np.array([3.,10.,10., 3.,10.,10.]),
+              'Ia_gain' : 2.5*np.array([3.,10.,10., 3.,11.,11.]),
               'II_gain' : 2.*np.array([cfg['II_g_03'], 8., 8.,
                                        cfg['II_g_03'], 8., 8.]),
               'Ib_gain' : 1.,
@@ -996,17 +1022,26 @@ def syne_net(cfg,
     y_min = 1./(1. + np.exp(-ACT_params['g']*(spf_sum_min - ACT_params['theta'])))
     ACT_params['y_min'] = y_min
 
-    AL_params = {'type' : unit_types.sigmoidal,
+    AL_params = {'type' : unit_types.rga_sig,
                  'thresh' : cfg['AL_thresh'] * randz(6),
                  'slope' : 2. * randz(6),
                  'init_val' : 0.1 * randz(6),
+                 'delay' : 0.31, # to be set below
+                 'multidim' : False,
+                 'n_ports' : 3,
+                 'tau_fast': 0.01,
+                 'tau_mid' : 0.05,
+                 'tau_slow' : cfg['C_tau_slow'],
+                 'integ_amp' : 0.,
+                 'custom_inp_del' : int(round(
+                                    (cfg['C_cid']-0.01)/net_params['min_delay'])),
                  'tau' : 0.02 * randz(6) }
-    CE_params = {'type' : unit_types.rga_adapt_sig,
+    CE_params = {'type' : unit_types.rga_inpsel_adapt_sig,
                 'integ_meth' : 'euler_maru' if C_noise else 'odeint',
                 'init_val' : [r*np.array([0.5]) for r in np.random.random(6)],
                 'multidim' : False,
                 'slope' : cfg['C_slope'],
-                'thresh' : cfg['C_thresh'],
+                'thresh' : cfg['CE_thresh'],
                 'tau' : cfg['C_tau'],
                 'tau_fast': 0.01,
                 'tau_mid' : 0.05,
@@ -1016,12 +1051,12 @@ def syne_net(cfg,
                 'adapt_amp' : cfg['C_adapt_amp'],
                 'mu' : 0.,
                 'sigma' : cfg['C_sigma'] }
-    CI_params = {'type' : unit_types.rga_adapt_sig,
+    CI_params = {'type' : unit_types.rga_inpsel_adapt_sig,
                 'integ_meth' : 'euler_maru' if C_noise else 'odeint',
                 'init_val' : [r*np.array([0.5]) for r in np.random.random(6)],
                 'multidim' : False,
                 'slope' : cfg['CI_slope'] if 'CI_slope' in cfg else cfg['C_slope'],
-                'thresh' : cfg['CI_thresh'] if 'CI_thresh' in cfg else cfg['C_thresh'],
+                'thresh' : cfg['CI_thresh'],
                 'tau' :  cfg['CI_tau'] if 'CI_tau' in cfg else cfg['C_tau'],
                 'tau_fast': 0.01,
                 'tau_mid' : 0.05,
@@ -1031,9 +1066,10 @@ def syne_net(cfg,
                 'adapt_amp' : cfg['C_adapt_amp'],
                 'mu' : 0.,
                 'sigma' : cfg['C_sigma'] }
-    M_params = {'type' : unit_types.m_sig,
-                'thresh' : 0.5 * randz(M_size),
-                'slope' : 2.5 * randz(M_size),
+    M_params = {'type' : unit_types.adapt_m_sig if rga_on_M else unit_types.m_sig,
+                'integ_meth' : 'euler_maru' if M_noise else 'odeint',
+                'thresh' : cfg['M_thresh'] * randz(M_size) + cfg['A__M_w_sum'] / 2.,
+                'slope' : cfg['M_slope'] * randz(M_size),
                 'init_val' : 0.2 * randz(M_size),
                 'delay' : 0.35, # to be set below
                 'n_ports' : 4,
@@ -1042,12 +1078,17 @@ def syne_net(cfg,
                 'tau_slow' : 8.,
                 'tau' : cfg['M_tau'] * randz(M_size),
                 'integ_amp' : 0.,
-                'custom_inp_del' : int(np.round(cfg['M_cid']/net_params['min_delay'])) ,
-                'des_out_w_abs_sum' : cfg['M_des_out_w_abs_sum'] }
+                'adapt_amp': 0. if not 'M_adapt_amp' in cfg else cfg['M_adapt_amp'],
+                'inp_deriv_ports' : [[1,3] for _ in range(M_size)],
+                'custom_inp_del' : int(np.round(cfg['M_cid']/net_params['min_delay'])),
+                'des_out_w_abs_sum' : cfg['M_des_out_w_abs_sum'],
+                'use_rdc' : rdc_on_M,
+                'mu' : 0.,
+                'sigma' : 0 if not 'M_sigma' in cfg else cfg['M_sigma'] }
     # SF, SP
     SFth = cfg['SF_thresh_03'] 
     SF_params = {'type' : unit_types.sigmoidal,
-                 'thresh' : np.array([SFth, 0.4, 0.4, SFth, 0.4, 0.4]),
+                 'thresh' : np.array([SFth, 0.4, 0.4, SFth, 0.3, 0.4]),
                  'slope' : np.array([4.]*6),
                  'init_val' : 0.2,
                  'tau' : 0.02 }  # 0.05
@@ -1062,20 +1103,23 @@ def syne_net(cfg,
                   'init_val' : 0.1,
                   'tau' : 0.01 }
     # 1-D error units
-    SPF_params = {'type' : unit_types.sigmoidal,
+    dowas = 1. if not 'SPF_des_out_w_abs_sum' in cfg else cfg['SPF_des_out_w_abs_sum']
+    SPF_params = {'type' : unit_types.out_norm_sig,
                   'thresh' : 0.1 * randz(SPF_size),
                   'slope' : 9. * randz(SPF_size),
                   'init_val' : 0.3 * randz(SPF_size),
                   'tau_fast': 0.005,
                   'tau_mid': 0.05,
                   'tau_slow' : 5.,
-                  'tau' : 0.02 * randz(SPF_size) }
-    SYNE_params = {'type' : unit_types.rga_adapt_sig,
+                  'tau' : 0.02 * randz(SPF_size),
+                  'delay' : 0.35, # to be set below
+                  'des_out_w_abs_sum' : dowas }
+    SYNE_params = {'type' : unit_types.rga_inpsel_adapt_sig,
                 'integ_meth' : 'euler_maru' if C_noise else 'odeint',
                 'init_val' : [r*np.array([0.5]) for r in np.random.random(N_syne)],
                 'multidim' : False,
                 'slope' : cfg['C_slope'],
-                'thresh' : cfg['C_thresh'],
+                'thresh' : cfg['CE_thresh'],
                 'tau' : cfg['C_tau'],
                 'tau_fast': 0.01,
                 'tau_mid' : 0.05,
@@ -1085,12 +1129,12 @@ def syne_net(cfg,
                 'adapt_amp' : cfg['C_adapt_amp'],
                 'mu' : 0.,
                 'sigma' : cfg['C_sigma']}
-    SYNI_params = {'type' : unit_types.rga_adapt_sig,
+    SYNI_params = {'type' : unit_types.rga_inpsel_adapt_sig,
                 'integ_meth' : 'euler_maru' if C_noise else 'odeint',
                 'init_val' : [r*np.array([0.5]) for r in np.random.random(N_syne)],
                 'multidim' : False,
                 'slope' : cfg['CI_slope'] if 'CI_slope' in cfg else cfg['C_slope'],
-                'thresh' : cfg['CI_thresh'] if 'CI_thresh' in cfg else cfg['C_thresh'],
+                'thresh' : cfg['CI_thresh'],
                 'tau' :  cfg['CI_tau'] if 'CI_tau' in cfg else cfg['C_tau'],
                 'tau_fast': 0.01,
                 'tau_mid' : 0.05,
@@ -1143,17 +1187,33 @@ def syne_net(cfg,
                   'delay' : 0.02 }
     A__SF_syn = {'type' : synapse_types.static,
                  'init_w' : [1.]*6 }
+    # Afferent to interneurons --------------------------------
+    A__SYN_conn = {'rule' : 'all_to_all',
+                 'delay' : 0.01}
+    A__SYN_syn = {'type' : synapse_types.inp_sel,
+                'inp_ports' : 2,
+                'error_port' : 0,
+                'lrate' : cfg['A__C_lrate'],
+                'w_sum' : cfg['A__C_w_sum'],
+                'w_max' : cfg['A__C_w_max_frac']*cfg['A__C_w_sum'],
+                'init_w' : 0.1 }
     # ACT to C ------------------------------------------------
     ACT__C_conn = {'rule' : "all_to_all",
                    'delay' : 0.02 } 
     ACT__C_syn = {'type' : synapse_types.static,
                   'inp_ports' : 2,
                   'init_w' : 1. }
+    # ACT to M ------------------------------------------------
+    ACT__M_conn = {'rule' : "all_to_all",
+                   'delay' : 0.01 } 
+    ACT__M_syn = {'type' : synapse_types.static,
+                  'inp_ports' : 0,
+                  'init_w' : 1. }
     # ACT to SYN ------------------------------------------------
     ACT__SYN_conn = {'rule' : "all_to_all",
                      'delay' : 0.02 } 
     ACT__SYN_syn = {'type' : synapse_types.static,
-                    'inp_ports' : 2,
+                    'inp_ports' : 3,
                     'init_w' : 1. }
     # CE, CI to AL ----------------------------------------------
     CE__AL_conn = {'rule' : 'one_to_one',
@@ -1201,6 +1261,26 @@ def syne_net(cfg,
                  'delays': 0.02 }
     AL__P_syn = {'type': synapse_types.static,
                 'init_w' : 1. }
+    # direct motor cortex to motoneurons ------------------------
+    M__AL_conn = {'rule': 'all_to_all',
+                  'delay': 0.02 }
+    if not M__C_rand_w:
+        M_AL = np.array([[1., 0., 0., 0., 0., 0.,  0., 0., 0., 1., 0., 0.],
+                         [0., 1., 0., 0., 0., 0.,  0., 0., 1., 0., 0., 0.],
+                         [0., 0., 1., 0., 0., 0.,  0., 1., 0., 0., 0., 0.],
+                         [0., 0., 0., 1., 0., 0.,  1., 0., 0., 0., 0., 0.],
+                         [0., 0., 0., 0., 1., 0.,  0., 0., 0., 0., 0., 1.],
+                         [0., 0., 0., 0., 0., 1.,  0., 0., 0., 0., 1., 0.]])
+        M_AL_iw = (cfg['M__AL_w_sum']*0.5) * M_AL.flatten('F')
+    else:
+        M_AL_iw = {'distribution':'uniform', 'low':0.05, 'high':.1}
+    M__AL_syn = {'type' : synapse_types.rga_21,
+                 'lrate': cfg['M__AL_lrate'],
+                 'inp_ports': 0,
+                 'err_port' : 0,
+                 'lat_port' : 1,
+                 'w_sum' : cfg['M__AL_w_sum'],
+                 'init_w' : M_AL_iw }
     # motor to spinal
     if not M__C_rand_w:
         # initializing M__C weights manually
@@ -1246,12 +1326,25 @@ def syne_net(cfg,
                    'w_sum' : cfg['M__C_w_sum'],
                    'init_w' : {'distribution':'uniform', 'low':0.05, 'high':.1}}
     # motor error lateral connections
-    M__M_conn = {'rule': 'one_to_one',
-                 'allow_autapses' : False,
+    if M__M_conns:
+        M__M_rule = 'all_to_all'
+        M_autap = True
+        M__M_iw = np.concatenate(
+                             (np.concatenate((np.zeros((6,6)), np.eye(6)), axis=1),
+                              np.concatenate((np.eye(6), np.zeros((6,6))), axis=1)),
+                             axis=0)
+        M__M_iw = cfg['M__M_w'] * M__M_iw.flatten('F')
+    else:
+        M__M_rule = 'one_to_one' # no autapses means no connections will be added
+        M_autap = False
+        M__M_iw = 0.
+    
+    M__M_conn = {'rule': M__M_rule,
+                 'allow_autapses' : M_autap,
                  'delay' : 0.02 } # the delay assumes an intermediate interneuron
     M__M_syn = {'type' : synapse_types.static,
                 'inp_ports': 3, # default for m_sig targets
-                'init_w' : cfg['M__M_w'] }
+                'init_w' : M__M_iw }
     # plant to afferent
     idx_aff = np.arange(22,40) # indexes for afferent output in the arm
     P__A_conn = {'port_map' : [[(p,0)] for p in idx_aff],
@@ -1294,9 +1387,10 @@ def syne_net(cfg,
                     'inp_ports' : 0,
                     'init_w' : 1. }
     # SPF to M
+    SPF__M_iw = cfg['SPF__M_w_sum'] # default initial weight
+    SPF__M_rule = 'one_to_one' # default connection rule
+    SPF__M_syn_type = synapse_types.static # default synapse type
     if rot_SPF:
-        SPF__M_conn = {'rule': 'all_to_all',
-                       'delay': 0.02 }
         SPF__M_mat= np.array([[ 1,  1,  1,  1,  1,  1],
                               [ 1,  1,  1, -1, -1, -1],
                               [ 1, -2,  1, -1,  2, -1],
@@ -1305,19 +1399,26 @@ def syne_net(cfg,
                               [-1,  0,  1, -1,  0,  1]], dtype=float).transpose()
         for idx, norm in enumerate(np.sqrt([6., 6., 12., 12., 4., 4.])):
             SPF__M_mat[:,idx] = (1./norm) * SPF__M_mat[:,idx]
-        SPF__M_mat = np.concatenate((SPF__M_mat.flatten('C'), -SPF__M_mat.flatten('C'), -SPF__M_mat.flatten('C'), SPF__M_mat.flatten('C')))
-#         SPF__M_mat = np.concatenate((SPF__M_mat, -SPF__M_mat), axis=0)
-#         SPF__M_mat = np.concatenate((SPF__M_mat, -SPF__M_mat), axis=1)
-#         SPF__M_mat = SPF__M_mat.flatten('C')
-        SPF__M_syn = {'type' : synapse_types.static,
-                      'inp_ports' : 1,
-                      'init_w' : SPF__M_mat }
-    else:
-        SPF__M_conn = {'rule': 'one_to_one',
-                       'delay': 0.02 }
-        SPF__M_syn = {'type' : synapse_types.static,
-                      'inp_ports' : 1,
-                      'init_w' : 1. }
+        SPF__M_mat = np.concatenate((SPF__M_mat.flatten('C'),
+                                     -SPF__M_mat.flatten('C'),
+                                     -SPF__M_mat.flatten('C'),
+                                     SPF__M_mat.flatten('C')))
+        SPF__M_iw = SPF__M_mat
+        SPF__M_rule = 'all_to_all'
+    if rga_on_M:
+        SPF__M_rule = 'all_to_all'
+        SPF__M_syn_type = synapse_types.rga_21
+        SPF__M_iw = {'distribution':'uniform', 'low':0.05, 'high':.5}
+    SPF__M_conn = {'rule': SPF__M_rule,
+                   'delay': 0.02 }
+    SPF__M_syn = {'type': SPF__M_syn_type,
+                  'lrate': 0. if not rga_on_M else cfg['SPF__M_lrate'],
+                  'w_sum': 1. if not 'SPF__M_w_sum' in cfg else cfg['SPF__M_w_sum'],
+                  'err_port': 1,
+                  'lat_port': 3,
+                  'inp_ports': 1,
+                  'init_w': SPF__M_iw }
+    
     # sensory error lateral connections
     SPF__SPF_conn = {'rule': 'one_to_one',
                      'allow_autapses' : False,
@@ -1329,10 +1430,12 @@ def syne_net(cfg,
     SYNE__AL_conn = {'rule' : 'all_to_all',
                      'delay' : 0.01 }
     SYNE__AL_syn = {'type' : synapse_types.static,
+                    'inp_ports':2,
                     'init_w' : 1. }
     SYNI__AL_conn = {'rule' : 'all_to_all',
                      'delay' : 0.01 }
     SYNI__AL_syn = {'type' : synapse_types.static,
+                    'inp_ports':2,
                     'init_w' : -1. }
     # Connections between SYNE and SYNI
     SYNE__SYNI_conn = {'rule' : 'one_to_one',
@@ -1414,11 +1517,24 @@ def syne_net(cfg,
     SYNI = net.create(N_syne, SYNI_params)
 
     # tracking units
-    #M_CE0_track = net.create(M_size, track_params) # to track weights from M to C0
-    M_SYNE0_track = net.create(M_size, track_params) # to track weights from M to SYNE0
-    A_M0_track = net.create(12, track_params) # to track weights from A to M0
-    ipx_track = net.create(12, track_params) # x coordinates of insertion points
-    ipy_track = net.create(12, track_params) # y coordinates of insertion points
+    if track_weights:
+        A_SYNE0_track = net.create(18, track_params) # to track weights from A to SYNE0
+        M_SYNE0_track = net.create(M_size, track_params) # to track weights from M to SYNE0
+        A_M0_track = net.create(12, track_params) # to track weights from A to M0
+        M_AL0_track = net.create(M_size, track_params) # to track weights from M to AL[0]
+        SPF_M0_track = net.create(len(SPF), track_params) # weights from SPF to M[0]
+    else:
+        A_SYNE0_track = []
+        M_SYNE0_track
+        A_M0_track = []
+        M_AL0_track = []
+        SPF_M0_track = []
+    if track_ips:
+        ipx_track = net.create(12, track_params) # x coordinates of insertion points
+        ipy_track = net.create(12, track_params) # y coordinates of insertion points
+    else:
+        ipx_track = []
+        ipy_track = []
 
     #--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--o--
     # SET THE PATTERNS IN SP -----------------------------------------------------
@@ -1512,33 +1628,15 @@ def syne_net(cfg,
     # From afferent units
     net.connect(A[:12], M, A__M_conn, A__M_syn)
     net.connect(A[12:18], SF, A__SF_conn, A__SF_syn)
+    net.connect(A, SYNE, A__SYN_conn, A__SYN_syn)
+    net.connect(A, SYNI, A__SYN_conn, A__SYN_syn)
     # From ACT
-    # net.connect(ACT, CE, ACT__C_conn, ACT__C_syn)
-    # net.connect(ACT, CI, ACT__C_conn, ACT__C_syn)
     net.connect(ACT, SYNE, ACT__SYN_conn, ACT__SYN_syn)
     net.connect(ACT, SYNI, ACT__SYN_conn, ACT__SYN_syn)
     # from AL to P
     net.set_plant_inputs(AL, P, AL__P_conn, AL__P_syn)
-    # # from CE to AL
-    # net.connect(CE, AL, CE__AL_conn, CE__AL_syn)
-    # # from CI to AL
-    # net.connect(CI, AL, CI__AL_conn, CI__AL_syn)
-    # # intraspinal connections
-    # for pair in all_pairs:
-    #     if pair in synergists:
-    #         net.connect([CE[pair[0]]], [CE[pair[1]]], C__C_conn, C__C_syn_syne)
-    #     elif pair in part_syne:
-    #         net.connect([CE[pair[0]]], [CE[pair[1]]], C__C_conn, C__C_syn_p_syne)
-    #     elif pair in antagonists:
-    #         net.connect([CE[pair[0]]], [CI[pair[1]]], C__C_conn, C__C_syn_antag)
-    #     elif pair in part_antag:
-    #         net.connect([CE[pair[0]]], [CI[pair[1]]], C__C_conn, C__C_syn_p_antag)
-    #     elif pair in self_conn:
-    #         net.connect([CE[pair[0]]], [CI[pair[1]]], CE__CI_conn, CE__CI_syn)
-    #         net.connect([CI[pair[0]]], [CE[pair[1]]], CI__CE_conn, CI__CE_syn)
     # From M 
-    # net.connect(M, CE, M__C_conn, M__CE_syn)
-    # net.connect(M, CI, M__C_conn, M__CI_syn)
+    net.connect(M, AL, M__AL_conn, M__AL_syn)
     net.connect(M, M, M__M_conn, M__M_syn)
     net.connect(M, SYNE, M__SYN_conn, M__SYNE_syn)
     net.connect(M, SYNI, M__SYN_conn, M__SYNI_syn)
@@ -1572,6 +1670,24 @@ def syne_net(cfg,
 
     # SETTING UP WEIGHT TRACKING
     if track_weights:
+        def A_SYNE0_fun(idx):
+            """ Creates a function to track a weight from A to SYNE0. """
+            if net.syns[SYNE[0]][idx].type == synapse_types.inp_sel:
+                return lambda t: net.syns[SYNE[0]][idx].w
+            else:
+                raise IndexError("Index to A_SYNE0_fun does not lead to inp_sel synapse")
+        base = 0
+        for idx, uid in enumerate(A_SYNE0_track):
+            inpsel_syn = False
+            while not inpsel_syn:
+                if net.syns[SYNE[0]][base+idx].type in [synapse_types.inp_sel]:
+                    inpsel_syn = True
+                else:
+                    base += 1
+                    if base > 100:
+                        raise AssertionError('Could not create A_SYNE tracker unit')
+            net.units[uid].set_function(A_SYNE0_fun(base+idx))
+            
         def M_SYNE0_fun(idx):
             """ Creates a function to track a weight from M to SYNE0. """
             return lambda t: net.syns[SYNE[0]][idx].w
@@ -1586,6 +1702,21 @@ def syne_net(cfg,
                     if base > 100:
                         raise AssertionError('Could not create M_CE tracker unit')
             net.units[M_SYNE0_track[idx]].set_function(M_SYNE0_fun(base+idx))
+            
+        def M_AL0_fun(idx):
+            """ Creates a function to track a weight from M to AL0. """
+            return lambda t: net.syns[AL[0]][idx].w
+        base = 0
+        for idx in range(len(M)):
+            rga_syn = False
+            while not rga_syn:
+                if net.syns[AL[0]][base+idx].type in [synapse_types.rga_21]:
+                    rga_syn = True
+                else:
+                    base += 1
+                    if base > 100:
+                        raise AssertionError('Could not create M_AL tracker unit')
+            net.units[M_AL0_track[idx]].set_function(M_AL0_fun(base+idx))
 
         def A_M0_fun(idx):
             """ Creates a function to track a weight from AF to M0. """
@@ -1616,9 +1747,11 @@ def syne_net(cfg,
             net.units[uid].set_function(create_ytracker(P, idx))
 
     pops_list = [A, ACT, AL, SYNE, SYNI, M, P, SF, SP, SP_CHG, SPF,
-                 A_M0_track, M_SYNE0_track, ipx_track, ipy_track]
+                 A_M0_track, A_SYNE0_track, M_AL0_track, M_SYNE0_track,
+                 ipx_track, ipy_track]
     pops_names = ['A', 'ACT', 'AL', 'SYNE', 'SYNI', 'M', 'P', 'SF', 'SP', 'SP_CHG',
-                  'SPF', 'A_M0_track', 'M_SYNE0_track', 'ipx_track', 'ipy_track']
+                  'SPF', 'A_M0_track', 'A_SYNE0_track', 'M_AL0_track',
+                  'M_SYNE0_track', 'ipx_track', 'ipy_track']
     pops_dict = {pops_names[idx] : pops_list[idx] for 
                  idx in range(len(pops_names))}
     pds = {'P__A_syn' : P__A_syn, 'SF_params' : SF_params, 
