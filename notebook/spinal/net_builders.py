@@ -1489,6 +1489,7 @@ def syne_net(cfg,
         SYNE_params['custom_inp_del'] = C_del_steps
         SYNI_params['custom_inp_del'] = C_del_steps
 
+    AL_params['delay'] = (AL_params['custom_inp_del']+2)*net_params['min_delay']
     CE_params['delay'] = (CE_params['custom_inp_del'] + 2) * net_params['min_delay']
     CI_params['delay'] = (CI_params['custom_inp_del'] + 2) * net_params['min_delay']
     SYNE_params['delay'] = (SYNE_params['custom_inp_del'] + 2) * net_params['min_delay']
@@ -1496,6 +1497,7 @@ def syne_net(cfg,
     M_params['delay'] = max(CE_params['delay'], CI_params['delay'],
                             SYNE_params['delay'], SYNI_params['delay'],
                         (M_params['custom_inp_del'] + 2) * net_params['min_delay'])
+    SPF_params['delay'] = (M_params['custom_inp_del']+2) * net_params['min_delay']
 
     #--------------------------------------------------------------------
     # CREATING NETWORK AND UNITS
@@ -1525,7 +1527,7 @@ def syne_net(cfg,
         SPF_M0_track = net.create(len(SPF), track_params) # weights from SPF to M[0]
     else:
         A_SYNE0_track = []
-        M_SYNE0_track
+        M_SYNE0_track = []
         A_M0_track = []
         M_AL0_track = []
         SPF_M0_track = []
