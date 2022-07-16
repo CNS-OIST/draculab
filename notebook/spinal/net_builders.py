@@ -24,7 +24,8 @@ def net_from_cfg(cfg,
                  rdc_on_M = False,
                  rot_SPF = False,
                  M__M_conns = False,
-                 old_M__C = True):
+                 old_M__C = True,
+                 **extra):
     """ Create a draculab network with the given configuration. 
 
         Args:
@@ -43,6 +44,7 @@ def net_from_cfg(cfg,
             rot_SPF: whether to rotate the output of SPF
             M__M_conns : whether to have M__M_connections
             old_M__C: M not permuted, and static connections from M can inhibit.
+            extra: collects remaining keyword arguments in a dictionary
 
         Returns:
             A tuple with the following entries:
@@ -891,7 +893,8 @@ def syne_net(cfg,
              rdc_on_M = False,
              rot_SPF = False,
              M__M_conns = False,
-             old_M__C = None):
+             old_M__C = None,
+             **extra):
     """ Create a draculab network with the given configuration.
     
         In the network returned, each interneuron stimulates two muscles.
@@ -912,6 +915,7 @@ def syne_net(cfg,
             rot_SPF: whether to rotate the output of SPF
             M__M_conns : whether to have M__M_connections
             old_M__C: Not implemented.
+            extra: collects remaining keyword arguments in a dictionary
 
         Returns:
             A tuple with the following entries:
