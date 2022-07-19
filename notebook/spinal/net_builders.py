@@ -51,7 +51,7 @@ def net_from_cfg(cfg,
             net : A draculab network as in v3_nst_afx, with the given configuration.
             pops_dict : a dictionary with the list of ID's for each population in net.
             hand_coords : list with the coordinates for all possible targets
-            m_idxs : which target coordinats will be used for the i-th presentation
+            m_idxs : which target coordinates will be used for the i-th presentation
             pds : some parameter dictionaries used to change targets
     """
     M_size = 12 # number of units in the M population
