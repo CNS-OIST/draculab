@@ -19,6 +19,7 @@ def net_from_cfg(cfg,
                  track_ips = False,
                  C_noise = False,
                  M__C_rand_w = True,
+                 A__CM_rand_w = True,
                  M_noise = False,
                  rga_on_M = False,
                  rdc_on_M = False,
@@ -38,6 +39,7 @@ def net_from_cfg(cfg,
             rand_targets: whether to train using a large number of random targets
             C_noise: whether C units are noisy (use euler_maru integrator)
             M__C_rand_w: randomly initialize weights for the M__C connections
+            A__CM_rand_w: random plastic weights for the A__C, A__M connections
             M_noise: whether M units are noisy (use euler_maru integration)
             rga_on_M: whether to have rga_21 synapses on SPF__M connections
             rdc_on_M: use rate distribution control on M?
@@ -71,6 +73,20 @@ def net_from_cfg(cfg,
     if rot_SPF:
         assert (not rga_on_M and C_noise and M__C_rand_w and
                 not M_noise and not M__M_conns), "rot_SPF conditions unsatisfied"
+        
+    # matrix that provides connections to the same unit and its agonists
+    ago_core = np.array(
+            [[1.0, 0.5, 0.0, 0.0, 0.5, 0.0],
+             [0.5, 1.0, 0.0, 0.0, 0.0, 0.0],
+             [0.0, 0.0, 1.0, 0.5, 0.0, 0.0],
+             [0.0, 0.0, 0.5, 1.0, 0.0, 0.5],
+             [0.5, 0.0, 0.0, 0.0, 1.0, 0.0],
+             [0.0, 0.0, 0.0, 0.5, 0.0, 1.0]])
+    antag_idx = [3, 2, 1, 0, 5, 4] # index of antagonists
+    # matrix that provides connections to the antagonists
+    antag_core = np.zeros_like(ago_core)
+    for idx, ant_idx in enumerate(antag_idx):
+        antag_core[:,idx] = ago_core[:,ant_idx]
 
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Parameter dictionaries for the network and the plant
@@ -98,12 +114,12 @@ def net_from_cfg(cfg,
               'mu2': 3.,
               'l_torque' : 0.01,
               'l_visco' : 0.01,
-              'g_e' : cfg['g_e_factor']*np.array([cfg['g_e_03'], 25., 25., # 20, 20,
-                                                  cfg['g_e_03'], 25., 25.]), #30., 30.]), # 22., 23.]),
+              'g_e' : cfg['g_e_factor']*np.array([cfg['g_e_03'], 25., 25., 
+                                                  cfg['g_e_03'], 25., 25.]),
               'l0_e' : [1.]*6,
-              'Ia_gain' : 2.5*np.array([3.,10.,10., 3.,11.,11.]), # 3,10,10,3,10,10
+              'Ia_gain' : 2.5*np.array([3.,10.,10., 3.,11.,11.]),
               'II_gain' : 2.*np.array([cfg['II_g_03'], 8., 8.,
-                                       cfg['II_g_03'], 8., 8.]), # 8., 8.]),
+                                       cfg['II_g_03'], 8., 8.]),
               'Ib_gain' : 1.,
               'T_0' : 10.,
               'k_pe_e' : cfg['k_pe_e'],  #8
@@ -137,7 +153,7 @@ def net_from_cfg(cfg,
                 'tau_mid' : 0.05,
                 'thresh' : np.array([.35]*6 + 
                                     [-.15]*6 + 
-                                    [1.5, .12, .22, 1.2, .2, .2])} #[1.5,.12,.22,1.2,.14,.26] } # [Ib, Ia, II]
+                                    [1.5, .12, .22, 1.2, .2, .2])}
     ACT_params = {'type' : unit_types.act,
                   'tau_u' : 10., #6., #8
                   'gamma' : 8., #6., #2
@@ -273,26 +289,46 @@ def net_from_cfg(cfg,
     all_pairs = [(i,j) for i in range(6) for j in range(6)]
     
     # Afferent to interneurons --------------------------------
+    if A__CM_rand_w:
+        A__C_init_w = 0.1
+        A__C_type = synapse_types.inp_sel
+    else:
+        A__C_type = synapse_types.static
+        A_C = np.concatenate((antag_core, 0.5*antag_core), axis=1)
+        for row_idx in range(A_C.shape[0]):
+            A_C[row_idx] = A_C[row_idx] / sum(A_C[row_idx])
+        A__C_init_w = cfg['A__C_w_sum'] * A_C.flatten('F')
     A__C_conn = {'rule' : 'all_to_all',
                  'delay' : 0.01}
-    A__C_syn = {'type' : synapse_types.inp_sel,
+    A__C_syn = {'type' : A__C_type,
                 'inp_ports' : 2,
                 'error_port' : 0,
                 'lrate' : cfg['A__C_lrate'],
                 'w_sum' : cfg['A__C_w_sum'],
                 'w_max' : cfg['A__C_w_max_frac']*cfg['A__C_w_sum'],
-                'init_w' : 0.1 }
+                'init_w' : A__C_init_w }
     # Afferent to motor error selection -----------------------
+    if A__CM_rand_w:
+        A__M_init_w = 0.1
+        A__M_type = synapse_types.inp_sel
+    else:
+        A__M_type = synapse_types.static
+        A_M = np.concatenate((
+                 np.concatenate((antag_core, 0.5*antag_core), axis=1),
+                 np.concatenate((ago_core, 0.5*ago_core), axis=1)), axis=0)
+        for row_idx in range(A_M.shape[0]):
+            A_M[row_idx] = A_M[row_idx] / sum(A_M[row_idx])
+        A__M_init_w = cfg['A__M_w_sum'] * A_M.flatten('F')
     A__M_conn = {'rule' : 'all_to_all',
                  'delay' : 0.02 }
-    A__M_syn = {'type' : synapse_types.inp_sel,
+    A__M_syn = {'type' : A__M_type,
                 'inp_ports' : 2, # the default for m_sig targets
                 'error_port' : 1, # the default for m_sig targets
                 'aff_port' : 2,
                 'lrate' : cfg['A__M_lrate'], # negative rate for m_sig targets with value inputs
                 'w_sum' : cfg['A__M_w_sum'],
                 'w_max' : cfg['A__M_w_max_frac']*cfg['A__M_w_sum'],
-                'init_w' : .1 }
+                'init_w' : A__M_init_w }
     A__SF_conn = {'rule' : 'one_to_one',
                   'delay' : 0.02 }
     A__SF_syn = {'type' : synapse_types.static,
@@ -393,20 +429,9 @@ def net_from_cfg(cfg,
             M_CE = M_CE.flatten('C')
             M_CE = np.concatenate((M_CE, -M_CE))
             M_CI = -M_CE
-        else:
-            M_CE_core = np.array(
-                [[1.0, 0.5, 0.0, 0.0, 0.5, 0.0],
-                 [0.5, 1.0, 0.0, 0.0, 0.0, 0.0],
-                 [0.0, 0.0, 1.0, 0.5, 0.0, 0.0],
-                 [0.0, 0.0, 0.5, 1.0, 0.0, 0.5],
-                 [0.5, 0.0, 0.0, 0.0, 1.0, 0.0],
-                 [0.0, 0.0, 0.0, 0.5, 0.0, 1.0]])
-            antag_idx = [3, 2, 1, 0, 5, 4] # index of antagonist
-            M_CE_rev = np.zeros_like(M_CE_core)
-            for idx, ant_idx in enumerate(antag_idx):
-                M_CE_rev[:,idx] = M_CE_core[:,ant_idx] 
-            M_CE = np.concatenate((M_CE_core, M_CE_rev), axis=1)
-            M_CI = np.concatenate((M_CE_rev, M_CE_core), axis=1)
+        else: 
+            M_CE = np.concatenate((ago_core, antag_core), axis=1)
+            M_CI = np.concatenate((antag_core, ago_core), axis=1)
             for row_idx in range(M_CE.shape[0]):
                 M_CE[row_idx] = M_CE[row_idx] / sum(M_CE[row_idx])
                 M_CI[row_idx] = M_CI[row_idx] / sum(M_CI[row_idx])
@@ -588,7 +613,9 @@ def net_from_cfg(cfg,
 
     # tracking units
     if track_weights:
-        A_CE0_track = net.create(18, track_params) # to track weights from A to C0
+        if A__CM_rand_w: A_CE0_N = 18
+        else: A_CE0_N = 12
+        A_CE0_track = net.create(A_CE0_N, track_params) # to track weights from A to C0
         A_M0_track = net.create(12, track_params) # to track weights from A to M0
         M_CE0_track = net.create(M_size, track_params) # to track weights from M to C[0]
         M_AL0_track = net.create(M_size, track_params) # to track weights from M to AL[0]
@@ -707,8 +734,12 @@ def net_from_cfg(cfg,
     # CONNECTING
     #--------------------------------------------------------------------
     # From afferent units
-    net.connect(A, CE, A__C_conn, A__C_syn)
-    net.connect(A, CI, A__C_conn, A__C_syn)
+    if A__CM_rand_w:
+        net.connect(A, CE, A__C_conn, A__C_syn)
+        net.connect(A, CI, A__C_conn, A__C_syn)
+    else:
+        net.connect(A[:12], CE, A__C_conn, A__C_syn)
+        net.connect(A[:12], CI, A__C_conn, A__C_syn)
     net.connect(A[:12], M, A__M_conn, A__M_syn)
     net.connect(A[12:18], SF, A__SF_conn, A__SF_syn)
     # From ACT
@@ -811,10 +842,10 @@ def net_from_cfg(cfg,
             return lambda t: net.syns[M[0]][idx].w
         base = 0
         for idx, uid in enumerate(A_M0_track):
-            rga_syn = False
-            while not rga_syn:
-                if net.syns[M[0]][base+idx].type in [synapse_types.inp_sel]:
-                    rga_syn = True
+            A_syn = False
+            while not A_syn:
+                if net.syns[M[0]][base+idx].preID in A:
+                    A_syn = True
                 else:
                     base += 1
                     if base > 100:
@@ -826,10 +857,10 @@ def net_from_cfg(cfg,
             return lambda t: net.syns[CE[0]][idx].w
         base = 0
         for idx, uid in enumerate(A_CE0_track):
-            inpsel_syn = False
-            while not inpsel_syn:
-                if net.syns[CE[0]][base+idx].type in [synapse_types.inp_sel]:
-                    inpsel_syn = True
+            A_syn = False
+            while not A_syn:
+                if net.syns[CE[0]][base+idx].preID in A:
+                    A_syn = True
                 else:
                     base += 1
                     if base > 100:
@@ -949,6 +980,9 @@ def syne_net(cfg,
         
     if rdc_on_M:
         raise NotImplementedError('rdc_on_M not available on syne_net')
+        
+    if 'A__CM_rand_w' in extra and not extra['A__CM_rand_w']:
+        raise NotImplementedError('static A__CM connections not implemented in syne_net')
     
     #~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # Parameter dictionaries for the network and the plant
