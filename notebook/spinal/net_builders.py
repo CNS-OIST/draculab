@@ -243,7 +243,7 @@ def net_from_cfg(cfg,
                  'thresh' : np.array([SFth, 0.4, 0.4, SFth, 0.3, 0.4]), # 0.4, 0.4]),
                  'slope' : np.array([cfg['SF_slope']]*6),
                  'init_val' : 0.2,
-                 'tau' : 0.02 }  # 0.05
+                 'tau' : 0.02 }
     SP_params = {'type' : unit_types.source,
                  'init_val' : 0.5,
                  'tau_fast' : 0.01,
